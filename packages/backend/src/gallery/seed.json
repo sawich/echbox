@@ -1,0 +1,102 @@
+[
+  {
+    "id": "chara-sample",
+    "type": "character",
+    "slug": "chara-sample",
+    "title": "Sample character",
+    "versions": [
+      {
+        "version": 1,
+        "createdAt": "2024-01-01T00:00:00.000Z",
+        "fixture": "chara/kk_chara.png",
+        "notes": "Reference card"
+      },
+      {
+        "version": 2,
+        "createdAt": "2024-06-01T00:00:00.000Z",
+        "fixture": "chara/kk_mod_chara.png",
+        "notes": "KKEx update"
+      }
+    ]
+  },
+  {
+    "id": "chara-tatsumaki-fubuki",
+    "type": "character",
+    "slug": "tatsumaki-fubuki",
+    "title": null,
+    "versions": [
+      {
+        "version": 1,
+        "createdAt": "2026-02-09T00:00:00.000Z",
+        "fixture": "chara/kk_tatsumaki_fubuki.png",
+        "notes": "ownCloud/Other"
+      }
+    ]
+  },
+  {
+    "id": "chara-82127594",
+    "type": "character",
+    "slug": "82127594",
+    "title": null,
+    "versions": [
+      {
+        "version": 1,
+        "createdAt": "2026-02-08T00:00:00.000Z",
+        "fixture": "chara/kk_82127594.png",
+        "notes": "ownCloud/Other"
+      }
+    ]
+  },
+  {
+    "id": "scene-simple",
+    "type": "scene",
+    "slug": "scene-simple",
+    "title": "Simple scene",
+    "versions": [
+      {
+        "version": 1,
+        "createdAt": "2024-01-01T00:00:00.000Z",
+        "fixture": "scene/kk_scene_simple.png"
+      }
+    ]
+  },
+  {
+    "id": "scene-main",
+    "type": "scene",
+    "slug": "scene-main",
+    "title": "Studio scene",
+    "versions": [
+      {
+        "version": 1,
+        "createdAt": "2024-01-01T00:00:00.000Z",
+        "fixture": "scene/kk_scene.png"
+      }
+    ]
+  },
+  {
+    "id": "scene-mod",
+    "type": "scene",
+    "slug": "scene-mod",
+    "title": "Mod scene",
+    "versions": [
+      {
+        "version": 1,
+        "createdAt": "2024-01-01T00:00:00.000Z",
+        "fixture": "scene/kk_scene_mod.png"
+      }
+    ]
+  },
+  {
+    "id": "scene-sunshine",
+    "type": "scene",
+    "slug": "scene-sunshine",
+    "title": "Sunshine scene",
+    "versions": [
+      {
+        "version": 1,
+        "createdAt": "2024-01-01T00:00:00.000Z",
+        "fixture": "scene/kks_scene.png"
+      }
+    ]
+  }
+]
