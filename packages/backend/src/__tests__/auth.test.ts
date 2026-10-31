@@ -20,6 +20,7 @@ describe("auth & sessions", () => {
   const origClientSecret = process.env.DISCORD_CLIENT_SECRET;
   const origRedirectUri = process.env.DISCORD_REDIRECT_URI;
   const origFrontendUrl = process.env.FRONTEND_URL;
+  const origSessionSecret = process.env.SESSION_SECRET;
 
   beforeEach(() => {
     dir = mkdtempSync(join(tmpdir(), "echbox-auth-"));
@@ -36,6 +37,8 @@ describe("auth & sessions", () => {
       "http://localhost:3001/api/auth/discord/callback";
     process.env.FRONTEND_URL = "http://localhost:3000";
     Bun.env.FRONTEND_URL = "http://localhost:3000";
+    process.env.SESSION_SECRET = "test-session-secret";
+    Bun.env.SESSION_SECRET = "test-session-secret";
 
     migrateDb(dbPath);
   });
@@ -76,6 +79,13 @@ describe("auth & sessions", () => {
       process.env.FRONTEND_URL = origFrontendUrl;
       Bun.env.FRONTEND_URL = origFrontendUrl;
     }
+    if (origSessionSecret === undefined) {
+      delete process.env.SESSION_SECRET;
+      delete Bun.env.SESSION_SECRET;
+    } else {
+      process.env.SESSION_SECRET = origSessionSecret;
+      Bun.env.SESSION_SECRET = origSessionSecret;
+    }
 
     rmSync(dir, { recursive: true, force: true });
   });
@@ -113,11 +123,16 @@ describe("auth & sessions", () => {
     expect(cookie).toContain("HttpOnly");
     expect(cookie).toMatch(/SameSite=Lax/i);
 
-    const user = await getUserFromSessionCookie(`${SESSION_COOKIE_NAME}=${id}`);
+    const cookiePair = cookie.split(";")[0]!;
+    const user = await getUserFromSessionCookie(cookiePair);
     expect(user).not.toBeNull();
     expect(user?.id).toBe(userId);
     expect(user?.discordId).toBe("discord-123");
     expect(user?.username).toBe("koyuki");
+
+    // Unsigned cookie must be rejected when SESSION_SECRET is set
+    const unsigned = await getUserFromSessionCookie(`${SESSION_COOKIE_NAME}=${id}`);
+    expect(unsigned).toBeNull();
 
     const none = await getUserFromSessionCookie(null);
     expect(none).toBeNull();
@@ -131,7 +146,6 @@ describe("auth & sessions", () => {
   test("expired session returns null", async () => {
     const db = getDb(dbPath);
     const userId = crypto.randomUUID();
-    const sessionId = crypto.randomUUID();
     db.insert(users)
       .values({
         id: userId,
@@ -142,18 +156,16 @@ describe("auth & sessions", () => {
       })
       .run();
 
-    db.insert(sessions)
-      .values({
-        id: sessionId,
-        userId,
+    const { id: sessionId, cookie } = await createSession(userId);
+    db.update(sessions)
+      .set({
         expiresAt: new Date(Date.now() - 60_000).toISOString(),
       })
       .run();
 
-    const user = await getUserFromSessionCookie(
-      `${SESSION_COOKIE_NAME}=${sessionId}`,
-    );
+    const user = await getUserFromSessionCookie(cookie.split(";")[0]!);
     expect(user).toBeNull();
+    expect(sessionId.length).toBeGreaterThan(0);
   });
 
   test("GET /api/auth/me returns 401 without cookie and 200 with valid session", async () => {
@@ -174,12 +186,13 @@ describe("auth & sessions", () => {
       })
       .run();
 
-    const { id } = await createSession(userId);
+    const { cookie } = await createSession(userId);
+    const cookiePair = cookie.split(";")[0]!;
 
     const authRes = await app.handle(
       new Request("http://localhost/api/auth/me", {
         headers: {
-          cookie: `${SESSION_COOKIE_NAME}=${id}`,
+          cookie: cookiePair,
         },
       }),
     );
@@ -209,13 +222,14 @@ describe("auth & sessions", () => {
       })
       .run();
 
-    const { id } = await createSession(userId);
+    const { cookie } = await createSession(userId);
+    const cookiePair = cookie.split(";")[0]!;
 
     const logoutRes = await app.handle(
       new Request("http://localhost/api/auth/logout", {
         method: "POST",
         headers: {
-          cookie: `${SESSION_COOKIE_NAME}=${id}`,
+          cookie: cookiePair,
         },
       }),
     );
@@ -227,7 +241,7 @@ describe("auth & sessions", () => {
     const afterMe = await app.handle(
       new Request("http://localhost/api/auth/me", {
         headers: {
-          cookie: `${SESSION_COOKIE_NAME}=${id}`,
+          cookie: cookiePair,
         },
       }),
     );

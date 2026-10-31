@@ -1,5 +1,6 @@
 import { Elysia, t } from "elysia";
 import {
+  type CharacterCardDetail,
   CardServiceError,
   DuplicateCardHashError,
   addVersion,
@@ -18,6 +19,21 @@ const gallery = createGalleryService();
 
 async function readUpload(file: File): Promise<Uint8Array> {
   return new Uint8Array(await file.arrayBuffer());
+}
+
+function stripCardPaths<
+  T extends CharacterCardDetail & {
+    originalPath?: string;
+    previewPath?: string;
+  },
+>(card: T) {
+  const { originalPath: _op, previewPath: _pp, ...rest } = card;
+  return {
+    ...rest,
+    versions: card.versions.map(
+      ({ originalPath: _vop, previewPath: _vpp, ...vRest }) => vRest,
+    ),
+  };
 }
 
 function handleServiceError(
@@ -104,7 +120,7 @@ export const galleryRoutes = new Elysia({ prefix: "/api/kk" })
           fileBytes,
         });
         set.status = 201;
-        return created;
+        return stripCardPaths(created);
       } catch (err) {
         return handleServiceError(err, set);
       }
@@ -123,7 +139,7 @@ export const galleryRoutes = new Elysia({ prefix: "/api/kk" })
     async ({ params, set }) => {
       const chara = await getCharacterCard(params.id);
       if (chara) {
-        return chara;
+        return stripCardPaths(chara);
       }
       const scene = await gallery.getCard(params.id);
       if (scene) {
@@ -147,12 +163,13 @@ export const galleryRoutes = new Elysia({ prefix: "/api/kk" })
       }
       try {
         const fileBytes = await readUpload(body.file);
-        return await addVersion({
+        const added = await addVersion({
           cardId: params.id,
           authorId: user.id,
           notes: body.notes,
           fileBytes,
         });
+        return stripCardPaths(added);
       } catch (err) {
         return handleServiceError(err, set);
       }
@@ -175,13 +192,14 @@ export const galleryRoutes = new Elysia({ prefix: "/api/kk" })
         return { error: "Unauthorized" };
       }
       try {
-        return await patchCard({
+        const patched = await patchCard({
           cardId: params.id,
           authorId: user.id,
           title: body.title,
           slug: body.slug,
           notes: body.notes,
         });
+        return stripCardPaths(patched);
       } catch (err) {
         return handleServiceError(err, set);
       }

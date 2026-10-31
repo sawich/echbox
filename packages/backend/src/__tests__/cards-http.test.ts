@@ -58,10 +58,10 @@ describe("Character CRUD + hash lookup + gallery split HTTP routes", () => {
       .run();
 
     const authorSess = await createSession(authorId, dbPath);
-    authorCookie = `${SESSION_COOKIE_NAME}=${authorSess.id}`;
+    authorCookie = authorSess.cookie.split(";")[0]!;
 
     const otherSess = await createSession(otherUserId, dbPath);
-    otherCookie = `${SESSION_COOKIE_NAME}=${otherSess.id}`;
+    otherCookie = otherSess.cookie.split(";")[0]!;
   });
 
   afterEach(() => {
@@ -364,5 +364,84 @@ describe("Character CRUD + hash lookup + gallery split HTTP routes", () => {
       new Request(`http://localhost/api/kk/cards/${created.id}`),
     );
     expect(afterGet.status).toBe(404);
+  });
+
+  test("card HTTP responses strip originalPath and previewPath from card and versions", async () => {
+    const v1Bytes = await fixtureBytes("chara", "kk_chara.png");
+    const v2Bytes = await fixtureBytes("chara", "kk_mod_chara.png");
+
+    const createForm = new FormData();
+    createForm.append("file", new File([v1Bytes], "kk_chara.png", { type: "image/png" }));
+    createForm.append("title", "No Paths Card");
+
+    const createRes = await app.handle(
+      new Request("http://localhost/api/kk/cards", {
+        method: "POST",
+        headers: { cookie: authorCookie },
+        body: createForm,
+      }),
+    );
+    expect(createRes.status).toBe(201);
+    const created = (await createRes.json()) as Record<string, unknown> & {
+      id: string;
+      versions: Record<string, unknown>[];
+    };
+    expect(created.originalPath).toBeUndefined();
+    expect(created.previewPath).toBeUndefined();
+    expect(created.versions[0]!.originalPath).toBeUndefined();
+    expect(created.versions[0]!.previewPath).toBeUndefined();
+
+    const getRes = await app.handle(
+      new Request(`http://localhost/api/kk/cards/${created.id}`),
+    );
+    expect(getRes.status).toBe(200);
+    const detail = (await getRes.json()) as Record<string, unknown> & {
+      versions: Record<string, unknown>[];
+    };
+    expect(detail.originalPath).toBeUndefined();
+    expect(detail.previewPath).toBeUndefined();
+    expect(detail.versions[0]!.originalPath).toBeUndefined();
+    expect(detail.versions[0]!.previewPath).toBeUndefined();
+
+    const verForm = new FormData();
+    verForm.append("file", new File([v2Bytes], "kk_mod_chara.png", { type: "image/png" }));
+    const verRes = await app.handle(
+      new Request(`http://localhost/api/kk/cards/${created.id}/versions`, {
+        method: "POST",
+        headers: { cookie: authorCookie },
+        body: verForm,
+      }),
+    );
+    expect(verRes.status).toBe(200);
+    const added = (await verRes.json()) as Record<string, unknown> & {
+      versions: Record<string, unknown>[];
+    };
+    expect(added.originalPath).toBeUndefined();
+    expect(added.previewPath).toBeUndefined();
+    for (const v of added.versions) {
+      expect(v.originalPath).toBeUndefined();
+      expect(v.previewPath).toBeUndefined();
+    }
+
+    const patchRes = await app.handle(
+      new Request(`http://localhost/api/kk/cards/${created.id}`, {
+        method: "PATCH",
+        headers: {
+          cookie: authorCookie,
+          "content-type": "application/json",
+        },
+        body: JSON.stringify({ title: "Patched No Paths" }),
+      }),
+    );
+    expect(patchRes.status).toBe(200);
+    const patched = (await patchRes.json()) as Record<string, unknown> & {
+      versions: Record<string, unknown>[];
+    };
+    expect(patched.originalPath).toBeUndefined();
+    expect(patched.previewPath).toBeUndefined();
+    for (const v of patched.versions) {
+      expect(v.originalPath).toBeUndefined();
+      expect(v.previewPath).toBeUndefined();
+    }
   });
 });

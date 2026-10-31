@@ -31,8 +31,7 @@ function verifyOrExtractSessionId(rawValue: string): string | null {
 
   const dotIndex = rawValue.indexOf(".");
   if (dotIndex === -1) {
-    // Also accept raw session IDs (e.g. when tests pass `echbox_session=${id}` directly)
-    return rawValue;
+    return null;
   }
 
   const id = rawValue.slice(0, dotIndex);

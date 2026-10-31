@@ -69,4 +69,24 @@ describe("schema", () => {
       rmSync(dir, { recursive: true, force: true });
     }
   });
+
+  test("getDb caches Drizzle instance per resolved dbPath and enables WAL", () => {
+    const dir = mkdtempSync(join(tmpdir(), "echbox-db-cache-"));
+    const dbPath1 = join(dir, "one.db");
+    const dbPath2 = join(dir, "two.db");
+    try {
+      const db1a = getDb(dbPath1);
+      const db1b = getDb(dbPath1);
+      const db2 = getDb(dbPath2);
+
+      expect(db1a).toBe(db1b);
+      expect(db1a).not.toBe(db2);
+
+      const modeRow = (db1a as unknown as { $client: { query: (sql: string) => { get: () => { journal_mode: string } } } })
+        .$client.query("PRAGMA journal_mode;").get();
+      expect(modeRow.journal_mode.toLowerCase()).toBe("wal");
+    } finally {
+      rmSync(dir, { recursive: true, force: true });
+    }
+  });
 });
