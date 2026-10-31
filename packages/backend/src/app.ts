@@ -5,6 +5,7 @@ import {
   EchoResponseSchema,
   HealthResponseSchema,
 } from "@echbox/shared";
+import { authRoutes } from "./routes/auth";
 import { galleryRoutes } from "./routes/gallery";
 import { kkloaderRoutes } from "./routes/kkloader";
 
@@ -15,6 +16,7 @@ export const app = new Elysia()
       credentials: true,
     }),
   )
+  .use(authRoutes)
   .use(kkloaderRoutes)
   .use(galleryRoutes)
   .get("/", () => "Hello Elysia")

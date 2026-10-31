@@ -7,8 +7,9 @@ import * as schema from "./schema";
 const defaultDbPath = join(import.meta.dir, "../../data/sqlite.db");
 
 export function getDb(path?: string) {
-  const dbPath = path ?? process.env.DATABASE_PATH ?? defaultDbPath;
+  const dbPath = path ?? Bun.env.DATABASE_PATH ?? process.env.DATABASE_PATH ?? defaultDbPath;
   mkdirSync(dirname(dbPath), { recursive: true });
   const sqlite = new Database(dbPath, { create: true });
+  sqlite.exec("PRAGMA foreign_keys = ON;");
   return drizzle(sqlite, { schema });
 }
