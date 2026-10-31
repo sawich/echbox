@@ -1,4 +1,5 @@
 import { describe, expect, test } from "bun:test";
+import { app } from "../app";
 import { createGalleryService } from "../gallery/service";
 
 describe("gallery service", () => {
@@ -42,5 +43,51 @@ describe("gallery service", () => {
   test("getCard unknown id returns null", async () => {
     const svc = createGalleryService();
     expect(await svc.getCard("nope")).toBeNull();
+  });
+});
+
+describe("GET /api/kk/cards", () => {
+  test("GET /api/kk/cards returns seeded cards", async () => {
+    const res = await app.handle(new Request("http://localhost/api/kk/cards"));
+    expect(res.status).toBe(200);
+    const body = (await res.json()) as { cards: { id: string }[] };
+    expect(body.cards.some((c) => c.id === "chara-sample")).toBe(true);
+  });
+
+  test("GET /api/kk/cards?type=character excludes scenes", async () => {
+    const res = await app.handle(
+      new Request("http://localhost/api/kk/cards?type=character"),
+    );
+    expect(res.status).toBe(200);
+    const body = (await res.json()) as { cards: { type: string }[] };
+    expect(body.cards.every((c) => c.type === "character")).toBe(true);
+  });
+
+  test("GET /api/kk/cards/chara-sample returns versions", async () => {
+    const res = await app.handle(
+      new Request("http://localhost/api/kk/cards/chara-sample"),
+    );
+    expect(res.status).toBe(200);
+    const body = (await res.json()) as { versions: unknown[] };
+    expect(body.versions).toHaveLength(2);
+  });
+
+  test("GET missing card is 404", async () => {
+    const res = await app.handle(
+      new Request("http://localhost/api/kk/cards/does-not-exist"),
+    );
+    expect(res.status).toBe(404);
+  });
+
+  test("GET version image is png", async () => {
+    const res = await app.handle(
+      new Request(
+        "http://localhost/api/kk/cards/chara-sample/versions/2/image",
+      ),
+    );
+    expect(res.status).toBe(200);
+    expect(res.headers.get("content-type")).toContain("image/png");
+    const buf = new Uint8Array(await res.arrayBuffer());
+    expect(buf[0]).toBe(0x89);
   });
 });
