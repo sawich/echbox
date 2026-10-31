@@ -19,7 +19,10 @@ async function parseFixture(
   const path = resolveFixture(fixtureRel);
   if (type === "character") {
     const kc = await KoikatuCharaData.load(path);
-    const imageBytes = kc.image ?? kc.faceImage;
+    let imageBytes = kc.image ?? kc.faceImage;
+    if (!imageBytes || imageBytes.byteLength === 0) {
+      imageBytes = new Uint8Array(await Bun.file(path).arrayBuffer());
+    }
     return {
       summary: kc.summary() as unknown as Record<string, unknown>,
       imageBytes,
@@ -47,7 +50,10 @@ export function createGalleryService() {
     const key = `${type}:${fixture}`;
     let hit = cache.get(key);
     if (!hit) {
-      hit = parseFixture(type, fixture);
+      hit = parseFixture(type, fixture).catch((err) => {
+        cache.delete(key);
+        throw err;
+      });
       cache.set(key, hit);
     }
     return hit;
@@ -71,12 +77,11 @@ export function createGalleryService() {
     for (const card of cards) {
       const latest = latestVersion(card);
       const payload = await cached(card.type, latest.fixture);
-      const title = card.title?.trim() || payload.displayName?.trim() || card.slug;
       out.push({
         id: card.id,
         type: card.type,
         slug: card.slug,
-        title,
+        title: await resolveTitle(card),
         latestVersion: latest.version,
         versionCount: card.versions.length,
         imageUrl: imageUrl(card.id, latest.version),

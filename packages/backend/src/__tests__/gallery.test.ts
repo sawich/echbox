@@ -90,4 +90,30 @@ describe("GET /api/kk/cards", () => {
     const buf = new Uint8Array(await res.arrayBuffer());
     expect(buf[0]).toBe(0x89);
   });
+
+  test("GET invalid type query is rejected", async () => {
+    const res = await app.handle(
+      new Request("http://localhost/api/kk/cards?type=invalid"),
+    );
+    expect(res.status).toBeGreaterThanOrEqual(400);
+    expect(res.status).toBeLessThan(500);
+  });
+
+  test("GET unknown version image is 404", async () => {
+    const res = await app.handle(
+      new Request(
+        "http://localhost/api/kk/cards/chara-sample/versions/999/image",
+      ),
+    );
+    expect(res.status).toBe(404);
+  });
+});
+
+describe("gallery seed fixtures", () => {
+  test("resolveFixture throws with path for missing file", async () => {
+    const { resolveFixture } = await import("../gallery/seed");
+    expect(() => resolveFixture("chara/does-not-exist.png")).toThrow(
+      /Missing gallery fixture/,
+    );
+  });
 });
