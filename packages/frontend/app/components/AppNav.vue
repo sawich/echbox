@@ -16,11 +16,19 @@ const route = useRoute()
       <div class="flex items-center gap-1">
         <UButton
           to="/"
-          :variant="route.path === '/' || route.path.startsWith('/cards') ? 'soft' : 'ghost'"
+          :variant="route.path === '/' ? 'soft' : 'ghost'"
           color="primary"
           size="sm"
         >
-          Gallery
+          Characters
+        </UButton>
+        <UButton
+          to="/scenes"
+          :variant="route.path.startsWith('/scenes') ? 'soft' : 'ghost'"
+          color="primary"
+          size="sm"
+        >
+          Scenes
         </UButton>
         <UButton
           to="/uikit"
