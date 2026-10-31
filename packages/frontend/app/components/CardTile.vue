@@ -1,5 +1,6 @@
 <script setup lang="ts">
 import type { CardListItem } from '@echbox/shared'
+import { galleryAspect } from '~/utils/gallery'
 
 const props = defineProps<{
   card: CardListItem
@@ -7,6 +8,7 @@ const props = defineProps<{
 }>()
 
 const imageSrc = computed(() => `${props.apiUrl}${props.card.imageUrl}`)
+const aspectClass = computed(() => galleryAspect(props.card.type))
 </script>
 
 <template>
@@ -18,7 +20,10 @@ const imageSrc = computed(() => `${props.apiUrl}${props.card.imageUrl}`)
       :elev="2"
       class="overflow-hidden transition-[box-shadow,transform] duration-200 ease-[var(--ease-emphasized)] group-hover:-translate-y-0.5 group-hover:shadow-[0_0_28px_-10px_var(--m3-neon-glow)] group-focus-visible:ring-2 group-focus-visible:ring-[var(--m3-primary)]"
     >
-      <div class="relative aspect-[252/352] bg-[var(--m3-surface-container-highest)]">
+      <div
+        class="relative bg-[var(--m3-surface-container-highest)]"
+        :class="aspectClass"
+      >
         <img
           :src="imageSrc"
           :alt="card.title"
