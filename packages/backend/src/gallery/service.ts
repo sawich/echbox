@@ -42,7 +42,7 @@ async function parseFixture(
 }
 
 export function createGalleryService() {
-  const seed = loadSeed();
+  const seed = loadSeed().filter((c) => c.type === "scene");
   const byId = new Map(seed.map((c) => [c.id, c]));
   const cache = new Map<string, Promise<CachedPayload>>();
 
