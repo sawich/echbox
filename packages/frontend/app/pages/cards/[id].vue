@@ -1,5 +1,6 @@
 <script setup lang="ts">
 import type { CardDetail } from '@echbox/shared'
+import { galleryAspect } from '~/utils/gallery'
 
 const route = useRoute()
 const api = useApi()
@@ -41,13 +42,21 @@ const imageSrc = computed(() => {
   if (!active.value) return ''
   return `${apiUrl.value}${active.value.imageUrl}`
 })
+
+const previewAspect = computed(() =>
+  data.value ? galleryAspect(data.value.type) : galleryAspect('character'),
+)
+
+const galleryBackTo = computed(() =>
+  data.value?.type === 'scene' ? '/scenes' : '/',
+)
 </script>
 
 <template>
   <main class="mx-auto w-full max-w-5xl px-6 py-10">
     <div class="mb-6">
       <UButton
-        to="/"
+        :to="galleryBackTo"
         variant="ghost"
         color="neutral"
         size="sm"
@@ -88,7 +97,8 @@ const imageSrc = computed(() => {
         <img
           :src="imageSrc"
           :alt="data.title"
-          class="aspect-[252/352] w-full object-cover"
+          class="w-full object-cover"
+          :class="previewAspect"
         >
       </M3Surface>
 
