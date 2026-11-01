@@ -15,7 +15,8 @@
     "test": "bun test",
     "typecheck": "bun check src/index.ts src/kkloader/index.ts",
     "db:generate": "drizzle-kit generate",
-    "db:migrate": "bun run src/db/migrate.ts"
+    "db:migrate": "bun run src/db/migrate.ts",
+    "scenes:import-seed": "bun run src/scenes/import-seed-cli.ts"
   },
   "dependencies": {
     "@echbox/shared": "workspace:*",
