@@ -167,6 +167,68 @@ const joinedLabel = computed(() => {
           />
         </div>
       </section>
+
+      <section class="space-y-4">
+        <div class="space-y-1">
+          <h2 class="ed-title-md text-[var(--ed-on-surface)]">
+            Uploaded plugins
+          </h2>
+          <p class="ed-body-md text-[var(--ed-on-surface-variant)]">
+            {{ isOwnProfile ? 'Your BepInEx plugin archives.' : 'Plugins uploaded by this user.' }}
+          </p>
+        </div>
+
+        <p
+          v-if="data.plugins.length === 0"
+          class="ed-body-md text-[var(--ed-on-surface-variant)]"
+        >
+          No plugins yet.
+        </p>
+
+        <div
+          v-else
+          class="space-y-3"
+        >
+          <ModRow
+            v-for="plugin in data.plugins"
+            :key="plugin.id"
+            mod-kind="plugin"
+            :item="plugin"
+            :api-url="apiUrl"
+          />
+        </div>
+      </section>
+
+      <section class="space-y-4">
+        <div class="space-y-1">
+          <h2 class="ed-title-md text-[var(--ed-on-surface)]">
+            Uploaded softmods
+          </h2>
+          <p class="ed-body-md text-[var(--ed-on-surface-variant)]">
+            {{ isOwnProfile ? 'Your Koikatsu softmod packages.' : 'Softmods uploaded by this user.' }}
+          </p>
+        </div>
+
+        <p
+          v-if="data.softmods.length === 0"
+          class="ed-body-md text-[var(--ed-on-surface-variant)]"
+        >
+          No softmods yet.
+        </p>
+
+        <div
+          v-else
+          class="space-y-3"
+        >
+          <ModRow
+            v-for="softmod in data.softmods"
+            :key="softmod.id"
+            mod-kind="softmod"
+            :item="softmod"
+            :api-url="apiUrl"
+          />
+        </div>
+      </section>
     </div>
   </main>
 </template>

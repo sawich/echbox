@@ -1,0 +1,33 @@
+{
+  "name": "frontend",
+  "type": "module",
+  "private": true,
+  "scripts": {
+    "build": "nuxt build",
+    "dev": "nuxt dev",
+    "generate": "nuxt generate",
+    "preview": "nuxt preview",
+    "postinstall": "nuxt prepare",
+    "tauri": "tauri",
+    "tauri:dev": "tauri dev",
+    "tauri:build": "tauri build"
+  },
+  "dependencies": {
+    "@echbox/shared": "workspace:*",
+    "@echbox/uikit": "workspace:*",
+    "@elysiajs/eden": "^1.4.9",
+    "@nuxt/eslint": "1.17.0",
+    "@nuxt/image": "2.2.1",
+    "@tauri-apps/api": "^2.12.4",
+    "@vueuse/nuxt": "15.0.0",
+    "backend": "workspace:*",
+    "eslint": "^10.14.0",
+    "nuxt": "^4.6.3",
+    "vue": "^3.5.44",
+    "vue-router": "^5.4.0"
+  },
+  "devDependencies": {
+    "@tauri-apps/cli": "^2.12.4",
+    "elysia": "1.4.30"
+  }
+}

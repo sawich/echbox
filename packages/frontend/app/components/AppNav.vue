@@ -43,6 +43,18 @@ const linkClass = (active: boolean) =>
             Scenes
           </NuxtLink>
           <NuxtLink
+            to="/plugins"
+            :class="linkClass(route.path.startsWith('/plugins'))"
+          >
+            Plugins
+          </NuxtLink>
+          <NuxtLink
+            to="/softmods"
+            :class="linkClass(route.path.startsWith('/softmods'))"
+          >
+            Softmods
+          </NuxtLink>
+          <NuxtLink
             to="/uikit"
             :class="linkClass(route.path.startsWith('/uikit'))"
           >

@@ -1,0 +1,369 @@
+<script setup lang="ts">
+import type { PluginListItem, SoftmodListItem } from '@echbox/shared'
+
+const props = defineProps<{
+  modKind: 'plugin' | 'softmod'
+  title: string
+  description: string
+}>()
+
+const api = useApi()
+const config = useRuntimeConfig()
+const apiUrl = computed(() => String(config.public.apiUrl).replace(/\/$/, ''))
+const { user } = useAuth()
+const router = useRouter()
+
+const { data, error, status, refresh } = await useAsyncData(
+  () => `catalog-${props.modKind}`,
+  async () => {
+    if (props.modKind === 'plugin') {
+      const { data: body, error: err } = await api.api.plugins.get({
+        fetch: { credentials: 'include' },
+      })
+      if (err) throw err
+      return (body?.plugins ?? []) as PluginListItem[]
+    }
+    const { data: body, error: err } = await api.api.softmods.get({
+      fetch: { credentials: 'include' },
+    })
+    if (err) throw err
+    return (body?.softmods ?? []) as SoftmodListItem[]
+  },
+  { watch: [() => props.modKind] },
+)
+
+const items = computed(() => data.value ?? [])
+
+const showUpload = ref(false)
+const uploadFile = ref<File | null>(null)
+const uploadTitle = ref('')
+const uploadDescription = ref('')
+const uploadNotes = ref('')
+const uploadBusy = ref(false)
+const uploadError = ref<string | null>(null)
+const duplicateHit = ref<{ id: string, version?: number } | null>(null)
+const fileInputKey = ref(0)
+
+const uploadAccept = computed(() =>
+  props.modKind === 'plugin' ? '.zip,application/zip' : '.zipmod',
+)
+
+const uploadModalTitle = computed(() =>
+  props.modKind === 'plugin' ? 'Upload plugin' : 'Upload softmod',
+)
+
+const uploadModalDescription = computed(() =>
+  props.modKind === 'plugin'
+    ? 'Select a BepInEx plugin ZIP and provide a title.'
+    : 'Select a Koikatsu softmod (.zipmod) file. Title and metadata come from the manifest.',
+)
+
+const duplicateLinkTo = computed(() => {
+  if (!duplicateHit.value) return ''
+  return props.modKind === 'plugin'
+    ? `/plugins/${duplicateHit.value.id}`
+    : `/softmods/${duplicateHit.value.id}`
+})
+
+function resetUploadForm() {
+  uploadFile.value = null
+  uploadTitle.value = ''
+  uploadDescription.value = ''
+  uploadNotes.value = ''
+  uploadError.value = null
+  duplicateHit.value = null
+  fileInputKey.value += 1
+}
+
+watch(showUpload, (open) => {
+  if (!open) resetUploadForm()
+})
+
+async function computeSha256Hex(file: File): Promise<string> {
+  const buf = await file.arrayBuffer()
+  const hashBuf = await crypto.subtle.digest('SHA-256', buf)
+  return Array.from(new Uint8Array(hashBuf))
+    .map(b => b.toString(16).padStart(2, '0'))
+    .join('')
+}
+
+async function onFileSelected(event: Event) {
+  const input = event.target as HTMLInputElement
+  const file = input.files?.[0] ?? null
+  uploadFile.value = file
+  uploadError.value = null
+  duplicateHit.value = null
+
+  if (!file) return
+
+  try {
+    const hash = await computeSha256Hex(file)
+    if (props.modKind === 'plugin') {
+      const { data: hit, status: hitStatus } = await api.api.plugins['by-hash']({ hash }).get()
+      if (hitStatus === 200 && hit && 'pluginId' in hit) {
+        duplicateHit.value = { id: hit.pluginId, version: hit.version }
+      }
+    }
+    else {
+      const { data: hit, status: hitStatus } = await api.api.softmods['by-hash']({ hash }).get()
+      if (hitStatus === 200 && hit && 'softmodId' in hit) {
+        duplicateHit.value = { id: hit.softmodId, version: hit.version }
+      }
+    }
+  }
+  catch {
+    // Non-blocking pre-check
+  }
+}
+
+function parseDuplicateFromPayload(payload: Record<string, unknown> | null) {
+  if (!payload) return null
+  const id =
+    (payload.pluginId as string | undefined)
+    ?? (payload.plugin_id as string | undefined)
+    ?? (payload.softmodId as string | undefined)
+    ?? (payload.softmod_id as string | undefined)
+  if (!id) return null
+  const version = payload.version as number | undefined
+  return { id, version }
+}
+
+async function submitUpload() {
+  if (!uploadFile.value || uploadBusy.value) return
+  if (props.modKind === 'plugin' && !uploadTitle.value.trim()) return
+
+  uploadBusy.value = true
+  uploadError.value = null
+  duplicateHit.value = null
+
+  try {
+    const form = new FormData()
+    form.append('file', uploadFile.value)
+    if (props.modKind === 'plugin') {
+      form.append('title', uploadTitle.value.trim())
+      if (uploadDescription.value.trim()) {
+        form.append('description', uploadDescription.value.trim())
+      }
+    }
+    if (uploadNotes.value.trim()) {
+      form.append('notes', uploadNotes.value.trim())
+    }
+
+    const endpoint =
+      props.modKind === 'plugin' ? `${apiUrl.value}/api/plugins` : `${apiUrl.value}/api/softmods`
+
+    const res = await fetch(endpoint, {
+      method: 'POST',
+      credentials: 'include',
+      body: form,
+    })
+
+    const payload = await res.json().catch(() => null) as Record<string, unknown> | null
+    if (!res.ok) {
+      if (res.status === 409) {
+        const dup = parseDuplicateFromPayload(payload)
+        if (dup) duplicateHit.value = dup
+      }
+      uploadError.value = (payload?.error as string | undefined) || `Upload failed (${res.status})`
+      return
+    }
+
+    showUpload.value = false
+    await refresh()
+    const createdId = (payload?.id as string | undefined)
+    if (createdId) {
+      await router.push(
+        props.modKind === 'plugin' ? `/plugins/${createdId}` : `/softmods/${createdId}`,
+      )
+    }
+  }
+  catch (err) {
+    uploadError.value = err instanceof Error ? err.message : 'Upload failed'
+  }
+  finally {
+    uploadBusy.value = false
+  }
+}
+
+const canSubmitUpload = computed(() => {
+  if (!uploadFile.value || uploadBusy.value || duplicateHit.value) return false
+  if (props.modKind === 'plugin') return Boolean(uploadTitle.value.trim())
+  return true
+})
+</script>
+
+<template>
+  <main class="mx-auto w-full max-w-6xl px-5 py-7 sm:px-6 sm:py-8">
+    <header class="mb-6 flex flex-wrap items-end justify-between gap-4">
+      <div class="space-y-1.5">
+        <EdLabel>Library</EdLabel>
+        <h1 class="font-[family-name:var(--font-display)] text-3xl tracking-tight text-[var(--ed-on-surface)] sm:text-4xl">
+          {{ title }}
+        </h1>
+        <p class="ed-body-md max-w-xl text-[var(--ed-on-surface-variant)]">
+          {{ description }}
+        </p>
+      </div>
+
+      <UModal
+        v-if="user"
+        v-model:open="showUpload"
+        :title="uploadModalTitle"
+        :description="uploadModalDescription"
+        :ui="{ content: 'sm:max-w-lg' }"
+      >
+        <UButton
+          icon="i-lucide-upload"
+          color="primary"
+        >
+          Upload
+        </UButton>
+
+        <template #body>
+          <form
+            :id="`${modKind}-upload-form`"
+            class="grid gap-4"
+            @submit.prevent="submitUpload"
+          >
+            <div class="space-y-1.5">
+              <label class="ed-label-md block text-[var(--ed-on-surface-variant)]">
+                {{ modKind === 'plugin' ? 'Plugin ZIP file' : 'Softmod (.zipmod) file' }}
+              </label>
+              <input
+                :key="fileInputKey"
+                type="file"
+                :accept="uploadAccept"
+                required
+                class="block w-full rounded-[var(--radius-md)] border border-[var(--ed-outline-variant)] bg-[var(--ed-surface-container)] px-3 py-2 text-sm text-[var(--ed-on-surface)] file:mr-3 file:rounded-[var(--radius-sm)] file:border-0 file:bg-[var(--ed-primary-container)] file:px-3 file:py-1 file:text-xs file:font-medium file:text-[var(--ed-on-primary-container)]"
+                @change="onFileSelected"
+              >
+            </div>
+
+            <template v-if="modKind === 'plugin'">
+              <div class="space-y-1.5">
+                <label class="ed-label-md block text-[var(--ed-on-surface-variant)]">
+                  Title (required)
+                </label>
+                <UInput
+                  v-model="uploadTitle"
+                  placeholder="Plugin title"
+                  required
+                />
+              </div>
+              <div class="space-y-1.5">
+                <label class="ed-label-md block text-[var(--ed-on-surface-variant)]">
+                  Description (optional)
+                </label>
+                <UTextarea
+                  v-model="uploadDescription"
+                  placeholder="What does this plugin do?"
+                  :rows="3"
+                />
+              </div>
+            </template>
+
+            <div class="space-y-1.5">
+              <label class="ed-label-md block text-[var(--ed-on-surface-variant)]">
+                Release notes (optional)
+              </label>
+              <UInput
+                v-model="uploadNotes"
+                placeholder="Initial release notes"
+              />
+            </div>
+
+            <div
+              v-if="duplicateHit"
+              class="rounded-[var(--radius-md)] border border-[var(--ed-secondary)] bg-[color-mix(in_oklab,var(--ed-secondary-container)_40%,transparent)] p-3 text-sm text-[var(--ed-on-secondary-container)]"
+            >
+              This file already exists as
+              <NuxtLink
+                :to="duplicateLinkTo"
+                class="font-semibold underline"
+                @click="showUpload = false"
+              >
+                {{ modKind === 'plugin' ? 'plugin' : 'softmod' }} {{ duplicateHit.id }}<template v-if="duplicateHit.version"> (v{{ duplicateHit.version }})</template>
+              </NuxtLink>.
+            </div>
+
+            <p
+              v-if="uploadError"
+              class="ed-body-md text-[var(--ed-error)]"
+            >
+              {{ uploadError }}
+            </p>
+          </form>
+        </template>
+
+        <template #footer="{ close }">
+          <div class="flex w-full justify-end gap-3">
+            <UButton
+              type="button"
+              variant="ghost"
+              color="neutral"
+              @click="close()"
+            >
+              Cancel
+            </UButton>
+            <UButton
+              type="submit"
+              :form="`${modKind}-upload-form`"
+              color="primary"
+              icon="i-lucide-check"
+              :loading="uploadBusy"
+              :disabled="!canSubmitUpload"
+            >
+              Publish
+            </UButton>
+          </div>
+        </template>
+      </UModal>
+    </header>
+
+    <div
+      v-if="status === 'pending'"
+      class="ed-body-md text-[var(--ed-on-surface-variant)]"
+    >
+      Loading…
+    </div>
+
+    <EdSurface
+      v-else-if="error"
+      :elev="2"
+      class="space-y-3 p-5"
+    >
+      <p class="ed-title-md text-[var(--ed-error)]">
+        Could not load catalog
+      </p>
+      <p class="ed-body-md text-[var(--ed-on-surface-variant)]">
+        {{ error.message || 'Is the backend running on the API URL?' }}
+      </p>
+      <UButton
+        size="sm"
+        @click="refresh()"
+      >
+        Retry
+      </UButton>
+    </EdSurface>
+
+    <p
+      v-else-if="items.length === 0"
+      class="ed-body-md text-[var(--ed-on-surface-variant)]"
+    >
+      Nothing published yet.
+    </p>
+
+    <div
+      v-else
+      class="space-y-3"
+    >
+      <ModRow
+        v-for="item in items"
+        :key="item.id"
+        :mod-kind="modKind"
+        :item="item"
+        :api-url="apiUrl"
+      />
+    </div>
+  </main>
+</template>
