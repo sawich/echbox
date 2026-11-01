@@ -1,0 +1,134 @@
+/*
+  Editorial · Dark Ink
+  Accent: muted vermillion on charcoal ink.
+*/
+
+@theme static {
+  /* —— Type —— */
+  --font-sans: "Figtree", ui-sans-serif, system-ui, sans-serif;
+  --font-display: "Instrument Serif", ui-serif, Georgia, serif;
+  --font-mono: "IBM Plex Mono", ui-monospace, monospace;
+
+  /* Motion */
+  --ease-out: cubic-bezier(0.05, 0.7, 0.1, 1);
+  --ease-emphasized: cubic-bezier(0.2, 0, 0, 1);
+  --ed-ease-emphasized: cubic-bezier(0.2, 0, 0, 1);
+  --ease-in-out: cubic-bezier(0.37, 0, 0.63, 1);
+
+  /* Shape — modest editorial radii */
+  --radius-none: 0;
+  --radius-xs: 0.125rem;
+  --radius-sm: 0.25rem;
+  --radius-md: 0.375rem;
+  --radius-lg: 0.5rem;
+  --radius-xl: 0.625rem;
+  --radius-2xl: 0.75rem;
+  --radius-3xl: 1rem;
+
+  /* —— Primary · Vermillion —— */
+  --color-vermilion-50: #fdf3f1;
+  --color-vermilion-100: #fbe4df;
+  --color-vermilion-200: #f6c5bb;
+  --color-vermilion-300: #ee9a89;
+  --color-vermilion-400: #e25a45;
+  --color-vermilion-500: #c94430;
+  --color-vermilion-600: #a83424;
+  --color-vermilion-700: #8a2c20;
+  --color-vermilion-800: #72271e;
+  --color-vermilion-900: #61241d;
+  --color-vermilion-950: #34100c;
+
+  /* —— Secondary · Parchment (muted warm) —— */
+  --color-parchment-50: #f7f3ec;
+  --color-parchment-100: #ece4d6;
+  --color-parchment-200: #d9cbb3;
+  --color-parchment-300: #c2ad8c;
+  --color-parchment-400: #ae9470;
+  --color-parchment-500: #9a7f5a;
+  --color-parchment-600: #83684a;
+  --color-parchment-700: #6b5440;
+  --color-parchment-800: #5a4738;
+  --color-parchment-900: #4c3d32;
+  --color-parchment-950: #2a211a;
+
+  /* —— Neutral · Ink charcoal —— */
+  --color-ink-50: #f4f2ef;
+  --color-ink-100: #e5e1db;
+  --color-ink-200: #ccc5bb;
+  --color-ink-300: #a39e97;
+  --color-ink-400: #7a746c;
+  --color-ink-500: #5c574f;
+  --color-ink-600: #48433d;
+  --color-ink-700: #3a3631;
+  --color-ink-800: #2a2724;
+  --color-ink-900: #1a1816;
+  --color-ink-950: #0c0b0a;
+}
+
+:root {
+  color-scheme: dark;
+
+  --ed-primary: #e25a45;
+  --ed-on-primary: #1a0a08;
+  --ed-primary-container: #72271e;
+  --ed-on-primary-container: #fbe4df;
+
+  --ed-secondary: #ae9470;
+  --ed-on-secondary: #1a1510;
+  --ed-secondary-container: #5a4738;
+  --ed-on-secondary-container: #ece4d6;
+
+  --ed-tertiary: #c2ad8c;
+  --ed-on-tertiary: #1a1510;
+  --ed-tertiary-container: #4c3d32;
+  --ed-on-tertiary-container: #f7f3ec;
+
+  --ed-error: #ffb4ab;
+  --ed-on-error: #690005;
+  --ed-error-container: #93000a;
+  --ed-on-error-container: #ffdad6;
+
+  --ed-surface: #0c0b0a;
+  --ed-surface-dim: #0c0b0a;
+  --ed-surface-bright: #2a2724;
+  --ed-on-surface: #ece7e1;
+  --ed-on-surface-variant: #a39e97;
+
+  --ed-surface-container-lowest: #070605;
+  --ed-surface-container-low: #121110;
+  --ed-surface-container: #1a1816;
+  --ed-surface-container-high: #221f1c;
+  --ed-surface-container-highest: #2a2724;
+
+  --ed-outline: #7a746c;
+  --ed-outline-variant: #2a2724;
+  --ed-inverse-surface: #ece7e1;
+  --ed-inverse-on-surface: #1a1816;
+  --ed-inverse-primary: #a83424;
+
+  --ed-state-hover: 0.08;
+  --ed-state-focus: 0.12;
+  --ed-state-pressed: 0.12;
+  --ed-state-dragged: 0.16;
+
+  /* Nuxt UI semantic surfaces */
+  --ui-bg: var(--ed-surface);
+  --ui-bg-muted: var(--ed-surface-container-low);
+  --ui-bg-elevated: var(--ed-surface-container);
+  --ui-bg-accented: var(--ed-surface-container-high);
+  --ui-bg-inverted: var(--ed-inverse-surface);
+
+  --ui-text-dimmed: color-mix(in oklab, var(--ed-on-surface-variant) 70%, transparent);
+  --ui-text-muted: var(--ed-on-surface-variant);
+  --ui-text-toned: color-mix(in oklab, var(--ed-on-surface) 85%, var(--ed-on-surface-variant));
+  --ui-text: var(--ed-on-surface);
+  --ui-text-highlighted: #f7f3ec;
+  --ui-text-inverted: var(--ed-inverse-on-surface);
+
+  --ui-border: var(--ed-outline-variant);
+  --ui-border-muted: color-mix(in oklab, var(--ed-outline-variant) 60%, transparent);
+  --ui-border-accented: var(--ed-outline);
+  --ui-border-inverted: var(--ed-inverse-on-surface);
+
+  --ui-radius: var(--radius-md);
+}
