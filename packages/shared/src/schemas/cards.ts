@@ -1,4 +1,5 @@
 import { z } from "zod";
+import { CardVoteCountsSchema } from "./votes";
 
 export const CardTypeSchema = z.enum(["character", "scene"]);
 export type CardType = z.infer<typeof CardTypeSchema>;
@@ -23,6 +24,13 @@ export const CardListItemSchema = z.object({
 });
 export type CardListItem = z.infer<typeof CardListItemSchema>;
 
+export const CharacterCardListItemSchema = CardListItemSchema.merge(
+  CardVoteCountsSchema,
+).extend({
+  authorId: z.string().min(1),
+});
+export type CharacterCardListItem = z.infer<typeof CharacterCardListItemSchema>;
+
 export const CardListResponseSchema = z.object({
   cards: z.array(CardListItemSchema),
 });
@@ -37,3 +45,14 @@ export const CardDetailSchema = z.object({
   versions: z.array(CardVersionDetailSchema).min(1),
 });
 export type CardDetail = z.infer<typeof CardDetailSchema>;
+
+export const CharacterCardDetailSchema = CardDetailSchema.merge(
+  CardVoteCountsSchema,
+).extend({
+  authorId: z.string().min(1),
+  createdAt: z.iso.datetime(),
+  updatedAt: z.iso.datetime(),
+});
+export type CharacterCardDetailShared = z.infer<
+  typeof CharacterCardDetailSchema
+>;

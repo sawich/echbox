@@ -1,6 +1,7 @@
 import { z } from "zod";
 import { CharacterCardListItemSchema } from "./cards";
 import { PluginListItemSchema } from "./plugins";
+import { SceneListItemSchema } from "./scenes";
 import { SoftmodListItemSchema } from "./softmods";
 
 export const UserProfileStatsSchema = z.object({
@@ -19,6 +20,9 @@ export type UserProfilePlugin = z.infer<typeof UserProfilePluginSchema>;
 export const UserProfileSoftmodSchema = SoftmodListItemSchema;
 export type UserProfileSoftmod = z.infer<typeof UserProfileSoftmodSchema>;
 
+export const UserProfileSceneSchema = SceneListItemSchema;
+export type UserProfileScene = z.infer<typeof UserProfileSceneSchema>;
+
 export const UserProfileSchema = z.object({
   id: z.string().min(1),
   username: z.string().min(1),
@@ -28,5 +32,6 @@ export const UserProfileSchema = z.object({
   cards: z.array(UserProfileCardSchema),
   plugins: z.array(UserProfilePluginSchema),
   softmods: z.array(UserProfileSoftmodSchema),
+  scenes: z.array(UserProfileSceneSchema),
 });
 export type UserProfile = z.infer<typeof UserProfileSchema>;

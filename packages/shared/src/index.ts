@@ -50,14 +50,27 @@ export {
 } from "./schemas/softmods";
 
 export {
+  SceneVersionDetailSchema,
+  SceneListItemSchema,
+  SceneDetailSchema,
+  SceneListResponseSchema,
+  type SceneVersionDetail,
+  type SceneListItem,
+  type SceneDetail,
+  type SceneListResponse,
+} from "./schemas/scenes";
+
+export {
   UserProfileStatsSchema,
   UserProfileCardSchema,
   UserProfilePluginSchema,
   UserProfileSoftmodSchema,
+  UserProfileSceneSchema,
   UserProfileSchema,
   type UserProfileStats,
   type UserProfileCard,
   type UserProfilePlugin,
   type UserProfileSoftmod,
+  type UserProfileScene,
   type UserProfile,
 } from "./schemas/users";
