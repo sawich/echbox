@@ -7,7 +7,7 @@ export default defineAppConfig({
       success: 'parchment',
       info: 'vermilion',
       warning: 'parchment',
-      error: 'vermilion',
+      error: 'oxblood',
       neutral: 'ink',
     },
     button: {

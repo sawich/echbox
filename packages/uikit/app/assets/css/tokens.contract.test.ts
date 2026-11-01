@@ -20,4 +20,10 @@ describe('editorial tokens', () => {
   test('does not keep neon primary seed', () => {
     expect(css.includes('--color-neon-400')).toBe(false)
   })
+
+  test('distinct error from primary', () => {
+    expect(css.includes('--ed-error: #e25a45')).toBe(false)
+    expect(css.includes('--color-oxblood-400')).toBe(true)
+    expect(css.includes('--ed-error:')).toBe(true)
+  })
 })

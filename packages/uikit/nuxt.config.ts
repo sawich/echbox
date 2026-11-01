@@ -31,6 +31,7 @@ export default defineNuxtConfig({
         'success',
         'warning',
         'error',
+        'oxblood',
       ],
       defaultVariants: {
         color: 'primary',

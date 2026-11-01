@@ -38,6 +38,19 @@
   --color-vermilion-900: #61241d;
   --color-vermilion-950: #34100c;
 
+  /* —— Error · Oxblood (distinct from vermillion) —— */
+  --color-oxblood-50: #faf0f0;
+  --color-oxblood-100: #f5dede;
+  --color-oxblood-200: #e8b4b4;
+  --color-oxblood-300: #d47f7f;
+  --color-oxblood-400: #b84a4a;
+  --color-oxblood-500: #9a3030;
+  --color-oxblood-600: #7d2424;
+  --color-oxblood-700: #651f1f;
+  --color-oxblood-800: #541c1c;
+  --color-oxblood-900: #481a1a;
+  --color-oxblood-950: #280c0c;
+
   /* —— Secondary · Parchment (muted warm) —— */
   --color-parchment-50: #f7f3ec;
   --color-parchment-100: #ece4d6;
@@ -83,10 +96,10 @@
   --ed-tertiary-container: #4c3d32;
   --ed-on-tertiary-container: #f7f3ec;
 
-  --ed-error: #ffb4ab;
-  --ed-on-error: #690005;
-  --ed-error-container: #93000a;
-  --ed-on-error-container: #ffdad6;
+  --ed-error: #b84a4a;
+  --ed-on-error: #1a0808;
+  --ed-error-container: #541c1c;
+  --ed-on-error-container: #f5dede;
 
   --ed-surface: #0c0b0a;
   --ed-surface-dim: #0c0b0a;
