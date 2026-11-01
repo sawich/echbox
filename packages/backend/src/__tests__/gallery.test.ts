@@ -77,11 +77,20 @@ describe("GET /api/kk/cards", () => {
     rmSync(tempDir, { recursive: true, force: true });
   });
 
-  test("GET /api/kk/cards returns seeded scene cards", async () => {
+  test("GET /api/kk/cards returns DB characters only (no fixture scenes)", async () => {
     const res = await app.handle(new Request("http://localhost/api/kk/cards"));
     expect(res.status).toBe(200);
-    const body = (await res.json()) as { cards: { id: string }[] };
-    expect(body.cards.some((c) => c.id === "scene-simple")).toBe(true);
+    const body = (await res.json()) as { cards: { id: string; type?: string }[] };
+    expect(body.cards).toEqual([]);
+  });
+
+  test("GET /api/kk/cards?type=scene returns empty cards", async () => {
+    const res = await app.handle(
+      new Request("http://localhost/api/kk/cards?type=scene"),
+    );
+    expect(res.status).toBe(200);
+    const body = (await res.json()) as { cards: unknown[] };
+    expect(body.cards).toEqual([]);
   });
 
   test("GET /api/kk/cards?type=character returns DB characters (empty on fresh DB)", async () => {
@@ -93,14 +102,11 @@ describe("GET /api/kk/cards", () => {
     expect(body.cards).toEqual([]);
   });
 
-  test("GET /api/kk/cards/scene-simple returns scene detail and versions", async () => {
+  test("GET /api/kk/cards/scene-simple is 404 after scene cutover", async () => {
     const res = await app.handle(
       new Request("http://localhost/api/kk/cards/scene-simple"),
     );
-    expect(res.status).toBe(200);
-    const body = (await res.json()) as { id: string; versions: unknown[] };
-    expect(body.id).toBe("scene-simple");
-    expect(body.versions).toHaveLength(1);
+    expect(res.status).toBe(404);
   });
 
   test("GET missing card is 404", async () => {
@@ -110,16 +116,13 @@ describe("GET /api/kk/cards", () => {
     expect(res.status).toBe(404);
   });
 
-  test("GET scene version image is png", async () => {
+  test("GET fixture scene image via kk/cards is 404 after cutover", async () => {
     const res = await app.handle(
       new Request(
         "http://localhost/api/kk/cards/scene-simple/versions/1/image",
       ),
     );
-    expect(res.status).toBe(200);
-    expect(res.headers.get("content-type")).toContain("image/png");
-    const buf = new Uint8Array(await res.arrayBuffer());
-    expect(buf[0]).toBe(0x89);
+    expect(res.status).toBe(404);
   });
 
   test("GET invalid type query is rejected", async () => {

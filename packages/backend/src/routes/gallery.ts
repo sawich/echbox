@@ -12,10 +12,8 @@ import {
   listCharacters,
   patchCard,
 } from "../cards/service";
-import { createGalleryService } from "../gallery/service";
+import { setCardVote } from "../cards/votes";
 import { authDerive } from "./auth";
-
-const gallery = createGalleryService();
 
 async function readUpload(file: File): Promise<Uint8Array> {
   return new Uint8Array(await file.arrayBuffer());
@@ -80,20 +78,17 @@ export const galleryRoutes = new Elysia({ prefix: "/api/kk" })
   )
   .get(
     "/cards",
-    async ({ query }) => {
+    async ({ query, user }) => {
+      const viewerUserId = user?.id ?? null;
       if (query.type === "character") {
-        const cards = await listCharacters();
+        const cards = await listCharacters({ viewerUserId });
         return { cards };
       }
       if (query.type === "scene") {
-        const cards = await gallery.listCards("scene");
-        return { cards };
+        return { cards: [] };
       }
-      const [characters, scenes] = await Promise.all([
-        listCharacters(),
-        gallery.listCards("scene"),
-      ]);
-      return { cards: [...characters, ...scenes] };
+      const cards = await listCharacters({ viewerUserId });
+      return { cards };
     },
     {
       query: t.Object({
@@ -136,14 +131,12 @@ export const galleryRoutes = new Elysia({ prefix: "/api/kk" })
   )
   .get(
     "/cards/:id",
-    async ({ params, set }) => {
-      const chara = await getCharacterCard(params.id);
+    async ({ params, user, set }) => {
+      const chara = await getCharacterCard(params.id, {
+        viewerUserId: user?.id ?? null,
+      });
       if (chara) {
         return stripCardPaths(chara);
-      }
-      const scene = await gallery.getCard(params.id);
-      if (scene) {
-        return scene;
       }
       set.status = 404;
       return { error: "Card not found" };
@@ -151,6 +144,32 @@ export const galleryRoutes = new Elysia({ prefix: "/api/kk" })
     {
       params: t.Object({
         id: t.String(),
+      }),
+    },
+  )
+  .put(
+    "/cards/:id/vote",
+    ({ params, body, user, set }) => {
+      if (!user) {
+        set.status = 401;
+        return { error: "Unauthorized" };
+      }
+      try {
+        return setCardVote({
+          cardId: params.id,
+          userId: user.id,
+          vote: body.vote,
+        });
+      } catch (err) {
+        return handleServiceError(err, set);
+      }
+    },
+    {
+      params: t.Object({
+        id: t.String(),
+      }),
+      body: t.Object({
+        vote: t.Union([t.Literal("like"), t.Literal("dislike"), t.Null()]),
       }),
     },
   )
@@ -254,16 +273,6 @@ export const galleryRoutes = new Elysia({ prefix: "/api/kk" })
         return new Response(charaImg.bytes, {
           headers: {
             "content-type": charaImg.contentType,
-            "cache-control": "public, max-age=3600",
-          },
-        });
-      }
-
-      const sceneBytes = await gallery.getVersionImage(params.id, version);
-      if (sceneBytes) {
-        return new Response(sceneBytes, {
-          headers: {
-            "content-type": "image/png",
             "cache-control": "public, max-age=3600",
           },
         });

@@ -133,17 +133,13 @@ describe("Character CRUD + hash lookup + gallery split HTTP routes", () => {
     );
   });
 
-  test("GET /api/kk/cards?type=scene still returns seed scenes", async () => {
+  test("GET /api/kk/cards?type=scene returns empty cards (scenes use /api/scenes)", async () => {
     const res = await app.handle(
       new Request("http://localhost/api/kk/cards?type=scene"),
     );
     expect(res.status).toBe(200);
-    const body = (await res.json()) as {
-      cards: { id: string; type: string }[];
-    };
-    expect(body.cards.length).toBeGreaterThan(0);
-    expect(body.cards.every((c) => c.type === "scene")).toBe(true);
-    expect(body.cards.some((c) => c.id === "scene-simple")).toBe(true);
+    const body = (await res.json()) as { cards: unknown[] };
+    expect(body.cards).toEqual([]);
   });
 
   test("GET /api/kk/cards/by-hash/:hash returns 404 when unknown and 200 after upload", async () => {
