@@ -1,9 +1,14 @@
 <script setup lang="ts">
-import type { CardDetail } from '@echbox/shared'
+import type { CardDetail, CardVoteValue } from '@echbox/shared'
 import { galleryAspect } from '~/utils/gallery'
 
-type CardDetailWithAuthor = CardDetail & {
+type CardDetailWithVotes = CardDetail & {
   authorId?: string
+  authorUsername?: string | null
+  authorAvatar?: string | null
+  likes?: number
+  dislikes?: number
+  myVote?: CardVoteValue | null
 }
 
 const route = useRoute()
@@ -11,17 +16,19 @@ const router = useRouter()
 const api = useApi()
 const config = useRuntimeConfig()
 const apiUrl = computed(() => String(config.public.apiUrl).replace(/\/$/, ''))
-const { user } = useAuth()
+const { user, login } = useAuth()
 
 const id = computed(() => String(route.params.id))
 
 const { data, error, status, refresh } = await useAsyncData(
   () => `card-${id.value}`,
   async () => {
-    const { data: card, error: err } = await api.api.kk.cards({ id: id.value }).get()
+    const { data: card, error: err } = await api.api.kk.cards({ id: id.value }).get({
+      fetch: { credentials: 'include' },
+    })
     if (err) throw err
     if (!card || !('versions' in card)) throw new Error('Card not found')
-    return card as CardDetailWithAuthor
+    return card as CardDetailWithVotes
   },
   { watch: [id] },
 )
@@ -44,6 +51,73 @@ const isAuthor = computed(() => {
   if (!card || card.type !== 'character' || !user.value) return false
   return Boolean(card.authorId && card.authorId === user.value.id)
 })
+
+const canVote = computed(
+  () => Boolean(user.value) && data.value?.type === 'character',
+)
+
+const voteBusy = ref(false)
+const voteError = ref<string | null>(null)
+
+async function submitVote(vote: CardVoteValue | null) {
+  if (!canVote.value || voteBusy.value || !data.value) return
+  if (!user.value) {
+    login()
+    return
+  }
+
+  voteBusy.value = true
+  voteError.value = null
+  const previous = {
+    likes: data.value.likes ?? 0,
+    dislikes: data.value.dislikes ?? 0,
+    myVote: data.value.myVote ?? null,
+  }
+
+  // Optimistic local update
+  if (data.value) {
+    let likes = previous.likes
+    let dislikes = previous.dislikes
+    if (previous.myVote === 'like') likes -= 1
+    if (previous.myVote === 'dislike') dislikes -= 1
+    if (vote === 'like') likes += 1
+    if (vote === 'dislike') dislikes += 1
+    data.value = {
+      ...data.value,
+      likes,
+      dislikes,
+      myVote: vote,
+    }
+  }
+
+  try {
+    const { data: result, error: err } = await api.api.kk
+      .cards({ id: id.value })
+      .vote.put(
+        { vote },
+        { fetch: { credentials: 'include' } },
+      )
+    if (err || !result || 'error' in result) {
+      data.value = { ...data.value!, ...previous }
+      const val = err?.value as { error?: string } | undefined
+      voteError.value = val?.error || 'Failed to save vote'
+      return
+    }
+    data.value = {
+      ...data.value!,
+      likes: result.likes,
+      dislikes: result.dislikes,
+      myVote: result.myVote,
+    }
+  }
+  catch (e) {
+    data.value = { ...data.value!, ...previous }
+    voteError.value = e instanceof Error ? e.message : 'Failed to save vote'
+  }
+  finally {
+    voteBusy.value = false
+  }
+}
 
 const active = computed(() => {
   const card = data.value
@@ -179,7 +253,7 @@ async function handleDeleteCard() {
 </script>
 
 <template>
-  <main class="mx-auto w-full max-w-5xl px-6 py-10">
+  <main class="mx-auto w-full max-w-5xl px-5 py-7 sm:px-6 sm:py-8">
     <div class="mb-6">
       <UButton
         :to="galleryBackTo"
@@ -194,29 +268,29 @@ async function handleDeleteCard() {
 
     <div
       v-if="status === 'pending'"
-      class="m3-body-md text-[var(--m3-on-surface-variant)]"
+      class="ed-body-md text-[var(--ed-on-surface-variant)]"
     >
       Loading card…
     </div>
 
-    <M3Surface
+    <EdSurface
       v-else-if="error || !data"
       :elev="2"
       class="space-y-3 p-6"
     >
-      <p class="m3-title-md text-[var(--m3-error)]">
+      <p class="ed-title-md text-[var(--ed-error)]">
         Card unavailable
       </p>
-      <p class="m3-body-md text-[var(--m3-on-surface-variant)]">
+      <p class="ed-body-md text-[var(--ed-on-surface-variant)]">
         {{ error?.message || 'Not found' }}
       </p>
-    </M3Surface>
+    </EdSurface>
 
     <div
       v-else
-      class="grid gap-8 lg:grid-cols-[minmax(0,280px)_1fr]"
+      class="grid gap-6 lg:grid-cols-[minmax(0,280px)_1fr]"
     >
-      <M3Surface
+      <EdSurface
         :elev="2"
         class="overflow-hidden"
       >
@@ -226,7 +300,7 @@ async function handleDeleteCard() {
           class="w-full object-cover"
           :class="previewAspect"
         >
-      </M3Surface>
+      </EdSurface>
 
       <div class="space-y-6">
         <header class="space-y-2">
@@ -251,16 +325,70 @@ async function handleDeleteCard() {
               Author
             </UBadge>
           </div>
-          <h1 class="font-[family-name:var(--font-display)] text-3xl font-bold tracking-tight text-[var(--m3-on-surface)]">
+          <h1 class="font-[family-name:var(--font-display)] text-3xl font-bold tracking-tight text-[var(--ed-on-surface)]">
             {{ data.title }}
           </h1>
-          <p class="m3-label-md text-[var(--m3-on-surface-variant)]">
+          <p class="ed-label-md text-[var(--ed-on-surface-variant)]">
             {{ data.slug }} · {{ data.id }}
+          </p>
+          <p
+            v-if="data.authorId"
+            class="ed-label-md text-[var(--ed-on-surface-variant)]"
+          >
+            Author:
+            <NuxtLink
+              :to="`/u/${data.authorId}`"
+              class="inline-flex items-center gap-1.5 text-[var(--ed-primary)] underline-offset-2 hover:underline"
+            >
+              <img
+                v-if="data.authorAvatar"
+                :src="data.authorAvatar"
+                :alt="data.authorUsername || 'author'"
+                class="size-5 rounded-full object-cover"
+              >
+              {{ data.authorUsername || 'view profile' }}
+            </NuxtLink>
           </p>
         </header>
 
+        <section
+          v-if="data.type === 'character'"
+          class="space-y-2"
+        >
+          <h2 class="ed-title-md text-[var(--ed-on-surface)]">
+            Rating
+          </h2>
+          <CardVoteControls
+            :likes="data.likes ?? 0"
+            :dislikes="data.dislikes ?? 0"
+            :my-vote="data.myVote ?? null"
+            :interactive="canVote"
+            :busy="voteBusy"
+            @vote="submitVote"
+          />
+          <p
+            v-if="!user && data.type === 'character'"
+            class="ed-label-md text-[var(--ed-on-surface-variant)]"
+          >
+            <button
+              type="button"
+              class="text-[var(--ed-primary)] underline-offset-2 hover:underline"
+              @click="login"
+            >
+              Log in
+            </button>
+            to like or dislike.
+          </p>
+          <p
+            v-if="voteError"
+            class="ed-body-md text-[var(--ed-error)]"
+          >
+            {{ voteError }}
+          </p>
+        </section>
+
         <section class="space-y-3">
-          <h2 class="m3-title-md text-[var(--m3-on-surface)]">
+          <h2 class="ed-title-md text-[var(--ed-on-surface)]">
             Versions
           </h2>
           <div class="flex flex-wrap gap-2">
@@ -276,23 +404,23 @@ async function handleDeleteCard() {
           </div>
           <p
             v-if="active?.notes"
-            class="m3-body-md text-[var(--m3-on-surface-variant)]"
+            class="ed-body-md text-[var(--ed-on-surface-variant)]"
           >
             {{ active.notes }}
           </p>
-          <p class="m3-label-md text-[var(--m3-on-surface-variant)]">
+          <p class="ed-label-md text-[var(--ed-on-surface-variant)]">
             {{ active?.createdAt }}
           </p>
         </section>
 
-        <M3Surface
+        <EdSurface
           v-if="isAuthor"
           :elev="2"
           class="space-y-6 p-5"
         >
           <div class="space-y-1">
-            <M3Label>Author controls</M3Label>
-            <h2 class="m3-title-md text-[var(--m3-on-surface)]">
+            <EdLabel>Author controls</EdLabel>
+            <h2 class="ed-title-md text-[var(--ed-on-surface)]">
               Manage character card
             </h2>
           </div>
@@ -301,7 +429,7 @@ async function handleDeleteCard() {
             class="space-y-2"
             @submit.prevent="saveTitle"
           >
-            <label class="m3-label-md block text-[var(--m3-on-surface-variant)]">
+            <label class="ed-label-md block text-[var(--ed-on-surface-variant)]">
               Edit title
             </label>
             <div class="flex flex-wrap items-center gap-2">
@@ -322,30 +450,30 @@ async function handleDeleteCard() {
             </div>
             <p
               v-if="titleError"
-              class="m3-body-md text-[var(--m3-error)]"
+              class="ed-body-md text-[var(--ed-error)]"
             >
               {{ titleError }}
             </p>
             <p
               v-else-if="titleSaved"
-              class="m3-label-md text-[var(--m3-secondary)]"
+              class="ed-label-md text-[var(--ed-secondary)]"
             >
               Title updated.
             </p>
           </form>
 
           <form
-            class="space-y-3 border-t border-[var(--m3-outline-variant)] pt-4"
+            class="space-y-3 border-t border-[var(--ed-outline-variant)] pt-4"
             @submit.prevent="submitNewVersion"
           >
-            <label class="m3-label-md block text-[var(--m3-on-surface-variant)]">
+            <label class="ed-label-md block text-[var(--ed-on-surface-variant)]">
               Upload new version (PNG)
             </label>
             <input
               type="file"
               accept="image/png"
               required
-              class="block w-full rounded-[var(--radius-lg)] border border-[var(--m3-outline-variant)] bg-[var(--m3-surface-container)] px-3 py-2 text-sm text-[var(--m3-on-surface)] file:mr-3 file:rounded-[var(--radius-md)] file:border-0 file:bg-[var(--m3-primary-container)] file:px-3 file:py-1 file:text-xs file:font-medium file:text-[var(--m3-on-primary-container)]"
+              class="block w-full rounded-[var(--radius-md)] border border-[var(--ed-outline-variant)] bg-[var(--ed-surface-container)] px-3 py-2 text-sm text-[var(--ed-on-surface)] file:mr-3 file:rounded-[var(--radius-md)] file:border-0 file:bg-[var(--ed-primary-container)] file:px-3 file:py-1 file:text-xs file:font-medium file:text-[var(--ed-on-primary-container)]"
               @change="onVersionFileChange"
             >
             <UInput
@@ -354,7 +482,7 @@ async function handleDeleteCard() {
             />
             <p
               v-if="versionError"
-              class="m3-body-md text-[var(--m3-error)]"
+              class="ed-body-md text-[var(--ed-error)]"
             >
               {{ versionError }}
             </p>
@@ -371,12 +499,12 @@ async function handleDeleteCard() {
             </UButton>
           </form>
 
-          <div class="space-y-2 border-t border-[var(--m3-outline-variant)] pt-4">
+          <div class="space-y-2 border-t border-[var(--ed-outline-variant)] pt-4">
             <div
               v-if="!confirmingDelete"
               class="flex items-center justify-between gap-4"
             >
-              <span class="m3-label-md text-[var(--m3-on-surface-variant)]">
+              <span class="ed-label-md text-[var(--ed-on-surface-variant)]">
                 Delete this character card and all versions permanently
               </span>
               <UButton
@@ -393,7 +521,7 @@ async function handleDeleteCard() {
               v-else
               class="flex flex-wrap items-center gap-3"
             >
-              <span class="m3-label-md text-[var(--m3-error)]">
+              <span class="ed-label-md text-[var(--ed-error)]">
                 Confirm permanent deletion?
               </span>
               <UButton
@@ -416,22 +544,22 @@ async function handleDeleteCard() {
             </div>
             <p
               v-if="deleteError"
-              class="m3-body-md text-[var(--m3-error)]"
+              class="ed-body-md text-[var(--ed-error)]"
             >
               {{ deleteError }}
             </p>
           </div>
-        </M3Surface>
+        </EdSurface>
 
-        <M3Surface
+        <EdSurface
           :elev="1"
           class="space-y-2 overflow-x-auto p-4"
         >
-          <h2 class="m3-title-md text-[var(--m3-on-surface)]">
+          <h2 class="ed-title-md text-[var(--ed-on-surface)]">
             Summary
           </h2>
-          <pre class="m3-body-md max-h-80 overflow-auto font-mono text-xs text-[var(--m3-on-surface-variant)]">{{ JSON.stringify(active?.summary ?? {}, null, 2) }}</pre>
-        </M3Surface>
+          <pre class="ed-body-md max-h-80 overflow-auto font-mono text-xs text-[var(--ed-on-surface-variant)]">{{ JSON.stringify(active?.summary ?? {}, null, 2) }}</pre>
+        </EdSurface>
       </div>
     </div>
   </main>
