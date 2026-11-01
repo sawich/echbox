@@ -139,17 +139,20 @@ const versionFile = ref<File | null>(null)
 const versionNotes = ref('')
 const uploadingVersion = ref(false)
 const versionError = ref<string | null>(null)
+const versionDuplicateHit = ref<UploadDuplicateHit | null>(null)
 
 function onVersionFileChange(event: Event) {
   const input = event.target as HTMLInputElement
   versionFile.value = input.files?.[0] ?? null
   versionError.value = null
+  versionDuplicateHit.value = null
 }
 
 async function submitNewVersion() {
   if (!versionFile.value || uploadingVersion.value) return
   uploadingVersion.value = true
   versionError.value = null
+  versionDuplicateHit.value = null
 
   try {
     const form = new FormData()
@@ -164,9 +167,13 @@ async function submitNewVersion() {
       body: form,
     })
 
-    const payload = await res.json().catch(() => null)
+    const payload = await res.json().catch(() => null) as Record<string, unknown> | null
     if (!res.ok) {
-      versionError.value = payload?.error || `Failed to upload version (${res.status})`
+      if (res.status === 409) {
+        const dup = parseUploadDuplicatePayload(payload)
+        if (dup) versionDuplicateHit.value = dup
+      }
+      versionError.value = (payload?.error as string | undefined) || `Failed to upload version (${res.status})`
       return
     }
 
@@ -421,6 +428,18 @@ async function handleDelete() {
             v-model="versionNotes"
             placeholder="Version notes (optional)"
           />
+          <div
+            v-if="versionDuplicateHit"
+            class="rounded-[var(--radius-md)] border border-[var(--ed-secondary)] bg-[color-mix(in_oklab,var(--ed-secondary-container)_40%,transparent)] p-3 text-sm text-[var(--ed-on-secondary-container)]"
+          >
+            This file already exists as
+            <NuxtLink
+              :to="`/softmods/${versionDuplicateHit.id}`"
+              class="font-semibold underline"
+            >
+              softmod {{ versionDuplicateHit.id }}<template v-if="versionDuplicateHit.version"> (v{{ versionDuplicateHit.version }})</template>
+            </NuxtLink>.
+          </div>
           <p
             v-if="versionError"
             class="ed-body-md text-[var(--ed-error)]"

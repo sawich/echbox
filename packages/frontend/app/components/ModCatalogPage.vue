@@ -116,18 +116,6 @@ async function onFileSelected(event: Event) {
   }
 }
 
-function parseDuplicateFromPayload(payload: Record<string, unknown> | null) {
-  if (!payload) return null
-  const id =
-    (payload.pluginId as string | undefined)
-    ?? (payload.plugin_id as string | undefined)
-    ?? (payload.softmodId as string | undefined)
-    ?? (payload.softmod_id as string | undefined)
-  if (!id) return null
-  const version = payload.version as number | undefined
-  return { id, version }
-}
-
 async function submitUpload() {
   if (!uploadFile.value || uploadBusy.value) return
   if (props.modKind === 'plugin' && !uploadTitle.value.trim()) return
@@ -161,7 +149,7 @@ async function submitUpload() {
     const payload = await res.json().catch(() => null) as Record<string, unknown> | null
     if (!res.ok) {
       if (res.status === 409) {
-        const dup = parseDuplicateFromPayload(payload)
+        const dup = parseUploadDuplicatePayload(payload)
         if (dup) duplicateHit.value = dup
       }
       uploadError.value = (payload?.error as string | undefined) || `Upload failed (${res.status})`
