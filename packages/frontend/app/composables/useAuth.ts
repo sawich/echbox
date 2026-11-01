@@ -8,6 +8,13 @@ export interface AuthUser {
   createdAt: string
 }
 
+const AUTH_NONCE_KEY = 'echbox:auth-nonce'
+
+function createNonce(): string {
+  const bytes = crypto.getRandomValues(new Uint8Array(32))
+  return Array.from(bytes, (b) => b.toString(16).padStart(2, '0')).join('')
+}
+
 export function useAuth() {
   const api = useApi()
   const config = useRuntimeConfig()
@@ -50,8 +57,15 @@ export function useAuth() {
   }
 
   async function claimSession(token: string): Promise<boolean> {
+    const nonce = import.meta.client
+      ? localStorage.getItem(AUTH_NONCE_KEY)
+      : null
+    if (!nonce) {
+      return false
+    }
+
     const { data, error } = await api.api.auth.claim.post(
-      { token },
+      { token, nonce },
       {
         fetch: {
           credentials: 'include',
@@ -61,6 +75,7 @@ export function useAuth() {
     if (error || !data || !('ok' in data) || !data.ok) {
       return false
     }
+    localStorage.removeItem(AUTH_NONCE_KEY)
     await refresh()
     return Boolean(user.value)
   }
@@ -68,24 +83,27 @@ export function useAuth() {
   async function login() {
     if (!import.meta.client) return
 
-    const res = await fetch(`${apiUrl.value}/api/auth/discord?desktop=1`, {
-      method: 'GET',
-      headers: { accept: 'application/json' },
-    })
+    const nonce = createNonce()
+    localStorage.setItem(AUTH_NONCE_KEY, nonce)
+
+    const res = await fetch(
+      `${apiUrl.value}/api/auth/discord?desktop=1&nonce=${encodeURIComponent(nonce)}`,
+      {
+        method: 'GET',
+        headers: { accept: 'application/json' },
+      },
+    )
     if (!res.ok) {
+      localStorage.removeItem(AUTH_NONCE_KEY)
       throw new Error(`Discord auth start failed (${res.status})`)
     }
     const body = (await res.json()) as { url?: string }
     if (!body.url) {
+      localStorage.removeItem(AUTH_NONCE_KEY)
       throw new Error('Discord auth start returned no url')
     }
 
-    try {
-      await openUrl(body.url)
-    }
-    catch {
-      window.open(body.url, '_blank', 'noopener,noreferrer')
-    }
+    await openUrl(body.url)
   }
 
   async function logout() {

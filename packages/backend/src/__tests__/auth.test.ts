@@ -264,7 +264,9 @@ describe("auth & sessions", () => {
 
   test("GET /api/auth/discord?desktop=1 returns JSON url and stores pending without oauth cookies", async () => {
     const res = await app.handle(
-      new Request("http://localhost/api/auth/discord?desktop=1"),
+      new Request(
+        "http://localhost/api/auth/discord?desktop=1&nonce=start-nonce",
+      ),
     );
     expect(res.status).toBe(200);
     const body = (await res.json()) as { url: string };
@@ -280,6 +282,7 @@ describe("auth & sessions", () => {
     const pending = takeOAuthPending(state!, dbPath);
     expect(pending).not.toBeNull();
     expect(pending?.desktop).toBe(true);
+    expect(pending?.nonce).toBe("start-nonce");
     expect(pending?.codeVerifier.length).toBeGreaterThan(0);
   });
 
@@ -372,6 +375,25 @@ describe("auth & sessions", () => {
     }
   });
 
+  test("GET /api/auth/discord/callback rejects missing or mismatched state", async () => {
+    const missing = await app.handle(
+      new Request("http://localhost/api/auth/discord/callback?code=mock-code"),
+    );
+    expect(missing.status).toBe(400);
+
+    const mismatched = await app.handle(
+      new Request(
+        "http://localhost/api/auth/discord/callback?code=mock-code&state=nope",
+        {
+          headers: {
+            cookie: "discord_oauth_state=other; discord_oauth_verifier=v",
+          },
+        },
+      ),
+    );
+    expect(mismatched.status).toBe(400);
+  });
+
   test("desktop callback redirects to echbox claim deep link; claim sets session once", async () => {
     const origFetch = globalThis.fetch;
     globalThis.fetch = (async (input: RequestInfo | URL) => {
@@ -413,8 +435,11 @@ describe("auth & sessions", () => {
     }) as typeof fetch;
 
     try {
+      const nonce = "desktop-nonce-1";
       const startRes = await app.handle(
-        new Request("http://localhost/api/auth/discord?desktop=1"),
+        new Request(
+          `http://localhost/api/auth/discord?desktop=1&nonce=${encodeURIComponent(nonce)}`,
+        ),
       );
       const { url } = (await startRes.json()) as { url: string };
       const state = new URL(url).searchParams.get("state")!;
@@ -430,11 +455,20 @@ describe("auth & sessions", () => {
       const token = new URL(location).searchParams.get("token");
       expect(token).toBeTruthy();
 
+      const wrongNonce = await app.handle(
+        new Request("http://localhost/api/auth/claim", {
+          method: "POST",
+          headers: { "content-type": "application/json" },
+          body: JSON.stringify({ token, nonce: "other" }),
+        }),
+      );
+      expect(wrongNonce.status).toBe(400);
+
       const claimRes = await app.handle(
         new Request("http://localhost/api/auth/claim", {
           method: "POST",
           headers: { "content-type": "application/json" },
-          body: JSON.stringify({ token }),
+          body: JSON.stringify({ token, nonce }),
         }),
       );
       expect(claimRes.status).toBe(200);
@@ -463,7 +497,7 @@ describe("auth & sessions", () => {
         new Request("http://localhost/api/auth/claim", {
           method: "POST",
           headers: { "content-type": "application/json" },
-          body: JSON.stringify({ token }),
+          body: JSON.stringify({ token, nonce }),
         }),
       );
       expect(secondClaim.status).toBe(400);

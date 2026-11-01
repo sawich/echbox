@@ -92,10 +92,21 @@ export const authRoutes = new Elysia({ prefix: "/api/auth" })
     const { url, state, codeVerifier } = createDiscordAuthUrl();
 
     if (desktop) {
+      const nonce =
+        typeof query.nonce === "string" && query.nonce.length > 0
+          ? query.nonce
+          : null;
+      if (!nonce) {
+        return new Response(JSON.stringify({ error: "Missing desktop nonce" }), {
+          status: 400,
+          headers: { "content-type": "application/json" },
+        });
+      }
       saveOAuthPending({
         state,
         codeVerifier,
         desktop: true,
+        nonce,
         expiresAt: new Date(
           Date.now() + OAUTH_COOKIE_MAX_AGE * 1000,
         ).toISOString(),
@@ -139,6 +150,7 @@ export const authRoutes = new Elysia({ prefix: "/api/auth" })
 
     let codeVerifier: string | null = null;
     let desktop = false;
+    let nonce: string | null = null;
 
     if (storedState && state === storedState) {
       codeVerifier = cookieVerifier;
@@ -151,6 +163,7 @@ export const authRoutes = new Elysia({ prefix: "/api/auth" })
       }
       codeVerifier = pending.codeVerifier;
       desktop = pending.desktop;
+      nonce = pending.nonce;
     }
 
     try {
@@ -169,7 +182,7 @@ export const authRoutes = new Elysia({ prefix: "/api/auth" })
       );
 
       if (desktop) {
-        const token = createAuthClaim(sessionId);
+        const token = createAuthClaim(sessionId, nonce);
         const scheme = desktopAuthScheme();
         headers.set(
           "Location",
@@ -195,7 +208,7 @@ export const authRoutes = new Elysia({ prefix: "/api/auth" })
   .post(
     "/claim",
     ({ body, set }) => {
-      const sessionId = consumeAuthClaim(body.token);
+      const sessionId = consumeAuthClaim(body.token, body.nonce ?? null);
       if (!sessionId) {
         set.status = 400;
         return { error: "Invalid or expired claim token" };
@@ -212,6 +225,7 @@ export const authRoutes = new Elysia({ prefix: "/api/auth" })
     {
       body: t.Object({
         token: t.String(),
+        nonce: t.Optional(t.String()),
       }),
     },
   )

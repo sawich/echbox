@@ -9,6 +9,7 @@ export function saveOAuthPending(
     state: string;
     codeVerifier: string;
     desktop: boolean;
+    nonce?: string | null;
     expiresAt: string;
   },
   dbPath?: string,
@@ -19,6 +20,7 @@ export function saveOAuthPending(
       state: input.state,
       codeVerifier: input.codeVerifier,
       desktop: input.desktop ? 1 : 0,
+      nonce: input.nonce ?? null,
       expiresAt: input.expiresAt,
     })
     .run();
@@ -27,7 +29,7 @@ export function saveOAuthPending(
 export function takeOAuthPending(
   state: string,
   dbPath?: string,
-): { codeVerifier: string; desktop: boolean } | null {
+): { codeVerifier: string; desktop: boolean; nonce: string | null } | null {
   const db = getDb(dbPath);
   const row = db
     .select()
@@ -47,10 +49,15 @@ export function takeOAuthPending(
   return {
     codeVerifier: row.codeVerifier,
     desktop: row.desktop === 1,
+    nonce: row.nonce ?? null,
   };
 }
 
-export function createAuthClaim(sessionId: string, dbPath?: string): string {
+export function createAuthClaim(
+  sessionId: string,
+  nonce: string | null = null,
+  dbPath?: string,
+): string {
   const db = getDb(dbPath);
   const token = Buffer.from(crypto.getRandomValues(new Uint8Array(32))).toString(
     "base64url",
@@ -63,6 +70,7 @@ export function createAuthClaim(sessionId: string, dbPath?: string): string {
     .values({
       token,
       sessionId,
+      nonce,
       expiresAt,
       usedAt: null,
     })
@@ -73,6 +81,7 @@ export function createAuthClaim(sessionId: string, dbPath?: string): string {
 
 export function consumeAuthClaim(
   token: string,
+  nonce: string | null = null,
   dbPath?: string,
 ): string | null {
   const db = getDb(dbPath);
@@ -86,6 +95,10 @@ export function consumeAuthClaim(
 
   const expiresMs = Date.parse(row.expiresAt);
   if (Number.isNaN(expiresMs) || expiresMs <= Date.now()) {
+    return null;
+  }
+
+  if (row.nonce != null && row.nonce !== nonce) {
     return null;
   }
 

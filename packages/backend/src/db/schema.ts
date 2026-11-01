@@ -288,12 +288,14 @@ export const oauthPending = sqliteTable("oauth_pending", {
   state: text("state").primaryKey(),
   codeVerifier: text("code_verifier").notNull(),
   desktop: integer("desktop").notNull(),
+  nonce: text("nonce"),
   expiresAt: text("expires_at").notNull(),
 });
 
 export const authClaims = sqliteTable("auth_claims", {
   token: text("token").primaryKey(),
   sessionId: text("session_id").notNull(),
+  nonce: text("nonce"),
   expiresAt: text("expires_at").notNull(),
   usedAt: text("used_at"),
 });
