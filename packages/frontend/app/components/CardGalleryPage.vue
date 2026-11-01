@@ -28,12 +28,6 @@ const { data, error, status, refresh } = await useAsyncData(
 
 const cards = computed(() => data.value ?? [])
 
-const gridClass = computed(() =>
-  props.type === 'scene'
-    ? 'grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-3'
-    : 'grid grid-cols-2 gap-2 sm:grid-cols-3 lg:grid-cols-5',
-)
-
 const showUpload = ref(false)
 const uploadFile = ref<File | null>(null)
 const uploadTitle = ref('')
@@ -284,7 +278,7 @@ async function submitUpload() {
 
     <div
       v-else
-      :class="gridClass"
+      class="grid grid-cols-2 gap-2 sm:grid-cols-3 lg:grid-cols-5"
     >
       <CardTile
         v-for="card in cards"

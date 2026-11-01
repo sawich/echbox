@@ -12,6 +12,8 @@ export function parseUploadDuplicatePayload(
     ?? (payload.plugin_id as string | undefined)
     ?? (payload.softmodId as string | undefined)
     ?? (payload.softmod_id as string | undefined)
+    ?? (payload.sceneId as string | undefined)
+    ?? (payload.scene_id as string | undefined)
   if (!id) return null
   const version = payload.version as number | undefined
   return { id, version }

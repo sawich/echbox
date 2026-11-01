@@ -1,0 +1,565 @@
+<script setup lang="ts">
+import type { CardVoteValue, SceneDetail } from '@echbox/shared'
+import { galleryAspect } from '~/utils/gallery'
+
+const route = useRoute()
+const router = useRouter()
+const api = useApi()
+const config = useRuntimeConfig()
+const apiUrl = computed(() => String(config.public.apiUrl).replace(/\/$/, ''))
+const { user, login } = useAuth()
+
+const id = computed(() => String(route.params.id))
+
+const { data, error, status, refresh } = await useAsyncData(
+  () => `scene-${id.value}`,
+  async () => {
+    const { data: scene, error: err } = await api.api.scenes({ id: id.value }).get({
+      fetch: { credentials: 'include' },
+    })
+    if (err) throw err
+    if (!scene || !('versions' in scene)) throw new Error('Scene not found')
+    return scene as SceneDetail
+  },
+  { watch: [id] },
+)
+
+const selectedVersion = ref<number | null>(null)
+const editTitle = ref('')
+
+watch(
+  data,
+  (scene) => {
+    if (!scene) return
+    selectedVersion.value = scene.latestVersion
+    editTitle.value = scene.title
+  },
+  { immediate: true },
+)
+
+const isAuthor = computed(() =>
+  Boolean(user.value && data.value && data.value.authorId === user.value.id),
+)
+
+const canVote = computed(() => Boolean(user.value && data.value))
+
+const voteBusy = ref(false)
+const voteError = ref<string | null>(null)
+
+async function submitVote(vote: CardVoteValue | null) {
+  if (!canVote.value || voteBusy.value || !data.value) return
+  if (!user.value) {
+    login()
+    return
+  }
+
+  voteBusy.value = true
+  voteError.value = null
+  const previous = {
+    likes: data.value.likes,
+    dislikes: data.value.dislikes,
+    myVote: data.value.myVote,
+  }
+
+  if (data.value) {
+    let likes = previous.likes
+    let dislikes = previous.dislikes
+    if (previous.myVote === 'like') likes -= 1
+    if (previous.myVote === 'dislike') dislikes -= 1
+    if (vote === 'like') likes += 1
+    if (vote === 'dislike') dislikes += 1
+    data.value = { ...data.value, likes, dislikes, myVote: vote }
+  }
+
+  try {
+    const { data: result, error: err } = await api.api.scenes({ id: id.value }).vote.put(
+      { vote },
+      { fetch: { credentials: 'include' } },
+    )
+    if (err || !result || 'error' in result) {
+      data.value = { ...data.value!, ...previous }
+      const val = err?.value as { error?: string } | undefined
+      voteError.value = val?.error || 'Failed to save vote'
+      return
+    }
+    data.value = {
+      ...data.value!,
+      likes: result.likes,
+      dislikes: result.dislikes,
+      myVote: result.myVote,
+    }
+  }
+  catch (e) {
+    data.value = { ...data.value!, ...previous }
+    voteError.value = e instanceof Error ? e.message : 'Failed to save vote'
+  }
+  finally {
+    voteBusy.value = false
+  }
+}
+
+const active = computed(() => {
+  const scene = data.value
+  if (!scene) return null
+  const version = selectedVersion.value ?? scene.latestVersion
+  return scene.versions.find(v => v.version === version) ?? scene.versions.at(-1) ?? null
+})
+
+const imageSrc = computed(() => {
+  if (!active.value) return ''
+  return `${apiUrl.value}${active.value.imageUrl}`
+})
+
+const originalDownloadHref = computed(() => {
+  if (!active.value) return ''
+  return `${apiUrl.value}${active.value.imageUrl}?original=1`
+})
+
+const previewAspect = computed(() => galleryAspect('scene'))
+
+const savingTitle = ref(false)
+const titleError = ref<string | null>(null)
+const titleSaved = ref(false)
+
+async function saveTitle() {
+  if (!data.value || !editTitle.value.trim() || savingTitle.value) return
+  savingTitle.value = true
+  titleError.value = null
+  titleSaved.value = false
+  try {
+    const { error: err } = await api.api.scenes({ id: id.value }).patch(
+      { title: editTitle.value.trim() },
+      { fetch: { credentials: 'include' } },
+    )
+    if (err) {
+      const val = err.value as { error?: string } | undefined
+      titleError.value = val?.error || `Failed to update title (${err.status})`
+      return
+    }
+    titleSaved.value = true
+    await refresh()
+  }
+  catch (e) {
+    titleError.value = e instanceof Error ? e.message : 'Failed to update title'
+  }
+  finally {
+    savingTitle.value = false
+  }
+}
+
+const versionFile = ref<File | null>(null)
+const versionNotes = ref('')
+const uploadingVersion = ref(false)
+const versionError = ref<string | null>(null)
+const versionDuplicateHit = ref<UploadDuplicateHit | null>(null)
+
+function onVersionFileChange(event: Event) {
+  const input = event.target as HTMLInputElement
+  versionFile.value = input.files?.[0] ?? null
+  versionError.value = null
+  versionDuplicateHit.value = null
+}
+
+async function submitNewVersion() {
+  if (!versionFile.value || uploadingVersion.value) return
+  uploadingVersion.value = true
+  versionError.value = null
+  versionDuplicateHit.value = null
+
+  try {
+    const form = new FormData()
+    form.append('file', versionFile.value)
+    if (versionNotes.value.trim()) {
+      form.append('notes', versionNotes.value.trim())
+    }
+
+    const res = await fetch(`${apiUrl.value}/api/scenes/${id.value}/versions`, {
+      method: 'POST',
+      credentials: 'include',
+      body: form,
+    })
+
+    const payload = await res.json().catch(() => null) as Record<string, unknown> | null
+    if (!res.ok) {
+      if (res.status === 409) {
+        const dup = parseUploadDuplicatePayload(payload)
+        if (dup) versionDuplicateHit.value = dup
+      }
+      versionError.value = (payload?.error as string | undefined) || `Failed to upload version (${res.status})`
+      return
+    }
+
+    versionFile.value = null
+    versionNotes.value = ''
+    await refresh()
+    if (payload && typeof payload.latestVersion === 'number') {
+      selectedVersion.value = payload.latestVersion
+    }
+  }
+  catch (e) {
+    versionError.value = e instanceof Error ? e.message : 'Failed to upload new version'
+  }
+  finally {
+    uploadingVersion.value = false
+  }
+}
+
+const confirmingDelete = ref(false)
+const deletingScene = ref(false)
+const deleteError = ref<string | null>(null)
+
+async function handleDeleteScene() {
+  if (deletingScene.value) return
+  deletingScene.value = true
+  deleteError.value = null
+
+  try {
+    const { error: err } = await api.api.scenes({ id: id.value }).delete(
+      undefined,
+      { fetch: { credentials: 'include' } },
+    )
+    if (err) {
+      const val = err.value as { error?: string } | undefined
+      deleteError.value = val?.error || `Failed to delete scene (${err.status})`
+      return
+    }
+    await router.push('/scenes')
+  }
+  catch (e) {
+    deleteError.value = e instanceof Error ? e.message : 'Failed to delete scene'
+  }
+  finally {
+    deletingScene.value = false
+  }
+}
+</script>
+
+<template>
+  <main class="mx-auto w-full max-w-5xl px-5 py-7 sm:px-6 sm:py-8">
+    <div class="mb-6">
+      <UButton
+        to="/scenes"
+        variant="ghost"
+        color="neutral"
+        size="sm"
+        icon="i-lucide-arrow-left"
+      >
+        Scenes
+      </UButton>
+    </div>
+
+    <div
+      v-if="status === 'pending'"
+      class="ed-body-md text-[var(--ed-on-surface-variant)]"
+    >
+      Loading scene…
+    </div>
+
+    <EdSurface
+      v-else-if="error || !data"
+      :elev="2"
+      class="space-y-3 p-6"
+    >
+      <p class="ed-title-md text-[var(--ed-error)]">
+        Scene unavailable
+      </p>
+      <p class="ed-body-md text-[var(--ed-on-surface-variant)]">
+        {{ error?.message || 'Not found' }}
+      </p>
+    </EdSurface>
+
+    <div
+      v-else
+      class="grid gap-6 lg:grid-cols-[minmax(0,420px)_1fr]"
+    >
+      <EdSurface
+        :elev="2"
+        class="overflow-hidden"
+      >
+        <img
+          :src="imageSrc"
+          :alt="data.title"
+          class="w-full object-cover"
+          :class="previewAspect"
+        >
+      </EdSurface>
+
+      <div class="space-y-6">
+        <header class="space-y-2">
+          <div class="flex flex-wrap items-center gap-2">
+            <UBadge
+              color="neutral"
+              variant="subtle"
+            >
+              scene
+            </UBadge>
+            <UBadge
+              v-if="data.versions.length > 1"
+              color="primary"
+            >
+              {{ data.versions.length }} versions
+            </UBadge>
+            <UBadge
+              v-if="isAuthor"
+              color="secondary"
+              variant="soft"
+            >
+              Author
+            </UBadge>
+          </div>
+          <h1 class="font-[family-name:var(--font-display)] text-3xl font-bold tracking-tight text-[var(--ed-on-surface)]">
+            {{ data.title }}
+          </h1>
+          <p class="ed-label-md text-[var(--ed-on-surface-variant)]">
+            {{ data.slug }} · {{ data.id }}
+          </p>
+          <p class="ed-label-md text-[var(--ed-on-surface-variant)]">
+            Author:
+            <NuxtLink
+              :to="`/u/${data.authorId}`"
+              class="inline-flex items-center gap-1.5 text-[var(--ed-primary)] underline-offset-2 hover:underline"
+            >
+              <img
+                v-if="data.authorAvatar"
+                :src="data.authorAvatar"
+                :alt="data.authorUsername || 'author'"
+                class="size-5 rounded-full object-cover"
+              >
+              {{ data.authorUsername || 'view profile' }}
+            </NuxtLink>
+          </p>
+          <UButton
+            :href="originalDownloadHref"
+            external
+            download
+            color="primary"
+            variant="soft"
+            size="sm"
+            icon="i-lucide-download"
+          >
+            Download original PNG
+          </UButton>
+        </header>
+
+        <section class="space-y-2">
+          <h2 class="ed-title-md text-[var(--ed-on-surface)]">
+            Rating
+          </h2>
+          <CardVoteControls
+            :likes="data.likes"
+            :dislikes="data.dislikes"
+            :my-vote="data.myVote"
+            :interactive="canVote"
+            :busy="voteBusy"
+            @vote="submitVote"
+          />
+          <p
+            v-if="!user"
+            class="ed-label-md text-[var(--ed-on-surface-variant)]"
+          >
+            <button
+              type="button"
+              class="text-[var(--ed-primary)] underline-offset-2 hover:underline"
+              @click="login"
+            >
+              Log in
+            </button>
+            to like or dislike.
+          </p>
+          <p
+            v-if="voteError"
+            class="ed-body-md text-[var(--ed-error)]"
+          >
+            {{ voteError }}
+          </p>
+        </section>
+
+        <section class="space-y-3">
+          <h2 class="ed-title-md text-[var(--ed-on-surface)]">
+            Versions
+          </h2>
+          <div class="flex flex-wrap gap-2">
+            <UButton
+              v-for="ver in data.versions"
+              :key="ver.version"
+              size="sm"
+              :variant="selectedVersion === ver.version ? 'solid' : 'outline'"
+              @click="selectedVersion = ver.version"
+            >
+              v{{ ver.version }}
+            </UButton>
+          </div>
+          <p
+            v-if="active?.notes"
+            class="ed-body-md text-[var(--ed-on-surface-variant)]"
+          >
+            {{ active.notes }}
+          </p>
+          <p class="ed-label-md text-[var(--ed-on-surface-variant)]">
+            {{ active?.createdAt }}
+          </p>
+        </section>
+
+        <EdSurface
+          v-if="isAuthor"
+          :elev="2"
+          class="space-y-6 p-5"
+        >
+          <div class="space-y-1">
+            <EdLabel>Author controls</EdLabel>
+            <h2 class="ed-title-md text-[var(--ed-on-surface)]">
+              Manage scene
+            </h2>
+          </div>
+
+          <form
+            class="space-y-2"
+            @submit.prevent="saveTitle"
+          >
+            <label class="ed-label-md block text-[var(--ed-on-surface-variant)]">
+              Edit title
+            </label>
+            <div class="flex flex-wrap items-center gap-2">
+              <UInput
+                v-model="editTitle"
+                class="min-w-60 flex-1"
+                placeholder="Scene title"
+              />
+              <UButton
+                type="submit"
+                size="sm"
+                color="primary"
+                :loading="savingTitle"
+                :disabled="!editTitle.trim() || editTitle.trim() === data.title"
+              >
+                Save title
+              </UButton>
+            </div>
+            <p
+              v-if="titleError"
+              class="ed-body-md text-[var(--ed-error)]"
+            >
+              {{ titleError }}
+            </p>
+            <p
+              v-else-if="titleSaved"
+              class="ed-label-md text-[var(--ed-secondary)]"
+            >
+              Title updated.
+            </p>
+          </form>
+
+          <form
+            class="space-y-3 border-t border-[var(--ed-outline-variant)] pt-4"
+            @submit.prevent="submitNewVersion"
+          >
+            <label class="ed-label-md block text-[var(--ed-on-surface-variant)]">
+              Upload new version (PNG)
+            </label>
+            <input
+              type="file"
+              accept="image/png"
+              required
+              class="block w-full rounded-[var(--radius-md)] border border-[var(--ed-outline-variant)] bg-[var(--ed-surface-container)] px-3 py-2 text-sm text-[var(--ed-on-surface)] file:mr-3 file:rounded-[var(--radius-md)] file:border-0 file:bg-[var(--ed-primary-container)] file:px-3 file:py-1 file:text-xs file:font-medium file:text-[var(--ed-on-primary-container)]"
+              @change="onVersionFileChange"
+            >
+            <UInput
+              v-model="versionNotes"
+              placeholder="Version notes (optional)"
+            />
+            <div
+              v-if="versionDuplicateHit"
+              class="rounded-[var(--radius-md)] border border-[var(--ed-secondary)] bg-[color-mix(in_oklab,var(--ed-secondary-container)_40%,transparent)] p-3 text-sm text-[var(--ed-on-secondary-container)]"
+            >
+              This file already exists as
+              <NuxtLink
+                :to="`/scenes/${versionDuplicateHit.id}`"
+                class="font-semibold underline"
+              >
+                scene {{ versionDuplicateHit.id }}<template v-if="versionDuplicateHit.version"> (v{{ versionDuplicateHit.version }})</template>
+              </NuxtLink>.
+            </div>
+            <p
+              v-if="versionError"
+              class="ed-body-md text-[var(--ed-error)]"
+            >
+              {{ versionError }}
+            </p>
+            <UButton
+              type="submit"
+              size="sm"
+              color="primary"
+              variant="soft"
+              icon="i-lucide-upload"
+              :loading="uploadingVersion"
+              :disabled="!versionFile || uploadingVersion"
+            >
+              Upload v{{ data.latestVersion + 1 }}
+            </UButton>
+          </form>
+
+          <div class="space-y-2 border-t border-[var(--ed-outline-variant)] pt-4">
+            <div
+              v-if="!confirmingDelete"
+              class="flex items-center justify-between gap-4"
+            >
+              <span class="ed-label-md text-[var(--ed-on-surface-variant)]">
+                Delete this scene and all versions permanently
+              </span>
+              <UButton
+                size="sm"
+                color="error"
+                variant="ghost"
+                icon="i-lucide-trash-2"
+                @click="confirmingDelete = true"
+              >
+                Delete scene
+              </UButton>
+            </div>
+            <div
+              v-else
+              class="flex flex-wrap items-center gap-3"
+            >
+              <span class="ed-label-md text-[var(--ed-error)]">
+                Confirm permanent deletion?
+              </span>
+              <UButton
+                size="sm"
+                color="error"
+                variant="solid"
+                :loading="deletingScene"
+                @click="handleDeleteScene"
+              >
+                Confirm delete
+              </UButton>
+              <UButton
+                size="sm"
+                color="neutral"
+                variant="ghost"
+                @click="confirmingDelete = false"
+              >
+                Cancel
+              </UButton>
+            </div>
+            <p
+              v-if="deleteError"
+              class="ed-body-md text-[var(--ed-error)]"
+            >
+              {{ deleteError }}
+            </p>
+          </div>
+        </EdSurface>
+
+        <EdSurface
+          :elev="1"
+          class="space-y-2 overflow-x-auto p-4"
+        >
+          <h2 class="ed-title-md text-[var(--ed-on-surface)]">
+            Summary
+          </h2>
+          <pre class="ed-body-md max-h-80 overflow-auto font-mono text-xs text-[var(--ed-on-surface-variant)]">{{ JSON.stringify(active?.summary ?? {}, null, 2) }}</pre>
+        </EdSurface>
+      </div>
+    </div>
+  </main>
+</template>

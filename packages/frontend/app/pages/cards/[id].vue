@@ -135,10 +135,6 @@ const previewAspect = computed(() =>
   data.value ? galleryAspect(data.value.type) : galleryAspect('character'),
 )
 
-const galleryBackTo = computed(() =>
-  data.value?.type === 'scene' ? '/scenes' : '/',
-)
-
 // Author state: patch title
 const savingTitle = ref(false)
 const titleError = ref<string | null>(null)
@@ -256,7 +252,7 @@ async function handleDeleteCard() {
   <main class="mx-auto w-full max-w-5xl px-5 py-7 sm:px-6 sm:py-8">
     <div class="mb-6">
       <UButton
-        :to="galleryBackTo"
+        to="/"
         variant="ghost"
         color="neutral"
         size="sm"

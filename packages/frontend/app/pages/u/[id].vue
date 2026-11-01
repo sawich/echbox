@@ -171,6 +171,36 @@ const joinedLabel = computed(() => {
       <section class="space-y-4">
         <div class="space-y-1">
           <h2 class="ed-title-md text-[var(--ed-on-surface)]">
+            Uploaded scenes
+          </h2>
+          <p class="ed-body-md text-[var(--ed-on-surface-variant)]">
+            {{ isOwnProfile ? 'Your studio scene cards on echbox.' : 'Scene cards uploaded by this user.' }}
+          </p>
+        </div>
+
+        <p
+          v-if="data.scenes.length === 0"
+          class="ed-body-md text-[var(--ed-on-surface-variant)]"
+        >
+          No scenes yet.
+        </p>
+
+        <div
+          v-else
+          class="grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-3"
+        >
+          <SceneTile
+            v-for="scene in data.scenes"
+            :key="scene.id"
+            :scene="scene"
+            :api-url="apiUrl"
+          />
+        </div>
+      </section>
+
+      <section class="space-y-4">
+        <div class="space-y-1">
+          <h2 class="ed-title-md text-[var(--ed-on-surface)]">
             Uploaded plugins
           </h2>
           <p class="ed-body-md text-[var(--ed-on-surface-variant)]">
