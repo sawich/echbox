@@ -21,6 +21,7 @@ import {
   removePlacedFile,
   removePluginFiles,
 } from "./storage";
+import { assertGameExists } from "../games/service";
 import {
   getPluginVoteCounts,
   getPluginVoteCountsForPlugins,
@@ -57,6 +58,7 @@ export type PluginVersionDetail = {
 
 export type PluginDetail = PluginVoteCounts & {
   id: string;
+  gameId: string;
   authorId: string;
   title: string;
   description: string | null;
@@ -71,6 +73,7 @@ export type PluginDetail = PluginVoteCounts & {
 
 export type PluginListItem = PluginVoteCounts & {
   id: string;
+  gameId: string;
   authorId: string;
   title: string;
   description: string | null;
@@ -82,6 +85,7 @@ export type PluginListItem = PluginVoteCounts & {
 
 export type ListPluginsOptions = PluginServiceOptions & {
   viewerUserId?: string | null;
+  gameId?: string;
 };
 
 export type GetPluginOptions = PluginServiceOptions & {
@@ -90,6 +94,7 @@ export type GetPluginOptions = PluginServiceOptions & {
 
 export type CreatePluginInput = PluginServiceOptions & {
   authorId: string;
+  gameId: string;
   title: string;
   description?: string;
   notes?: string;
@@ -218,6 +223,7 @@ export async function getPlugin(
 
   return {
     id: plugin.id,
+    gameId: plugin.gameId,
     authorId: plugin.authorId,
     title: plugin.title,
     description: plugin.description,
@@ -236,11 +242,18 @@ export async function listPlugins(
   options?: ListPluginsOptions,
 ): Promise<PluginListItem[]> {
   const db = getDb(options?.dbPath);
-  const rows = db
-    .select()
-    .from(plugins)
-    .orderBy(desc(plugins.createdAt))
-    .all();
+  const rows = options?.gameId
+    ? db
+        .select()
+        .from(plugins)
+        .where(eq(plugins.gameId, options.gameId))
+        .orderBy(desc(plugins.createdAt))
+        .all()
+    : db
+        .select()
+        .from(plugins)
+        .orderBy(desc(plugins.createdAt))
+        .all();
 
   if (rows.length === 0) return [];
 
@@ -269,6 +282,7 @@ export async function listPlugins(
 
     out.push({
       id: plugin.id,
+      gameId: plugin.gameId,
       authorId: plugin.authorId,
       title: plugin.title,
       description: plugin.description,
@@ -286,8 +300,10 @@ export async function listPlugins(
 export async function createPlugin(
   input: CreatePluginInput,
 ): Promise<PluginDetail> {
-  const { authorId, title, description, notes, fileBytes, dbPath, dataDir } =
+  const { authorId, gameId, title, description, notes, fileBytes, dbPath, dataDir } =
     input;
+
+  assertGameExists(gameId, { dbPath });
 
   const normalizedTitle = normalizeTitle(title);
   validateArchive(fileBytes);
@@ -317,6 +333,7 @@ export async function createPlugin(
         tx.insert(plugins)
           .values({
             id: pluginId,
+            gameId,
             authorId,
             title: normalizedTitle,
             description: description?.trim() || null,

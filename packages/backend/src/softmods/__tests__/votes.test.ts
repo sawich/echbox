@@ -6,6 +6,7 @@ import { getDb } from "../../db/client";
 import { migrateDb } from "../../db/migrate";
 import { users } from "../../db/schema";
 import { fixtureBytes } from "../../kkloader/__tests__/helpers";
+import { seedTestGame } from "../../__tests__/test-game";
 import { createSoftmod, getSoftmod, listSoftmods } from "../service";
 import {
   getSoftmodLikesReceivedForAuthor,
@@ -18,6 +19,7 @@ describe("softmod votes", () => {
   let dbPath: string;
   let dataDir: string;
   let authorId: string;
+  let gameId: string;
   let voterId: string;
   let softmodId: string;
 
@@ -54,8 +56,10 @@ describe("softmod votes", () => {
       ])
       .run();
 
+    gameId = seedTestGame(authorId, { dbPath }).id;
+
     const fileBytes = await fixtureBytes("softmods", "testmod.zipmod");
-    const created = await createSoftmod({
+    const created = await createSoftmod({ gameId,
       authorId,
       fileBytes,
       dbPath,

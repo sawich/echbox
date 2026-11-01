@@ -9,12 +9,14 @@ import { getDb } from "../db/client";
 import { migrateDb } from "../db/migrate";
 import { users } from "../db/schema";
 import { fixtureBytes } from "../kkloader/__tests__/helpers";
+import { seedTestGame } from "./test-game";
 
 describe("Character CRUD + hash lookup + gallery split HTTP routes", () => {
   let tempDir: string;
   let dbPath: string;
   let dataDir: string;
   let authorId: string;
+  let gameId: string;
   let otherUserId: string;
   let authorCookie: string;
   let otherCookie: string;
@@ -57,6 +59,8 @@ describe("Character CRUD + hash lookup + gallery split HTTP routes", () => {
       ])
       .run();
 
+    gameId = seedTestGame(authorId, { dbPath }).id;
+
     const authorSess = await createSession(authorId, dbPath);
     authorCookie = authorSess.cookie.split(";")[0]!;
 
@@ -94,6 +98,7 @@ describe("Character CRUD + hash lookup + gallery split HTTP routes", () => {
 
     const fileBytes = await fixtureBytes("chara", "kk_chara.png");
     const form = new FormData();
+    form.append("gameId", gameId);
     form.append("file", new File([fileBytes], "kk_chara.png", { type: "image/png" }));
     form.append("title", "HTTP Heroine");
     form.append("notes", "v1 upload");
@@ -152,6 +157,7 @@ describe("Character CRUD + hash lookup + gallery split HTTP routes", () => {
     expect(missRes.status).toBe(404);
 
     const form = new FormData();
+    form.append("gameId", gameId);
     form.append("file", new File([fileBytes], "kk_chara.png", { type: "image/png" }));
 
     const createRes = await app.handle(
@@ -222,6 +228,7 @@ describe("Character CRUD + hash lookup + gallery split HTTP routes", () => {
   test("GET /api/kk/cards/:id/versions/:version/image serves WebP preview by default", async () => {
     const fileBytes = await fixtureBytes("chara", "kk_chara.png");
     const form = new FormData();
+    form.append("gameId", gameId);
     form.append("file", new File([fileBytes], "kk_chara.png", { type: "image/png" }));
 
     const createRes = await app.handle(

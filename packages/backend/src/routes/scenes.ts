@@ -13,6 +13,7 @@ import {
   patchScene,
 } from "../scenes/service";
 import { setSceneVote } from "../scenes/votes";
+import { GameServiceError } from "../games/service";
 import { authDerive } from "./auth";
 
 async function readUpload(file: File): Promise<Uint8Array> {
@@ -67,6 +68,13 @@ function handleServiceError(
       code: err.code,
     };
   }
+  if (err instanceof GameServiceError) {
+    set.status = err.status;
+    return {
+      error: err.message,
+      code: err.code,
+    };
+  }
   throw err;
 }
 
@@ -88,12 +96,21 @@ export const sceneRoutes = new Elysia({ prefix: "/api/scenes" })
       }),
     },
   )
-  .get("/", async ({ user }) => {
-    const scenes = await listScenes({
-      viewerUserId: user?.id ?? null,
-    });
-    return { scenes };
-  })
+  .get(
+    "/",
+    async ({ query, user }) => {
+      const scenes = await listScenes({
+        viewerUserId: user?.id ?? null,
+        gameId: query.gameId,
+      });
+      return { scenes };
+    },
+    {
+      query: t.Object({
+        gameId: t.Optional(t.String()),
+      }),
+    },
+  )
   .post(
     "/",
     async ({ body, user, set }) => {
@@ -105,6 +122,7 @@ export const sceneRoutes = new Elysia({ prefix: "/api/scenes" })
         const fileBytes = await readUpload(body.file);
         const created = await createScene({
           authorId: user.id,
+          gameId: body.gameId,
           title: body.title,
           slug: body.slug,
           notes: body.notes,
@@ -119,6 +137,7 @@ export const sceneRoutes = new Elysia({ prefix: "/api/scenes" })
     {
       body: t.Object({
         file: t.File(),
+        gameId: t.String(),
         title: t.Optional(t.String()),
         slug: t.Optional(t.String()),
         notes: t.Optional(t.String()),

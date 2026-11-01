@@ -25,6 +25,7 @@ import {
   SoftmodGuidConflictError,
 } from "../service";
 import { getSoftmodDir, removeSoftmodFiles } from "../storage";
+import { seedTestGame } from "../../__tests__/test-game";
 
 function zipmod(guid: string, payload = "a"): Uint8Array {
   return zipSync({
@@ -40,6 +41,7 @@ describe("softmod storage hardening", () => {
   let dbPath: string;
   let dataDir: string;
   let authorId: string;
+  let gameId: string;
 
   beforeEach(() => {
     tempDir = mkdtempSync(join(tmpdir(), "echbox-softmod-sec-"));
@@ -59,6 +61,7 @@ describe("softmod storage hardening", () => {
         createdAt: new Date().toISOString(),
       })
       .run();
+    gameId = seedTestGame(authorId, { dbPath }).id;
   });
 
   afterEach(() => {
@@ -70,7 +73,7 @@ describe("softmod storage hardening", () => {
     writeFileSync(sentinel, "keep");
     for (const guid of ["..", ".", "../..", "../../escape", "a/b", "/abs/x"]) {
       await expect(
-        createSoftmod({ authorId, fileBytes: zipmod(guid), dbPath, dataDir }),
+        createSoftmod({ gameId, authorId, fileBytes: zipmod(guid), dbPath, dataDir }),
       ).rejects.toBeInstanceOf(BadSoftmodError);
     }
     expect(existsSync(sentinel)).toBe(true);
@@ -88,7 +91,7 @@ describe("softmod storage hardening", () => {
   });
 
   test("hostile delete id never removes other softmods' files", async () => {
-    const created = await createSoftmod({
+    const created = await createSoftmod({ gameId,
       authorId,
       fileBytes: zipmod("com.keep.me"),
       dbPath,
@@ -122,10 +125,10 @@ describe("softmod storage hardening", () => {
       zipSync({}),
     ]) {
       await expect(
-        createSoftmod({ authorId, fileBytes: bytes, dbPath, dataDir }),
+        createSoftmod({ gameId, authorId, fileBytes: bytes, dbPath, dataDir }),
       ).rejects.toBeInstanceOf(BadSoftmodError);
     }
-    const created = await createSoftmod({
+    const created = await createSoftmod({ gameId,
       authorId,
       fileBytes: zipmod("com.valid.one"),
       dbPath,
@@ -146,8 +149,8 @@ describe("softmod storage hardening", () => {
     const a = zipmod("com.race.guid", "payload-a");
     const b = zipmod("com.race.guid", "payload-b");
     const results = await Promise.allSettled([
-      createSoftmod({ authorId, fileBytes: a, dbPath, dataDir }),
-      createSoftmod({ authorId, fileBytes: b, dbPath, dataDir }),
+      createSoftmod({ gameId, authorId, fileBytes: a, dbPath, dataDir }),
+      createSoftmod({ gameId, authorId, fileBytes: b, dbPath, dataDir }),
     ]);
     const ok = results.filter((r) => r.status === "fulfilled");
     const bad = results.filter((r) => r.status === "rejected");
@@ -171,8 +174,8 @@ describe("softmod storage hardening", () => {
   test("concurrent identical uploads map to duplicate-hash error", async () => {
     const bytes = zipmod("com.race.same", "same");
     const results = await Promise.allSettled([
-      createSoftmod({ authorId, fileBytes: bytes, dbPath, dataDir }),
-      createSoftmod({ authorId, fileBytes: bytes, dbPath, dataDir }),
+      createSoftmod({ gameId, authorId, fileBytes: bytes, dbPath, dataDir }),
+      createSoftmod({ gameId, authorId, fileBytes: bytes, dbPath, dataDir }),
     ]);
     const bad = results.filter((r) => r.status === "rejected");
     expect(results.filter((r) => r.status === "fulfilled")).toHaveLength(1);
@@ -182,7 +185,7 @@ describe("softmod storage hardening", () => {
   });
 
   test("concurrent version uploads get distinct versions and intact files", async () => {
-    const created = await createSoftmod({
+    const created = await createSoftmod({ gameId,
       authorId,
       fileBytes: zipmod("com.race.ver", "v1"),
       dbPath,
@@ -212,7 +215,7 @@ describe("softmod storage hardening", () => {
     mkdirSync(join(dataDir, "softmods"), { recursive: true });
     const bytes = zipmod("com.fail.fk", "x");
     await expect(
-      createSoftmod({
+      createSoftmod({ gameId,
         authorId: "no-such-user",
         fileBytes: bytes,
         dbPath,

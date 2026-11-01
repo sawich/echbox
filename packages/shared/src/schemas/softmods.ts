@@ -9,6 +9,7 @@ export type SoftmodUploader = z.infer<typeof SoftmodUploaderSchema>;
 
 export const SoftmodListItemSchema = CardVoteCountsSchema.extend({
   id: z.string().min(1),
+  gameId: z.string().min(1),
   authorId: z.string().min(1),
   title: z.string().min(1),
   modAuthor: z.string().nullable(),

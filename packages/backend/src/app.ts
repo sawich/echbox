@@ -7,6 +7,7 @@ import {
 } from "@echbox/shared";
 import { authRoutes } from "./routes/auth";
 import { galleryRoutes } from "./routes/gallery";
+import { gameRoutes } from "./routes/games";
 import { kkloaderRoutes } from "./routes/kkloader";
 import { pluginRoutes } from "./routes/plugins";
 import { sceneRoutes } from "./routes/scenes";
@@ -22,6 +23,7 @@ export const app = new Elysia()
   )
   .use(authRoutes)
   .use(userRoutes)
+  .use(gameRoutes)
   .use(kkloaderRoutes)
   .use(galleryRoutes)
   .use(sceneRoutes)

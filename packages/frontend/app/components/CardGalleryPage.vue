@@ -7,6 +7,7 @@ const props = defineProps<{
   type: CardType
   title: string
   description: string
+  gameId?: string
 }>()
 
 const api = useApi()
@@ -14,19 +15,80 @@ const config = useRuntimeConfig()
 const apiUrl = computed(() => String(config.public.apiUrl).replace(/\/$/, ''))
 const { user } = useAuth()
 const router = useRouter()
+const {
+  isDesktop,
+  listInstalledContent,
+  installContent,
+  uninstallContent,
+} = useLocalInstalls()
+
+const installedIds = ref<Set<string>>(new Set())
+
+async function refreshInstalled() {
+  if (!props.gameId || !isDesktop.value) {
+    installedIds.value = new Set()
+    return
+  }
+  const rows = await listInstalledContent(props.gameId, 'cards')
+  installedIds.value = new Set(rows.map(r => r.id))
+}
 
 const { data, error, status, refresh } = await useAsyncData(
-  () => `gallery-${props.type}`,
+  () => `gallery-${props.type}-${props.gameId ?? 'all'}`,
   async () => {
     const { data: body, error: err } = await api.api.kk.cards.get({
-      query: { type: props.type },
+      query: {
+        type: props.type,
+        ...(props.gameId ? { gameId: props.gameId } : {}),
+      },
       fetch: { credentials: 'include' },
     })
     if (err) throw err
     return (body?.cards ?? []) as CardListItem[]
   },
-  { watch: [() => props.type] },
+  { watch: [() => props.type, () => props.gameId] },
 )
+
+onMounted(() => {
+  void refreshInstalled()
+})
+watch(() => props.gameId, () => {
+  void refreshInstalled()
+})
+
+const installBusy = ref<string | null>(null)
+const installError = ref<string | null>(null)
+
+async function toggleInstall(card: CardListItem) {
+  if (!props.gameId) return
+  if (!isDesktop.value) {
+    installError.value = 'Install is only available in the desktop app'
+    return
+  }
+  installBusy.value = card.id
+  installError.value = null
+  try {
+    if (installedIds.value.has(card.id)) {
+      await uninstallContent(props.gameId, 'cards', card.id)
+    }
+    else {
+      await installContent(props.gameId, 'cards', {
+        id: card.id,
+        version: card.latestVersion,
+        title: card.title,
+        contentHash: null,
+        installedAt: new Date().toISOString(),
+      })
+    }
+    await refreshInstalled()
+  }
+  catch (err) {
+    installError.value = err instanceof Error ? err.message : 'Install failed'
+  }
+  finally {
+    installBusy.value = null
+  }
+}
 
 const cards = computed(() => data.value ?? [])
 
@@ -91,8 +153,15 @@ async function submitUpload() {
   duplicateHit.value = null
 
   try {
+    if (!props.gameId) {
+      uploadError.value = 'Select a game before uploading'
+      uploadBusy.value = false
+      return
+    }
+
     const form = new FormData()
     form.append('file', uploadFile.value)
+    form.append('gameId', props.gameId)
     if (uploadTitle.value.trim()) {
       form.append('title', uploadTitle.value.trim())
     }
@@ -143,8 +212,8 @@ async function submitUpload() {
       :count="status === 'success' ? cards.length : null"
     >
       <template #actions>
-        <UModal
-          v-if="type === 'character' && user"
+          <UModal
+          v-if="type === 'character' && user && gameId"
           v-model:open="showUpload"
           title="Upload character card"
           description="Drop a Koikatsu character PNG to add it to the library."
@@ -281,19 +350,44 @@ async function submitUpload() {
       class="py-16"
     />
 
+    <UAlert
+      v-if="installError"
+      color="error"
+      variant="subtle"
+      icon="i-lucide-circle-alert"
+      :title="installError"
+      class="mb-4"
+    />
+
     <div
-      v-else
+      v-if="status === 'success' && visibleCards.length > 0"
       class="ed-stagger grid gap-4"
       :class="isPortrait
         ? 'grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 xl:grid-cols-5'
         : 'grid-cols-1 sm:grid-cols-2 lg:grid-cols-3'"
     >
-      <CardTile
+      <div
         v-for="card in visibleCards"
         :key="card.id"
-        :card="card"
-        :api-url="apiUrl"
-      />
+        class="space-y-2"
+      >
+        <CardTile
+          :card="card"
+          :api-url="apiUrl"
+        />
+        <UButton
+          v-if="gameId"
+          block
+          size="sm"
+          :color="installedIds.has(card.id) ? 'neutral' : 'primary'"
+          :variant="installedIds.has(card.id) ? 'outline' : 'solid'"
+          :loading="installBusy === card.id"
+          :disabled="!isDesktop && !installedIds.has(card.id)"
+          @click="toggleInstall(card)"
+        >
+          {{ installedIds.has(card.id) ? 'Uninstall' : (isDesktop ? 'Install' : 'Desktop only') }}
+        </UButton>
+      </div>
     </div>
   </main>
 </template>

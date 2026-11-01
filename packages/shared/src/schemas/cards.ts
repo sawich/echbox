@@ -14,6 +14,7 @@ export const CardVersionDetailSchema = z.object({
 
 export const CardListItemSchema = z.object({
   id: z.string().min(1),
+  gameId: z.string().min(1),
   type: CardTypeSchema,
   slug: z.string().min(1),
   title: z.string().min(1),
@@ -38,6 +39,7 @@ export type CardListResponse = z.infer<typeof CardListResponseSchema>;
 
 export const CardDetailSchema = z.object({
   id: z.string().min(1),
+  gameId: z.string().min(1),
   type: CardTypeSchema,
   slug: z.string().min(1),
   title: z.string().min(1),

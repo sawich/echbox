@@ -11,10 +11,8 @@ onMounted(() => {
 })
 
 const links = [
-  { label: 'Characters', to: '/', icon: 'i-lucide-user-round', match: (p: string) => p === '/' || p.startsWith('/cards') },
-  { label: 'Scenes', to: '/scenes', icon: 'i-lucide-clapperboard', match: (p: string) => p.startsWith('/scenes') },
-  { label: 'Plugins', to: '/plugins', icon: 'i-lucide-puzzle', match: (p: string) => p.startsWith('/plugins') },
-  { label: 'Softmods', to: '/softmods', icon: 'i-lucide-package', match: (p: string) => p.startsWith('/softmods') },
+  { label: 'Library', to: '/library', icon: 'i-lucide-library', match: (p: string) => p === '/' || p.startsWith('/library') },
+  { label: 'Store', to: '/store', icon: 'i-lucide-store', match: (p: string) => p.startsWith('/store') },
 ]
 
 const userMenu = computed<DropdownMenuItem[][]>(() => {
@@ -34,7 +32,7 @@ const userMenu = computed<DropdownMenuItem[][]>(() => {
   <header class="ed-glass sticky top-0 z-30 border-b border-[color-mix(in_oklab,var(--ed-outline-variant)_70%,transparent)]">
     <div class="mx-auto flex h-16 w-full max-w-7xl items-center gap-4 px-4 sm:px-6">
       <NuxtLink
-        to="/"
+        to="/library"
         class="group flex shrink-0 items-center gap-2.5 rounded-full"
         aria-label="echbox home"
       >

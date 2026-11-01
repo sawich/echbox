@@ -1,3 +1,48 @@
+mod local_install;
+
+use local_install::ContentInstall;
+
+#[tauri::command]
+fn list_installed_games() -> Result<Vec<String>, String> {
+    local_install::list_installed_games()
+}
+
+#[tauri::command]
+fn install_game(game_id: String) -> Result<(), String> {
+    local_install::install_game(&game_id)
+}
+
+#[tauri::command]
+fn uninstall_game(game_id: String) -> Result<(), String> {
+    local_install::uninstall_game(&game_id)
+}
+
+#[tauri::command]
+fn list_installed_content(
+    game_id: String,
+    kind: String,
+) -> Result<Vec<ContentInstall>, String> {
+    local_install::list_installed_content(&game_id, &kind)
+}
+
+#[tauri::command]
+fn install_content(
+    game_id: String,
+    kind: String,
+    row: ContentInstall,
+) -> Result<(), String> {
+    local_install::install_content(&game_id, &kind, row)
+}
+
+#[tauri::command]
+fn uninstall_content(
+    game_id: String,
+    kind: String,
+    content_id: String,
+) -> Result<(), String> {
+    local_install::uninstall_content(&game_id, &kind, &content_id)
+}
+
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
     let mut builder = tauri::Builder::default();
@@ -15,6 +60,14 @@ pub fn run() {
     builder
         .plugin(tauri_plugin_opener::init())
         .plugin(tauri_plugin_deep_link::init())
+        .invoke_handler(tauri::generate_handler![
+            list_installed_games,
+            install_game,
+            uninstall_game,
+            list_installed_content,
+            install_content,
+            uninstall_content,
+        ])
         .setup(|app| {
             #[cfg(desktop)]
             {

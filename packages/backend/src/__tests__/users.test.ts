@@ -10,12 +10,14 @@ import { getDb } from "../db/client";
 import { migrateDb } from "../db/migrate";
 import { users } from "../db/schema";
 import { fixtureBytes } from "../kkloader/__tests__/helpers";
+import { seedTestGame } from "./test-game";
 
 describe("user profile", () => {
   let tempDir: string;
   let dbPath: string;
   let dataDir: string;
   let authorId: string;
+  let gameId: string;
   let voterId: string;
   let authorCookie: string;
   let voterCookie: string;
@@ -117,6 +119,7 @@ describe("user profile", () => {
 
     const fileBytes = await fixtureBytes("chara", "kk_chara.png");
     const form = new FormData();
+    form.append("gameId", gameId);
     form.append(
       "file",
       new File([fileBytes], "kk_chara.png", { type: "image/png" }),
@@ -265,6 +268,7 @@ describe("user profile", () => {
   test("profile includes author scenes in scenes list and aggregated stats", async () => {
     const fileBytes = await fixtureBytes("scene", "kk_scene_simple.png");
     const form = new FormData();
+    form.append("gameId", gameId);
     form.append(
       "file",
       new File([fileBytes], "kk_scene_simple.png", { type: "image/png" }),

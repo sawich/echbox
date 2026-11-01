@@ -6,6 +6,7 @@ import { getDb } from "../../db/client";
 import { migrateDb } from "../../db/migrate";
 import { users } from "../../db/schema";
 import { loadSeed } from "../../gallery/seed";
+import { seedTestGame } from "../../__tests__/test-game";
 import {
   ECHBOX_SYSTEM_USER,
   ensureEchboxUser,
@@ -52,7 +53,10 @@ describe("import seed scenes", () => {
   test("importSeedScenes imports seed scenes for echbox then skips on re-run", async () => {
     expect(SCENE_SEED_COUNT).toBeGreaterThan(0);
 
-    const first = await importSeedScenes({ dbPath, dataDir });
+    const user = ensureEchboxUser(dbPath);
+    const gameId = seedTestGame(user.id, { dbPath }).id;
+
+    const first = await importSeedScenes({ dbPath, dataDir, gameId });
     expect(first.imported).toBe(SCENE_SEED_COUNT);
     expect(first.skipped).toBe(0);
 
@@ -60,9 +64,10 @@ describe("import seed scenes", () => {
     expect(scenes).toHaveLength(SCENE_SEED_COUNT);
     for (const scene of scenes) {
       expect(scene.authorId).toBe(ECHBOX_SYSTEM_USER.id);
+      expect(scene.gameId).toBe(gameId);
     }
 
-    const second = await importSeedScenes({ dbPath, dataDir });
+    const second = await importSeedScenes({ dbPath, dataDir, gameId });
     expect(second.imported).toBe(0);
     expect(second.skipped).toBe(SCENE_SEED_COUNT);
     expect(await listScenes({ dbPath, dataDir })).toHaveLength(SCENE_SEED_COUNT);

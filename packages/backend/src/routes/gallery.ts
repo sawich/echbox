@@ -13,6 +13,7 @@ import {
   patchCard,
 } from "../cards/service";
 import { setCardVote } from "../cards/votes";
+import { GameServiceError } from "../games/service";
 import { authDerive } from "./auth";
 
 async function readUpload(file: File): Promise<Uint8Array> {
@@ -55,6 +56,13 @@ function handleServiceError(
       code: err.code,
     };
   }
+  if (err instanceof GameServiceError) {
+    set.status = err.status;
+    return {
+      error: err.message,
+      code: err.code,
+    };
+  }
   throw err;
 }
 
@@ -80,14 +88,15 @@ export const galleryRoutes = new Elysia({ prefix: "/api/kk" })
     "/cards",
     async ({ query, user }) => {
       const viewerUserId = user?.id ?? null;
+      const gameId = query.gameId;
       if (query.type === "character") {
-        const cards = await listCharacters({ viewerUserId });
+        const cards = await listCharacters({ viewerUserId, gameId });
         return { cards };
       }
       if (query.type === "scene") {
         return { cards: [] };
       }
-      const cards = await listCharacters({ viewerUserId });
+      const cards = await listCharacters({ viewerUserId, gameId });
       return { cards };
     },
     {
@@ -95,6 +104,7 @@ export const galleryRoutes = new Elysia({ prefix: "/api/kk" })
         type: t.Optional(
           t.Union([t.Literal("character"), t.Literal("scene")]),
         ),
+        gameId: t.Optional(t.String()),
       }),
     },
   )
@@ -109,6 +119,7 @@ export const galleryRoutes = new Elysia({ prefix: "/api/kk" })
         const fileBytes = await readUpload(body.file);
         const created = await createCard({
           authorId: user.id,
+          gameId: body.gameId,
           title: body.title,
           slug: body.slug,
           notes: body.notes,
@@ -123,6 +134,7 @@ export const galleryRoutes = new Elysia({ prefix: "/api/kk" })
     {
       body: t.Object({
         file: t.File(),
+        gameId: t.String(),
         title: t.Optional(t.String()),
         slug: t.Optional(t.String()),
         notes: t.Optional(t.String()),

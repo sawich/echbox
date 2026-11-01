@@ -24,6 +24,7 @@ import {
   removeSoftmodFiles,
   softmodVersionPaths,
 } from "./storage";
+import { assertGameExists } from "../games/service";
 import {
   getSoftmodVoteCounts,
   getSoftmodVoteCountsForSoftmods,
@@ -62,6 +63,7 @@ export type SoftmodVersionDetail = {
 
 export type SoftmodDetail = SoftmodVoteCounts & {
   id: string;
+  gameId: string;
   authorId: string;
   title: string;
   modAuthor: string | null;
@@ -78,6 +80,7 @@ export type SoftmodDetail = SoftmodVoteCounts & {
 
 export type SoftmodListItem = SoftmodVoteCounts & {
   id: string;
+  gameId: string;
   authorId: string;
   title: string;
   modAuthor: string | null;
@@ -91,6 +94,7 @@ export type SoftmodListItem = SoftmodVoteCounts & {
 
 export type ListSoftmodsOptions = SoftmodServiceOptions & {
   viewerUserId?: string | null;
+  gameId?: string;
 };
 
 export type GetSoftmodOptions = SoftmodServiceOptions & {
@@ -99,6 +103,7 @@ export type GetSoftmodOptions = SoftmodServiceOptions & {
 
 export type CreateSoftmodInput = SoftmodServiceOptions & {
   authorId: string;
+  gameId: string;
   fileBytes: Uint8Array;
   notes?: string;
 };
@@ -223,6 +228,7 @@ export async function getSoftmod(
 
   return {
     id: softmod.id,
+    gameId: softmod.gameId,
     authorId: softmod.authorId,
     title: softmod.title,
     modAuthor: softmod.modAuthor,
@@ -243,11 +249,18 @@ export async function listSoftmods(
   options?: ListSoftmodsOptions,
 ): Promise<SoftmodListItem[]> {
   const db = getDb(options?.dbPath);
-  const rows = db
-    .select()
-    .from(softmods)
-    .orderBy(desc(softmods.createdAt))
-    .all();
+  const rows = options?.gameId
+    ? db
+        .select()
+        .from(softmods)
+        .where(eq(softmods.gameId, options.gameId))
+        .orderBy(desc(softmods.createdAt))
+        .all()
+    : db
+        .select()
+        .from(softmods)
+        .orderBy(desc(softmods.createdAt))
+        .all();
 
   if (rows.length === 0) return [];
 
@@ -283,6 +296,7 @@ export async function listSoftmods(
 
     out.push({
       id: softmod.id,
+      gameId: softmod.gameId,
       authorId: softmod.authorId,
       title: softmod.title,
       modAuthor: softmod.modAuthor,
@@ -302,7 +316,9 @@ export async function listSoftmods(
 export async function createSoftmod(
   input: CreateSoftmodInput,
 ): Promise<SoftmodDetail> {
-  const { authorId, fileBytes, notes, dbPath, dataDir } = input;
+  const { authorId, gameId, fileBytes, notes, dbPath, dataDir } = input;
+
+  assertGameExists(gameId, { dbPath });
 
   validateArchive(fileBytes);
 
@@ -347,6 +363,7 @@ export async function createSoftmod(
         tx.insert(softmods)
           .values({
             id: softmodId,
+            gameId,
             authorId,
             title: manifest.name || "Untitled",
             modAuthor: manifest.author || null,

@@ -33,6 +33,7 @@ export default defineNuxtConfig({
     optimizeDeps: {
       include: [
         '@elysiajs/eden',
+        '@tauri-apps/api/window'
       ]
     }
   },

@@ -10,6 +10,7 @@ import {
   saveOAuthPending,
   takeOAuthPending,
 } from "../auth/oauth-store";
+import { isAdmin } from "../auth/admin";
 import {
   type User,
   buildBlankSessionCookie,
@@ -245,5 +246,8 @@ export const authRoutes = new Elysia({ prefix: "/api/auth" })
       set.status = 401;
       return { error: "Unauthorized" };
     }
-    return user;
+    return {
+      ...user,
+      isAdmin: isAdmin(user),
+    };
   });

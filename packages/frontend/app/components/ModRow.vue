@@ -5,6 +5,15 @@ const props = defineProps<{
   modKind: 'plugin' | 'softmod'
   item: PluginListItem | SoftmodListItem
   apiUrl: string
+  showInstall?: boolean
+  installed?: boolean
+  installDisabled?: boolean
+  installLoading?: boolean
+  installLabel?: string
+}>()
+
+const emit = defineEmits<{
+  install: []
 }>()
 
 const detailTo = computed(() =>
@@ -122,16 +131,28 @@ const description = computed(() => {
       </div>
     </div>
 
-    <UButton
-      :href="downloadHref"
-      external
-      download
-      variant="soft"
-      color="neutral"
-      icon="i-lucide-download"
-      class="relative z-10 shrink-0 self-start sm:self-center"
-    >
-      Download
-    </UButton>
+    <div class="relative z-10 flex shrink-0 flex-wrap gap-2 self-start sm:self-center">
+      <UButton
+        v-if="showInstall"
+        size="sm"
+        :color="installed ? 'neutral' : 'primary'"
+        :variant="installed ? 'outline' : 'solid'"
+        :loading="installLoading"
+        :disabled="installDisabled"
+        @click="emit('install')"
+      >
+        {{ installLabel || (installed ? 'Uninstall' : 'Install') }}
+      </UButton>
+      <UButton
+        :href="downloadHref"
+        external
+        download
+        variant="soft"
+        color="neutral"
+        icon="i-lucide-download"
+      >
+        Download
+      </UButton>
+    </div>
   </article>
 </template>

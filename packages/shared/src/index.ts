@@ -4,6 +4,17 @@ export {
 } from "./schemas/health";
 
 export {
+  GameListItemSchema,
+  GameDetailSchema,
+  GameListResponseSchema,
+  CreateGameBodySchema,
+  type GameListItem,
+  type GameDetail,
+  type GameListResponse,
+  type CreateGameBody,
+} from "./schemas/games";
+
+export {
   EchoBodySchema,
   EchoResponseSchema,
   type EchoBody,

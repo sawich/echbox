@@ -6,6 +6,7 @@ export interface AuthUser {
   username: string
   avatar: string | null
   createdAt: string
+  isAdmin?: boolean
 }
 
 const AUTH_NONCE_KEY = 'echbox:auth-nonce'
@@ -42,6 +43,7 @@ export function useAuth() {
           username: data.username,
           avatar: data.avatar,
           createdAt: String(data.createdAt),
+          isAdmin: Boolean((data as { isAdmin?: boolean }).isAdmin),
         }
       }
       return user.value
@@ -124,6 +126,7 @@ export function useAuth() {
     pending,
     initialized,
     isAuthenticated: computed(() => Boolean(user.value)),
+    isAdmin: computed(() => Boolean(user.value?.isAdmin)),
     loginUrl: computed(() => `${apiUrl.value}/api/auth/discord?desktop=1`),
     refresh,
     claimSession,

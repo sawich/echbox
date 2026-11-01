@@ -17,6 +17,7 @@ import {
 import { sha256Hex } from "./hash";
 import { writeWebpPreview } from "./preview";
 import { getVersionPaths, removeCardFiles, writeOriginalPng } from "./storage";
+import { assertGameExists } from "../games/service";
 import {
   getVoteCounts,
   getVoteCountsForCards,
@@ -44,6 +45,7 @@ export type CharacterCardVersionDetail = CardDetail["versions"][number] & {
 
 export type CharacterCardDetail = Omit<CardDetail, "versions"> &
   VoteCounts & {
+    gameId: string;
     authorId: string;
     authorUsername?: string | null;
     authorAvatar?: string | null;
@@ -54,11 +56,13 @@ export type CharacterCardDetail = Omit<CardDetail, "versions"> &
 
 export type CharacterCardListItem = CardListItem &
   VoteCounts & {
+    gameId: string;
     authorId: string;
   };
 
 export type ListCharactersOptions = CardServiceOptions & {
   viewerUserId?: string | null;
+  gameId?: string;
 };
 
 export type GetCardOptions = CardServiceOptions & {
@@ -67,6 +71,7 @@ export type GetCardOptions = CardServiceOptions & {
 
 export type CreateCardInput = CardServiceOptions & {
   authorId: string;
+  gameId: string;
   title?: string;
   slug?: string;
   fileBytes: Uint8Array;
@@ -191,6 +196,7 @@ export async function getCard(
 
   return {
     id: card.id,
+    gameId: card.gameId,
     type: "character",
     authorId: card.authorId,
     authorUsername: author?.username ?? null,
@@ -209,11 +215,18 @@ export async function listCharacters(
   options?: ListCharactersOptions,
 ): Promise<CharacterCardListItem[]> {
   const db = getDb(options?.dbPath);
-  const cards = db
-    .select()
-    .from(characterCards)
-    .orderBy(desc(characterCards.createdAt))
-    .all();
+  const cards = options?.gameId
+    ? db
+        .select()
+        .from(characterCards)
+        .where(eq(characterCards.gameId, options.gameId))
+        .orderBy(desc(characterCards.createdAt))
+        .all()
+    : db
+        .select()
+        .from(characterCards)
+        .orderBy(desc(characterCards.createdAt))
+        .all();
 
   if (cards.length === 0) return [];
 
@@ -257,6 +270,7 @@ export async function listCharacters(
 
     out.push({
       id: card.id,
+      gameId: card.gameId,
       type: "character",
       authorId: card.authorId,
       slug: card.slug,
@@ -283,7 +297,10 @@ export async function createCard(
     previewPath: string;
   }
 > {
-  const { authorId, title, slug, fileBytes, notes, dbPath, dataDir } = input;
+  const { authorId, gameId, title, slug, fileBytes, notes, dbPath, dataDir } =
+    input;
+
+  assertGameExists(gameId, { dbPath });
 
   const contentHash = sha256Hex(fileBytes);
   const existing = findByHash(contentHash, { dbPath });
@@ -320,6 +337,7 @@ export async function createCard(
     tx.insert(characterCards)
       .values({
         id: cardId,
+        gameId,
         authorId,
         slug: resolvedSlug,
         title: resolvedTitle,

@@ -13,6 +13,7 @@ import {
   listSoftmods,
 } from "../softmods/service";
 import { setSoftmodVote } from "../softmods/votes";
+import { GameServiceError } from "../games/service";
 import { authDerive } from "./auth";
 
 async function readUpload(file: File): Promise<Uint8Array> {
@@ -62,6 +63,13 @@ function handleServiceError(
       code: err.code,
     };
   }
+  if (err instanceof GameServiceError) {
+    set.status = err.status;
+    return {
+      error: err.message,
+      code: err.code,
+    };
+  }
   throw err;
 }
 
@@ -83,12 +91,21 @@ export const softmodRoutes = new Elysia({ prefix: "/api/softmods" })
       }),
     },
   )
-  .get("/", async ({ user }) => {
-    const softmods = await listSoftmods({
-      viewerUserId: user?.id ?? null,
-    });
-    return { softmods };
-  })
+  .get(
+    "/",
+    async ({ query, user }) => {
+      const softmods = await listSoftmods({
+        viewerUserId: user?.id ?? null,
+        gameId: query.gameId,
+      });
+      return { softmods };
+    },
+    {
+      query: t.Object({
+        gameId: t.Optional(t.String()),
+      }),
+    },
+  )
   .post(
     "/",
     async ({ body, user, set }) => {
@@ -112,6 +129,7 @@ export const softmodRoutes = new Elysia({ prefix: "/api/softmods" })
     {
       body: t.Object({
         file: t.File(),
+        gameId: t.String(),
         notes: t.Optional(t.String()),
       }),
     },

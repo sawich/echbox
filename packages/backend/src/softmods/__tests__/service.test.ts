@@ -19,6 +19,7 @@ import {
 } from "../service";
 import { softmodVersionPaths } from "../storage";
 import { setSoftmodVote } from "../votes";
+import { seedTestGame } from "../../__tests__/test-game";
 
 function zipmodWithGuid(
   guid: string,
@@ -52,6 +53,7 @@ describe("softmod service", () => {
   let dbPath: string;
   let dataDir: string;
   let authorId: string;
+  let gameId: string;
   let otherUserId: string;
 
   beforeEach(() => {
@@ -86,6 +88,8 @@ describe("softmod service", () => {
         },
       ])
       .run();
+
+    gameId = seedTestGame(authorId, { dbPath }).id;
   });
 
   afterEach(() => {
@@ -96,7 +100,7 @@ describe("softmod service", () => {
 
   test("createSoftmod stores zipmod from fixture and uses manifest GUID as id", async () => {
     const fileBytes = await fixtureBytes("softmods", "testmod.zipmod");
-    const created = await createSoftmod({
+    const created = await createSoftmod({ gameId,
       authorId,
       fileBytes,
       notes: "First release",
@@ -145,11 +149,11 @@ describe("softmod service", () => {
     const firstBytes = zipmodWithGuid(guid, "1.0.0", "first");
     const secondBytes = zipmodWithGuid(guid, "2.0.0", "second");
 
-    await createSoftmod({ authorId, fileBytes: firstBytes, dbPath, dataDir });
+    await createSoftmod({ gameId, authorId, fileBytes: firstBytes, dbPath, dataDir });
 
     let caught: unknown;
     try {
-      await createSoftmod({
+      await createSoftmod({ gameId,
         authorId: otherUserId,
         fileBytes: secondBytes,
         dbPath,
@@ -171,11 +175,11 @@ describe("softmod service", () => {
 
   test("second createSoftmod with same file bytes throws DuplicateSoftmodHashError", async () => {
     const fileBytes = await fixtureBytes("softmods", "testmod.zipmod");
-    await createSoftmod({ authorId, fileBytes, dbPath, dataDir });
+    await createSoftmod({ gameId, authorId, fileBytes, dbPath, dataDir });
 
     let caught: unknown;
     try {
-      await createSoftmod({
+      await createSoftmod({ gameId,
         authorId: otherUserId,
         fileBytes,
         dbPath,
@@ -201,7 +205,7 @@ describe("softmod service", () => {
   test("addSoftmodVersion bumps version, refreshes metadata, and writes v2 file", async () => {
     const guid = "com.echbox.version-bump";
     const v1Bytes = zipmodWithGuid(guid, "1.0.0", "v1-data");
-    const created = await createSoftmod({
+    const created = await createSoftmod({ gameId,
       authorId,
       fileBytes: v1Bytes,
       dbPath,
@@ -248,7 +252,7 @@ describe("softmod service", () => {
 
   test("addSoftmodVersion as non-author throws 403", async () => {
     const fileBytes = await fixtureBytes("softmods", "testmod.zipmod");
-    const created = await createSoftmod({
+    const created = await createSoftmod({ gameId,
       authorId,
       fileBytes,
       dbPath,
@@ -283,7 +287,7 @@ describe("softmod service", () => {
 
     expect(await findSoftmodByHash(hash, { dbPath })).toBeNull();
 
-    await createSoftmod({ authorId, fileBytes, dbPath, dataDir });
+    await createSoftmod({ gameId, authorId, fileBytes, dbPath, dataDir });
 
     expect(await findSoftmodByHash(hash, { dbPath })).toEqual({
       softmodId: "com.echbox.testmod",
@@ -293,7 +297,7 @@ describe("softmod service", () => {
 
   test("deleteSoftmod removes DB rows and files for author only", async () => {
     const fileBytes = await fixtureBytes("softmods", "testmod.zipmod");
-    const created = await createSoftmod({
+    const created = await createSoftmod({ gameId,
       authorId,
       fileBytes,
       dbPath,
@@ -329,7 +333,7 @@ describe("softmod service", () => {
 
   test("deleteSoftmod removes seeded votes", async () => {
     const fileBytes = await fixtureBytes("softmods", "testmod.zipmod");
-    const created = await createSoftmod({
+    const created = await createSoftmod({ gameId,
       authorId,
       fileBytes,
       dbPath,

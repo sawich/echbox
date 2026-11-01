@@ -21,6 +21,7 @@ import {
 } from "../service";
 import { pluginVersionPaths } from "../storage";
 import { setPluginVote } from "../votes";
+import { seedTestGame } from "../../__tests__/test-game";
 
 function pluginZip(payload = "plugin-payload-a"): Uint8Array {
   return zipSync({ "data.txt": strToU8(payload) });
@@ -31,6 +32,7 @@ describe("plugin service", () => {
   let dbPath: string;
   let dataDir: string;
   let authorId: string;
+  let gameId: string;
   let otherUserId: string;
 
   beforeEach(() => {
@@ -65,6 +67,8 @@ describe("plugin service", () => {
         },
       ])
       .run();
+
+    gameId = seedTestGame(authorId, { dbPath }).id;
   });
 
   afterEach(() => {
@@ -75,7 +79,7 @@ describe("plugin service", () => {
 
   test("createPlugin stores zip from fixture with UUID id and manual title", async () => {
     const fileBytes = await fixtureBytes("plugins", "testplugin.zip");
-    const created = await createPlugin({
+    const created = await createPlugin({ gameId,
       authorId,
       title: "My Plugin",
       description: "Does things",
@@ -116,7 +120,7 @@ describe("plugin service", () => {
 
   test("second createPlugin with same file bytes throws DuplicatePluginHashError", async () => {
     const fileBytes = await fixtureBytes("plugins", "testplugin.zip");
-    const first = await createPlugin({
+    const first = await createPlugin({ gameId,
       authorId,
       title: "First",
       fileBytes,
@@ -126,7 +130,7 @@ describe("plugin service", () => {
 
     let caught: unknown;
     try {
-      await createPlugin({
+      await createPlugin({ gameId,
         authorId: otherUserId,
         title: "Second",
         fileBytes,
@@ -152,7 +156,7 @@ describe("plugin service", () => {
 
   test("patchPlugin updates title and description for author only", async () => {
     const fileBytes = pluginZip("patch-test");
-    const created = await createPlugin({
+    const created = await createPlugin({ gameId,
       authorId,
       title: "Original",
       description: "Old desc",
@@ -191,7 +195,7 @@ describe("plugin service", () => {
 
   test("addPluginVersion as non-author throws 403", async () => {
     const v1 = pluginZip("v1");
-    const created = await createPlugin({
+    const created = await createPlugin({ gameId,
       authorId,
       title: "Plugin",
       fileBytes: v1,
@@ -223,7 +227,7 @@ describe("plugin service", () => {
 
   test("getPluginVersionBytes returns stored zip bytes", async () => {
     const fileBytes = pluginZip("download-me");
-    const created = await createPlugin({
+    const created = await createPlugin({ gameId,
       authorId,
       title: "Dl",
       fileBytes,
@@ -246,7 +250,7 @@ describe("plugin service", () => {
 
     expect(await findPluginByHash(hash, { dbPath })).toBeNull();
 
-    const created = await createPlugin({
+    const created = await createPlugin({ gameId,
       authorId,
       title: "Hash",
       fileBytes,
@@ -262,7 +266,7 @@ describe("plugin service", () => {
 
   test("deletePlugin removes DB rows and files for author only", async () => {
     const fileBytes = pluginZip("delete-me");
-    const created = await createPlugin({
+    const created = await createPlugin({ gameId,
       authorId,
       title: "Del",
       fileBytes,

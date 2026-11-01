@@ -16,6 +16,7 @@ import {
   removeSceneFiles,
   writeOriginalPng,
 } from "./storage";
+import { assertGameExists } from "../games/service";
 import {
   getVoteCounts,
   getVoteCountsForScenes,
@@ -43,6 +44,7 @@ export type SceneVersionDetail = CardDetail["versions"][number] & {
 
 export type SceneDetail = Omit<CardDetail, "versions"> &
   VoteCounts & {
+    gameId: string;
     authorId: string;
     authorUsername?: string | null;
     authorAvatar?: string | null;
@@ -53,11 +55,13 @@ export type SceneDetail = Omit<CardDetail, "versions"> &
 
 export type SceneListItem = CardListItem &
   VoteCounts & {
+    gameId: string;
     authorId: string;
   };
 
 export type ListScenesOptions = SceneServiceOptions & {
   viewerUserId?: string | null;
+  gameId?: string;
 };
 
 export type GetSceneOptions = SceneServiceOptions & {
@@ -66,6 +70,7 @@ export type GetSceneOptions = SceneServiceOptions & {
 
 export type CreateSceneInput = SceneServiceOptions & {
   authorId: string;
+  gameId: string;
   title?: string;
   slug?: string;
   fileBytes: Uint8Array;
@@ -199,6 +204,7 @@ export async function getScene(
 
   return {
     id: scene.id,
+    gameId: scene.gameId,
     type: "scene",
     authorId: scene.authorId,
     authorUsername: author?.username ?? null,
@@ -217,11 +223,18 @@ export async function listScenes(
   options?: ListScenesOptions,
 ): Promise<SceneListItem[]> {
   const db = getDb(options?.dbPath);
-  const rows = db
-    .select()
-    .from(scenes)
-    .orderBy(desc(scenes.createdAt))
-    .all();
+  const rows = options?.gameId
+    ? db
+        .select()
+        .from(scenes)
+        .where(eq(scenes.gameId, options.gameId))
+        .orderBy(desc(scenes.createdAt))
+        .all()
+    : db
+        .select()
+        .from(scenes)
+        .orderBy(desc(scenes.createdAt))
+        .all();
 
   if (rows.length === 0) return [];
 
@@ -262,6 +275,7 @@ export async function listScenes(
 
     out.push({
       id: scene.id,
+      gameId: scene.gameId,
       type: "scene",
       authorId: scene.authorId,
       slug: scene.slug,
@@ -288,7 +302,10 @@ export async function createScene(
     previewPath: string;
   }
 > {
-  const { authorId, title, slug, fileBytes, notes, dbPath, dataDir } = input;
+  const { authorId, gameId, title, slug, fileBytes, notes, dbPath, dataDir } =
+    input;
+
+  assertGameExists(gameId, { dbPath });
 
   const contentHash = sha256Hex(fileBytes);
   const existing = findSceneByHash(contentHash, { dbPath });
@@ -325,6 +342,7 @@ export async function createScene(
     tx.insert(scenes)
       .values({
         id: sceneId,
+        gameId,
         authorId,
         slug: resolvedSlug,
         title: resolvedTitle,

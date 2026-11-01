@@ -13,6 +13,7 @@ import {
   patchPlugin,
 } from "../plugins/service";
 import { setPluginVote } from "../plugins/votes";
+import { GameServiceError } from "../games/service";
 import { authDerive } from "./auth";
 
 async function readUpload(file: File): Promise<Uint8Array> {
@@ -53,6 +54,13 @@ function handleServiceError(
       code: err.code,
     };
   }
+  if (err instanceof GameServiceError) {
+    set.status = err.status;
+    return {
+      error: err.message,
+      code: err.code,
+    };
+  }
   throw err;
 }
 
@@ -74,12 +82,21 @@ export const pluginRoutes = new Elysia({ prefix: "/api/plugins" })
       }),
     },
   )
-  .get("/", async ({ user }) => {
-    const plugins = await listPlugins({
-      viewerUserId: user?.id ?? null,
-    });
-    return { plugins };
-  })
+  .get(
+    "/",
+    async ({ query, user }) => {
+      const plugins = await listPlugins({
+        viewerUserId: user?.id ?? null,
+        gameId: query.gameId,
+      });
+      return { plugins };
+    },
+    {
+      query: t.Object({
+        gameId: t.Optional(t.String()),
+      }),
+    },
+  )
   .post(
     "/",
     async ({ body, user, set }) => {
@@ -91,6 +108,7 @@ export const pluginRoutes = new Elysia({ prefix: "/api/plugins" })
         const fileBytes = await readUpload(body.file);
         const created = await createPlugin({
           authorId: user.id,
+          gameId: body.gameId,
           title: body.title,
           description: body.description,
           notes: body.notes,
@@ -105,6 +123,7 @@ export const pluginRoutes = new Elysia({ prefix: "/api/plugins" })
     {
       body: t.Object({
         file: t.File(),
+        gameId: t.String(),
         title: t.String(),
         description: t.Optional(t.String()),
         notes: t.Optional(t.String()),

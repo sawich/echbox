@@ -17,12 +17,14 @@ import {
   patchScene,
 } from "../service";
 import { getVersionPaths } from "../storage";
+import { seedTestGame } from "../../__tests__/test-game";
 
 describe("scene service", () => {
   let tempDir: string;
   let dbPath: string;
   let dataDir: string;
   let authorId: string;
+  let gameId: string;
   let otherUserId: string;
 
   beforeEach(() => {
@@ -57,6 +59,8 @@ describe("scene service", () => {
         },
       ])
       .run();
+
+    gameId = seedTestGame(authorId, { dbPath }).id;
   });
 
   afterEach(() => {
@@ -67,7 +71,7 @@ describe("scene service", () => {
 
   test("createScene stores original PNG, WebP preview, and DB rows", async () => {
     const fileBytes = await fixtureBytes("scene", "kk_scene_simple.png");
-    const created = await createScene({
+    const created = await createScene({ gameId,
       authorId,
       title: "Simple Studio",
       fileBytes,
@@ -102,7 +106,7 @@ describe("scene service", () => {
 
   test("second createScene with same file throws 409 with sceneId and version", async () => {
     const fileBytes = await fixtureBytes("scene", "kk_scene_simple.png");
-    const first = await createScene({
+    const first = await createScene({ gameId,
       authorId,
       fileBytes,
       dbPath,
@@ -111,7 +115,7 @@ describe("scene service", () => {
 
     let caught: unknown;
     try {
-      await createScene({
+      await createScene({ gameId,
         authorId: otherUserId,
         fileBytes,
         dbPath,
@@ -139,7 +143,7 @@ describe("scene service", () => {
 
     let caught: unknown;
     try {
-      await createScene({
+      await createScene({ gameId,
         authorId,
         fileBytes: charaBytes,
         dbPath,
@@ -159,7 +163,7 @@ describe("scene service", () => {
     const v1Bytes = await fixtureBytes("scene", "kk_scene_simple.png");
     const v2Bytes = await fixtureBytes("scene", "kk_scene_mod.png");
 
-    const scene = await createScene({
+    const scene = await createScene({ gameId,
       authorId,
       title: "Evolving Scene",
       fileBytes: v1Bytes,
@@ -199,7 +203,7 @@ describe("scene service", () => {
     const v1Bytes = await fixtureBytes("scene", "kk_scene_simple.png");
     const v2Bytes = await fixtureBytes("scene", "kk_scene_mod.png");
 
-    const scene = await createScene({
+    const scene = await createScene({ gameId,
       authorId,
       fileBytes: v1Bytes,
       dbPath,
@@ -231,7 +235,7 @@ describe("scene service", () => {
 
     expect(findSceneByHash(hash, { dbPath })).toBeNull();
 
-    const scene = await createScene({
+    const scene = await createScene({ gameId,
       authorId,
       fileBytes: v1Bytes,
       dbPath,
@@ -246,7 +250,7 @@ describe("scene service", () => {
 
   test("patchScene and deleteScene enforce author-only access", async () => {
     const fileBytes = await fixtureBytes("scene", "kk_scene_simple.png");
-    const scene = await createScene({
+    const scene = await createScene({ gameId,
       authorId,
       title: "Before",
       fileBytes,

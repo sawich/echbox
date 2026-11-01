@@ -6,6 +6,7 @@ const props = defineProps<{
   modKind: 'plugin' | 'softmod'
   title: string
   description: string
+  gameId?: string
 }>()
 
 const api = useApi()
@@ -13,25 +14,88 @@ const config = useRuntimeConfig()
 const apiUrl = computed(() => String(config.public.apiUrl).replace(/\/$/, ''))
 const { user } = useAuth()
 const router = useRouter()
+const {
+  isDesktop,
+  listInstalledContent,
+  installContent,
+  uninstallContent,
+} = useLocalInstalls()
+
+const contentKind = computed(() =>
+  props.modKind === 'plugin' ? 'plugins' as const : 'softmods' as const,
+)
+const installedIds = ref<Set<string>>(new Set())
+const installBusy = ref<string | null>(null)
+const installError = ref<string | null>(null)
+
+async function refreshInstalled() {
+  if (!props.gameId || !isDesktop.value) {
+    installedIds.value = new Set()
+    return
+  }
+  const rows = await listInstalledContent(props.gameId, contentKind.value)
+  installedIds.value = new Set(rows.map(r => r.id))
+}
+
+onMounted(() => {
+  void refreshInstalled()
+})
+watch(() => [props.gameId, props.modKind], () => {
+  void refreshInstalled()
+})
 
 const { data, error, status, refresh } = await useAsyncData(
-  () => `catalog-${props.modKind}`,
+  () => `catalog-${props.modKind}-${props.gameId ?? 'all'}`,
   async () => {
+    const query = props.gameId ? { gameId: props.gameId } : undefined
     if (props.modKind === 'plugin') {
       const { data: body, error: err } = await api.api.plugins.get({
+        query,
         fetch: { credentials: 'include' },
       })
       if (err) throw err
       return (body?.plugins ?? []) as PluginListItem[]
     }
     const { data: body, error: err } = await api.api.softmods.get({
+      query,
       fetch: { credentials: 'include' },
     })
     if (err) throw err
     return (body?.softmods ?? []) as SoftmodListItem[]
   },
-  { watch: [() => props.modKind] },
+  { watch: [() => props.modKind, () => props.gameId] },
 )
+
+async function toggleInstall(item: PluginListItem | SoftmodListItem) {
+  if (!props.gameId) return
+  if (!isDesktop.value) {
+    installError.value = 'Install is only available in the desktop app'
+    return
+  }
+  installBusy.value = item.id
+  installError.value = null
+  try {
+    if (installedIds.value.has(item.id)) {
+      await uninstallContent(props.gameId, contentKind.value, item.id)
+    }
+    else {
+      await installContent(props.gameId, contentKind.value, {
+        id: item.id,
+        version: item.latestVersion,
+        title: item.title,
+        contentHash: null,
+        installedAt: new Date().toISOString(),
+      })
+    }
+    await refreshInstalled()
+  }
+  catch (err) {
+    installError.value = err instanceof Error ? err.message : 'Install failed'
+  }
+  finally {
+    installBusy.value = null
+  }
+}
 
 const items = computed<(PluginListItem | SoftmodListItem)[]>(() => data.value ?? [])
 
@@ -133,8 +197,15 @@ async function submitUpload() {
   duplicateHit.value = null
 
   try {
+    if (!props.gameId) {
+      uploadError.value = 'Select a game before uploading'
+      uploadBusy.value = false
+      return
+    }
+
     const form = new FormData()
     form.append('file', uploadFile.value)
+    form.append('gameId', props.gameId)
     if (props.modKind === 'plugin') {
       form.append('title', uploadTitle.value.trim())
       if (uploadDescription.value.trim()) {
@@ -199,7 +270,7 @@ const canSubmitUpload = computed(() => {
     >
       <template #actions>
         <UModal
-          v-if="user"
+          v-if="user && gameId"
           v-model:open="showUpload"
           :title="uploadModalTitle"
           :description="uploadModalDescription"
@@ -350,8 +421,16 @@ const canSubmitUpload = computed(() => {
       class="py-16"
     />
 
+    <UAlert
+      v-if="installError"
+      color="error"
+      variant="subtle"
+      icon="i-lucide-circle-alert"
+      :title="installError"
+    />
+
     <div
-      v-else
+      v-else-if="status === 'success' && visibleItems.length > 0"
       class="ed-stagger space-y-3"
     >
       <ModRow
@@ -360,6 +439,12 @@ const canSubmitUpload = computed(() => {
         :mod-kind="modKind"
         :item="item"
         :api-url="apiUrl"
+        :show-install="Boolean(gameId)"
+        :installed="installedIds.has(item.id)"
+        :install-loading="installBusy === item.id"
+        :install-disabled="!isDesktop && !installedIds.has(item.id)"
+        :install-label="installedIds.has(item.id) ? 'Uninstall' : (isDesktop ? 'Install' : 'Desktop only')"
+        @install="toggleInstall(item)"
       />
     </div>
   </main>

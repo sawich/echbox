@@ -71,10 +71,14 @@ export type ImportSeedScenesResult = {
   skipped: number;
 };
 
+export type ImportSeedScenesOptions = SceneServiceOptions & {
+  gameId: string;
+};
+
 export async function importSeedScenes(
-  options?: SceneServiceOptions,
+  options: ImportSeedScenesOptions,
 ): Promise<ImportSeedScenesResult> {
-  const { dbPath, dataDir } = options ?? {};
+  const { dbPath, dataDir, gameId } = options;
   ensureEchboxUser(dbPath);
 
   let imported = 0;
@@ -101,6 +105,7 @@ export async function importSeedScenes(
       if (ver.version === 1 || sceneId === null) {
         const created = await createScene({
           authorId: ECHBOX_SYSTEM_USER.id,
+          gameId,
           title,
           slug: card.slug,
           fileBytes,

@@ -10,6 +10,7 @@ import { getDb } from "../db/client";
 import { migrateDb } from "../db/migrate";
 import { users } from "../db/schema";
 import { fixtureBytes } from "../kkloader/__tests__/helpers";
+import { seedTestGame } from "./test-game";
 
 function zipmodWithGuid(
   guid: string,
@@ -35,6 +36,7 @@ describe("Softmod HTTP routes", () => {
   let dbPath: string;
   let dataDir: string;
   let authorId: string;
+  let gameId: string;
   let otherUserId: string;
   let authorCookie: string;
   let otherCookie: string;
@@ -77,6 +79,8 @@ describe("Softmod HTTP routes", () => {
       ])
       .run();
 
+    gameId = seedTestGame(authorId, { dbPath }).id;
+
     const authorSess = await createSession(authorId, dbPath);
     authorCookie = authorSess.cookie.split(";")[0]!;
 
@@ -118,6 +122,7 @@ describe("Softmod HTTP routes", () => {
       "file",
       new File([fileBytes], "testmod.zipmod", { type: "application/zip" }),
     );
+    form.append("gameId", gameId);
     form.append("notes", "v1 upload");
 
     const createRes = await app.handle(
@@ -161,6 +166,7 @@ describe("Softmod HTTP routes", () => {
       "file",
       new File([fileBytes], "testmod.zipmod", { type: "application/zip" }),
     );
+    form1.append("gameId", gameId);
     const res1 = await app.handle(
       new Request("http://localhost/api/softmods", {
         method: "POST",
@@ -176,6 +182,7 @@ describe("Softmod HTTP routes", () => {
       "file",
       new File([fileBytes], "testmod.zipmod", { type: "application/zip" }),
     );
+    form2.append("gameId", gameId);
     const res2 = await app.handle(
       new Request("http://localhost/api/softmods", {
         method: "POST",
@@ -201,6 +208,7 @@ describe("Softmod HTTP routes", () => {
       "file",
       new File([fileBytes], "testmod.zipmod", { type: "application/zip" }),
     );
+    form.append("gameId", gameId);
 
     const res = await app.handle(
       new Request("http://localhost/api/softmods", {
@@ -262,6 +270,7 @@ describe("Softmod HTTP routes", () => {
       "file",
       new File([fileBytes], "testmod.zipmod", { type: "application/zip" }),
     );
+    form.append("gameId", gameId);
 
     await app.handle(
       new Request("http://localhost/api/softmods", {
@@ -290,6 +299,7 @@ describe("Softmod HTTP routes", () => {
       "file",
       new File([fileBytes], "testmod.zipmod", { type: "application/zip" }),
     );
+    form.append("gameId", gameId);
 
     const createRes = await app.handle(
       new Request("http://localhost/api/softmods", {
@@ -326,6 +336,7 @@ describe("Softmod HTTP routes", () => {
       "file",
       new File([fileBytes], "testmod.zipmod", { type: "application/zip" }),
     );
+    form.append("gameId", gameId);
 
     const createRes = await app.handle(
       new Request("http://localhost/api/softmods", {
@@ -373,6 +384,7 @@ describe("Softmod HTTP routes", () => {
       "file",
       new File([fileBytes], "testmod.zipmod", { type: "application/zip" }),
     );
+    form.append("gameId", gameId);
 
     const createRes = await app.handle(
       new Request("http://localhost/api/softmods", {
@@ -497,6 +509,7 @@ describe("Softmod HTTP routes", () => {
       "file",
       new File([fileBytes], "testmod.zipmod", { type: "application/zip" }),
     );
+    form.append("gameId", gameId);
 
     const createRes = await app.handle(
       new Request("http://localhost/api/softmods", {

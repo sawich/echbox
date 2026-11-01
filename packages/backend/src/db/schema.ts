@@ -22,10 +22,29 @@ export const sessions = sqliteTable("sessions", {
   expiresAt: text("expires_at").notNull(),
 });
 
+export const games = sqliteTable(
+  "games",
+  {
+    id: text("id").primaryKey(),
+    slug: text("slug").notNull().unique(),
+    title: text("title").notNull(),
+    description: text("description"),
+    createdByUserId: text("created_by_user_id")
+      .notNull()
+      .references(() => users.id),
+    createdAt: text("created_at").notNull(),
+    updatedAt: text("updated_at").notNull(),
+  },
+  (table) => [index("games_created_by_user_id_idx").on(table.createdByUserId)],
+);
+
 export const characterCards = sqliteTable(
   "character_cards",
   {
     id: text("id").primaryKey(),
+    gameId: text("game_id")
+      .notNull()
+      .references(() => games.id),
     authorId: text("author_id")
       .notNull()
       .references(() => users.id),
@@ -35,7 +54,10 @@ export const characterCards = sqliteTable(
     createdAt: text("created_at").notNull(),
     updatedAt: text("updated_at").notNull(),
   },
-  (table) => [index("character_cards_author_id_idx").on(table.authorId)],
+  (table) => [
+    index("character_cards_author_id_idx").on(table.authorId),
+    index("character_cards_game_id_idx").on(table.gameId),
+  ],
 );
 
 export const characterCardVersions = sqliteTable(
@@ -89,6 +111,9 @@ export const scenes = sqliteTable(
   "scenes",
   {
     id: text("id").primaryKey(),
+    gameId: text("game_id")
+      .notNull()
+      .references(() => games.id),
     authorId: text("author_id")
       .notNull()
       .references(() => users.id),
@@ -98,7 +123,10 @@ export const scenes = sqliteTable(
     createdAt: text("created_at").notNull(),
     updatedAt: text("updated_at").notNull(),
   },
-  (table) => [index("scenes_author_id_idx").on(table.authorId)],
+  (table) => [
+    index("scenes_author_id_idx").on(table.authorId),
+    index("scenes_game_id_idx").on(table.gameId),
+  ],
 );
 
 export const sceneVersions = sqliteTable(
@@ -155,6 +183,9 @@ export const softmods = sqliteTable(
   "softmods",
   {
     id: text("id").primaryKey(),
+    gameId: text("game_id")
+      .notNull()
+      .references(() => games.id),
     authorId: text("author_id")
       .notNull()
       .references(() => users.id),
@@ -166,7 +197,10 @@ export const softmods = sqliteTable(
     createdAt: text("created_at").notNull(),
     updatedAt: text("updated_at").notNull(),
   },
-  (table) => [index("softmods_author_id_idx").on(table.authorId)],
+  (table) => [
+    index("softmods_author_id_idx").on(table.authorId),
+    index("softmods_game_id_idx").on(table.gameId),
+  ],
 );
 
 export const softmodVersions = sqliteTable(
@@ -223,6 +257,9 @@ export const plugins = sqliteTable(
   "plugins",
   {
     id: text("id").primaryKey(),
+    gameId: text("game_id")
+      .notNull()
+      .references(() => games.id),
     authorId: text("author_id")
       .notNull()
       .references(() => users.id),
@@ -232,7 +269,10 @@ export const plugins = sqliteTable(
     createdAt: text("created_at").notNull(),
     updatedAt: text("updated_at").notNull(),
   },
-  (table) => [index("plugins_author_id_idx").on(table.authorId)],
+  (table) => [
+    index("plugins_author_id_idx").on(table.authorId),
+    index("plugins_game_id_idx").on(table.gameId),
+  ],
 );
 
 export const pluginVersions = sqliteTable(

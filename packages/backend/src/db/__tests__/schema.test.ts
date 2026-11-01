@@ -7,6 +7,7 @@ import { migrateDb } from "../migrate";
 import {
   characterCardVersions,
   characterCards,
+  games,
   pluginVersions,
   plugins,
   sceneVersions,
@@ -16,6 +17,29 @@ import {
   users,
 } from "../schema";
 
+function insertUserAndGame(db: ReturnType<typeof getDb>, discordId: string) {
+  const userId = crypto.randomUUID();
+  const gameId = crypto.randomUUID();
+  const now = new Date().toISOString();
+  db.insert(users).values({
+    id: userId,
+    discordId,
+    username: "tester",
+    avatar: null,
+    createdAt: now,
+  }).run();
+  db.insert(games).values({
+    id: gameId,
+    slug: `game-${gameId.slice(0, 8)}`,
+    title: "Test Game",
+    description: null,
+    createdByUserId: userId,
+    createdAt: now,
+    updatedAt: now,
+  }).run();
+  return { userId, gameId };
+}
+
 describe("schema", () => {
   test("content_hash is globally unique", () => {
     const dir = mkdtempSync(join(tmpdir(), "echbox-db-"));
@@ -24,20 +48,13 @@ describe("schema", () => {
       const db = getDb(dbPath);
       migrateDb(dbPath);
 
-      const userId = crypto.randomUUID();
+      const { userId, gameId } = insertUserAndGame(db, "discord-1");
       const cardId = crypto.randomUUID();
       const hash = "a".repeat(64);
 
-      db.insert(users).values({
-        id: userId,
-        discordId: "discord-1",
-        username: "tester",
-        avatar: null,
-        createdAt: new Date().toISOString(),
-      }).run();
-
       db.insert(characterCards).values({
         id: cardId,
+        gameId,
         authorId: userId,
         slug: "test-card",
         title: "Test",
@@ -83,20 +100,13 @@ describe("schema", () => {
       const db = getDb(dbPath);
       migrateDb(dbPath);
 
-      const userId = crypto.randomUUID();
+      const { userId, gameId } = insertUserAndGame(db, "discord-softmod");
       const softmodId = crypto.randomUUID();
       const hash = "b".repeat(64);
 
-      db.insert(users).values({
-        id: userId,
-        discordId: "discord-softmod",
-        username: "tester",
-        avatar: null,
-        createdAt: new Date().toISOString(),
-      }).run();
-
       db.insert(softmods).values({
         id: softmodId,
+        gameId,
         authorId: userId,
         title: "Test Softmod",
         modAuthor: "Mod Author",
@@ -144,20 +154,13 @@ describe("schema", () => {
       const db = getDb(dbPath);
       migrateDb(dbPath);
 
-      const userId = crypto.randomUUID();
+      const { userId, gameId } = insertUserAndGame(db, "discord-scene");
       const sceneId = crypto.randomUUID();
       const hash = "d".repeat(64);
 
-      db.insert(users).values({
-        id: userId,
-        discordId: "discord-scene",
-        username: "tester",
-        avatar: null,
-        createdAt: new Date().toISOString(),
-      }).run();
-
       db.insert(scenes).values({
         id: sceneId,
+        gameId,
         authorId: userId,
         slug: "test-scene",
         title: "Test Scene",
@@ -203,20 +206,13 @@ describe("schema", () => {
       const db = getDb(dbPath);
       migrateDb(dbPath);
 
-      const userId = crypto.randomUUID();
+      const { userId, gameId } = insertUserAndGame(db, "discord-plugin");
       const pluginId = crypto.randomUUID();
       const hash = "c".repeat(64);
 
-      db.insert(users).values({
-        id: userId,
-        discordId: "discord-plugin",
-        username: "tester",
-        avatar: null,
-        createdAt: new Date().toISOString(),
-      }).run();
-
       db.insert(plugins).values({
         id: pluginId,
+        gameId,
         authorId: userId,
         title: "Test Plugin",
         description: "Desc",

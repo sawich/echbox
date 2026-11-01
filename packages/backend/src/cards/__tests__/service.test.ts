@@ -17,12 +17,14 @@ import {
   patchCard,
 } from "../service";
 import { getVersionPaths } from "../storage";
+import { seedTestGame } from "../../__tests__/test-game";
 
 describe("character card service", () => {
   let tempDir: string;
   let dbPath: string;
   let dataDir: string;
   let authorId: string;
+  let gameId: string;
   let otherUserId: string;
 
   beforeEach(() => {
@@ -57,6 +59,8 @@ describe("character card service", () => {
         },
       ])
       .run();
+
+    gameId = seedTestGame(authorId, { dbPath }).id;
   });
 
   afterEach(() => {
@@ -67,7 +71,7 @@ describe("character card service", () => {
 
   test("createCard stores original PNG, WebP preview, and DB rows", async () => {
     const fileBytes = await fixtureBytes("chara", "kk_chara.png");
-    const created = await createCard({
+    const created = await createCard({ gameId,
       authorId,
       title: "Heroine Card",
       fileBytes,
@@ -115,12 +119,12 @@ describe("character card service", () => {
     const firstBytes = await fixtureBytes("chara", "kk_chara.png");
     const secondBytes = await fixtureBytes("chara", "kk_mod_chara.png");
 
-    const first = await createCard({
+    const first = await createCard({ gameId,
       authorId,
       title: "First Character",
       fileBytes: firstBytes,
     });
-    const second = await createCard({
+    const second = await createCard({ gameId,
       authorId: otherUserId,
       title: "Second Character",
       fileBytes: secondBytes,
@@ -133,14 +137,14 @@ describe("character card service", () => {
 
   test("second createCard with same file throws 409 conflict with cardId and version", async () => {
     const fileBytes = await fixtureBytes("chara", "kk_chara.png");
-    const first = await createCard({
+    const first = await createCard({ gameId,
       authorId,
       fileBytes,
     });
 
     let caught: unknown;
     try {
-      await createCard({
+      await createCard({ gameId,
         authorId: otherUserId,
         fileBytes,
       });
@@ -166,7 +170,7 @@ describe("character card service", () => {
     const v1Bytes = await fixtureBytes("chara", "kk_chara.png");
     const v2Bytes = await fixtureBytes("chara", "kk_mod_chara.png");
 
-    const card = await createCard({
+    const card = await createCard({ gameId,
       authorId,
       title: "Evolving Card",
       fileBytes: v1Bytes,
@@ -215,7 +219,7 @@ describe("character card service", () => {
     const v1Bytes = await fixtureBytes("chara", "kk_chara.png");
     const v2Bytes = await fixtureBytes("chara", "kk_mod_chara.png");
 
-    const card = await createCard({
+    const card = await createCard({ gameId,
       authorId,
       fileBytes: v1Bytes,
     });
@@ -244,7 +248,7 @@ describe("character card service", () => {
 
     expect(await findByHash(hash)).toBeNull();
 
-    const card = await createCard({
+    const card = await createCard({ gameId,
       authorId,
       fileBytes: v1Bytes,
     });
@@ -260,7 +264,7 @@ describe("character card service", () => {
 
     let caught: unknown;
     try {
-      await createCard({
+      await createCard({ gameId,
         authorId,
         fileBytes: badBytes,
       });
@@ -276,7 +280,7 @@ describe("character card service", () => {
     const coordBytes = await fixtureBytes("coordinate", "kk_coordinate.png");
     let coordCaught: unknown;
     try {
-      await createCard({
+      await createCard({ gameId,
         authorId,
         fileBytes: coordBytes,
       });
@@ -290,7 +294,7 @@ describe("character card service", () => {
 
   test("patchCard updates metadata for author and throws 403 for other user", async () => {
     const v1Bytes = await fixtureBytes("chara", "kk_chara.png");
-    const card = await createCard({
+    const card = await createCard({ gameId,
       authorId,
       title: "Before Title",
       fileBytes: v1Bytes,
@@ -323,7 +327,7 @@ describe("character card service", () => {
 
   test("deleteCard throws 403 for other user and removes DB + files for author", async () => {
     const v1Bytes = await fixtureBytes("chara", "kk_chara.png");
-    const card = await createCard({
+    const card = await createCard({ gameId,
       authorId,
       fileBytes: v1Bytes,
     });

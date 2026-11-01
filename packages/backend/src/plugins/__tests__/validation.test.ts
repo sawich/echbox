@@ -15,6 +15,7 @@ import {
   getPlugin,
 } from "../service";
 import { getPluginDir } from "../storage";
+import { seedTestGame } from "../../__tests__/test-game";
 
 function pluginZip(payload: string): Uint8Array {
   return zipSync({ "data.txt": strToU8(payload) });
@@ -25,6 +26,7 @@ describe("plugin archive validation and storage hardening", () => {
   let dbPath: string;
   let dataDir: string;
   let authorId: string;
+  let gameId: string;
 
   beforeEach(() => {
     tempDir = mkdtempSync(join(tmpdir(), "echbox-plugin-val-"));
@@ -44,6 +46,7 @@ describe("plugin archive validation and storage hardening", () => {
         createdAt: new Date().toISOString(),
       })
       .run();
+    gameId = seedTestGame(authorId, { dbPath }).id;
   });
 
   afterEach(() => {
@@ -59,14 +62,14 @@ describe("plugin archive validation and storage hardening", () => {
     ];
     for (const fileBytes of bad) {
       await expect(
-        createPlugin({ authorId, title: "P", fileBytes, dbPath, dataDir }),
+        createPlugin({ gameId, authorId, title: "P", fileBytes, dbPath, dataDir }),
       ).rejects.toBeInstanceOf(BadPluginError);
     }
     expect(existsSync(join(dataDir, "plugins"))).toBe(false);
   });
 
   test("addVersion rejects empty and non-zip archives", async () => {
-    const created = await createPlugin({
+    const created = await createPlugin({ gameId,
       authorId,
       title: "P",
       fileBytes: pluginZip("v1"),
@@ -95,8 +98,8 @@ describe("plugin archive validation and storage hardening", () => {
   test("concurrent identical uploads: one wins, loser maps to duplicate-hash", async () => {
     const bytes = pluginZip("same");
     const results = await Promise.allSettled([
-      createPlugin({ authorId, title: "A", fileBytes: bytes, dbPath, dataDir }),
-      createPlugin({ authorId, title: "B", fileBytes: bytes, dbPath, dataDir }),
+      createPlugin({ gameId, authorId, title: "A", fileBytes: bytes, dbPath, dataDir }),
+      createPlugin({ gameId, authorId, title: "B", fileBytes: bytes, dbPath, dataDir }),
     ]);
     expect(results.filter((r) => r.status === "fulfilled")).toHaveLength(1);
     const bad = results.find((r) => r.status === "rejected") as PromiseRejectedResult;
@@ -105,7 +108,7 @@ describe("plugin archive validation and storage hardening", () => {
   });
 
   test("concurrent version uploads get distinct versions and intact files", async () => {
-    const created = await createPlugin({
+    const created = await createPlugin({ gameId,
       authorId,
       title: "P",
       fileBytes: pluginZip("v1"),

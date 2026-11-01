@@ -9,12 +9,14 @@ import { getDb } from "../db/client";
 import { migrateDb } from "../db/migrate";
 import { users } from "../db/schema";
 import { fixtureBytes } from "../kkloader/__tests__/helpers";
+import { seedTestGame } from "./test-game";
 
 describe("Scene HTTP routes", () => {
   let tempDir: string;
   let dbPath: string;
   let dataDir: string;
   let authorId: string;
+  let gameId: string;
   let otherUserId: string;
   let authorCookie: string;
   let otherCookie: string;
@@ -57,6 +59,8 @@ describe("Scene HTTP routes", () => {
       ])
       .run();
 
+    gameId = seedTestGame(authorId, { dbPath }).id;
+
     const authorSess = await createSession(authorId, dbPath);
     authorCookie = authorSess.cookie.split(";")[0]!;
 
@@ -94,6 +98,7 @@ describe("Scene HTTP routes", () => {
 
     const fileBytes = await fixtureBytes("scene", "kk_scene_simple.png");
     const form = new FormData();
+    form.append("gameId", gameId);
     form.append(
       "file",
       new File([fileBytes], "kk_scene_simple.png", { type: "image/png" }),
@@ -140,6 +145,7 @@ describe("Scene HTTP routes", () => {
   test("POST /api/scenes requires auth (401)", async () => {
     const fileBytes = await fixtureBytes("scene", "kk_scene_simple.png");
     const form = new FormData();
+    form.append("gameId", gameId);
     form.append(
       "file",
       new File([fileBytes], "kk_scene_simple.png", { type: "image/png" }),
@@ -162,6 +168,7 @@ describe("Scene HTTP routes", () => {
       "file",
       new File([fileBytes], "kk_scene_simple.png", { type: "image/png" }),
     );
+    form1.append("gameId", gameId);
     const res1 = await app.handle(
       new Request("http://localhost/api/scenes", {
         method: "POST",
@@ -177,6 +184,7 @@ describe("Scene HTTP routes", () => {
       "file",
       new File([fileBytes], "kk_scene_simple.png", { type: "image/png" }),
     );
+    form2.append("gameId", gameId);
     const res2 = await app.handle(
       new Request("http://localhost/api/scenes", {
         method: "POST",
@@ -205,6 +213,7 @@ describe("Scene HTTP routes", () => {
     expect(missRes.status).toBe(404);
 
     const form = new FormData();
+    form.append("gameId", gameId);
     form.append(
       "file",
       new File([fileBytes], "kk_scene_simple.png", { type: "image/png" }),
@@ -235,6 +244,7 @@ describe("Scene HTTP routes", () => {
   test("GET /api/scenes/:id/versions/:version/image serves WebP by default and PNG with original=1", async () => {
     const fileBytes = await fixtureBytes("scene", "kk_scene_simple.png");
     const form = new FormData();
+    form.append("gameId", gameId);
     form.append(
       "file",
       new File([fileBytes], "kk_scene_simple.png", { type: "image/png" }),
@@ -275,6 +285,7 @@ describe("Scene HTTP routes", () => {
   test("PUT /api/scenes/:id/vote requires auth and updates counts", async () => {
     const fileBytes = await fixtureBytes("scene", "kk_scene_simple.png");
     const form = new FormData();
+    form.append("gameId", gameId);
     form.append(
       "file",
       new File([fileBytes], "kk_scene_simple.png", { type: "image/png" }),
@@ -320,6 +331,7 @@ describe("Scene HTTP routes", () => {
   test("DELETE /api/scenes/:id enforces auth and author-only (401/403/200)", async () => {
     const fileBytes = await fixtureBytes("scene", "kk_scene_simple.png");
     const form = new FormData();
+    form.append("gameId", gameId);
     form.append(
       "file",
       new File([fileBytes], "kk_scene_simple.png", { type: "image/png" }),
@@ -367,6 +379,7 @@ describe("Scene HTTP routes", () => {
   test("scene HTTP responses strip originalPath and previewPath from detail and versions", async () => {
     const fileBytes = await fixtureBytes("scene", "kk_scene_simple.png");
     const form = new FormData();
+    form.append("gameId", gameId);
     form.append(
       "file",
       new File([fileBytes], "kk_scene_simple.png", { type: "image/png" }),

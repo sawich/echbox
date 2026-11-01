@@ -6,6 +6,7 @@ import { getDb } from "../../db/client";
 import { migrateDb } from "../../db/migrate";
 import { users } from "../../db/schema";
 import { fixtureBytes } from "../../kkloader/__tests__/helpers";
+import { seedTestGame } from "../../__tests__/test-game";
 import { createScene, getScene, listScenes } from "../service";
 import {
   getLikesReceivedForAuthor,
@@ -18,6 +19,7 @@ describe("scene votes", () => {
   let dbPath: string;
   let dataDir: string;
   let authorId: string;
+  let gameId: string;
   let voterId: string;
   let sceneId: string;
 
@@ -54,8 +56,10 @@ describe("scene votes", () => {
       ])
       .run();
 
+    gameId = seedTestGame(authorId, { dbPath }).id;
+
     const fileBytes = await fixtureBytes("scene", "kk_scene_simple.png");
-    const created = await createScene({
+    const created = await createScene({ gameId,
       authorId,
       fileBytes,
       dbPath,

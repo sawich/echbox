@@ -10,6 +10,7 @@ import { getDb } from "../db/client";
 import { migrateDb } from "../db/migrate";
 import { users } from "../db/schema";
 import { fixtureBytes } from "../kkloader/__tests__/helpers";
+import { seedTestGame } from "./test-game";
 
 function pluginZip(payload = "http-payload"): Uint8Array {
   return zipSync({ "data.txt": strToU8(payload) });
@@ -20,6 +21,7 @@ describe("Plugin HTTP routes", () => {
   let dbPath: string;
   let dataDir: string;
   let authorId: string;
+  let gameId: string;
   let otherUserId: string;
   let authorCookie: string;
   let otherCookie: string;
@@ -62,6 +64,8 @@ describe("Plugin HTTP routes", () => {
       ])
       .run();
 
+    gameId = seedTestGame(authorId, { dbPath }).id;
+
     const authorSess = await createSession(authorId, dbPath);
     authorCookie = authorSess.cookie.split(";")[0]!;
 
@@ -100,6 +104,7 @@ describe("Plugin HTTP routes", () => {
       "file",
       new File([fileBytes], "plugin.zip", { type: "application/zip" }),
     );
+    form.append("gameId", gameId);
     form.append("title", title);
     if (extra?.description != null) {
       form.append("description", extra.description);
@@ -399,6 +404,7 @@ describe("Plugin HTTP routes", () => {
       "file",
       new File([fileBytes], "plugin.zip", { type: "application/zip" }),
     );
+    form.append("gameId", gameId);
     form.append("title", "No auth");
 
     const res = await app.handle(
