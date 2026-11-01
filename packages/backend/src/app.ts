@@ -8,6 +8,7 @@ import {
 import { authRoutes } from "./routes/auth";
 import { galleryRoutes } from "./routes/gallery";
 import { kkloaderRoutes } from "./routes/kkloader";
+import { pluginRoutes } from "./routes/plugins";
 import { softmodRoutes } from "./routes/softmods";
 import { userRoutes } from "./routes/users";
 
@@ -23,6 +24,7 @@ export const app = new Elysia()
   .use(kkloaderRoutes)
   .use(galleryRoutes)
   .use(softmodRoutes)
+  .use(pluginRoutes)
   .get("/", () => "Hello Elysia")
   .get(
     "/health",
