@@ -152,6 +152,7 @@ describe("scene service", () => {
     expect(caught).toBeDefined();
     expect((caught as { status: number }).status).toBe(400);
     expect(await listScenes({ dbPath, dataDir })).toHaveLength(0);
+    expect(existsSync(join(dataDir, "scenes"))).toBe(false);
   });
 
   test("addSceneVersion adds v2 for author and rejects duplicate bytes with 409", async () => {
