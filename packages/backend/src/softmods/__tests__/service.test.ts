@@ -5,7 +5,8 @@ import { join } from "node:path";
 import { strToU8, zipSync } from "fflate";
 import { getDb } from "../../db/client";
 import { migrateDb } from "../../db/migrate";
-import { users } from "../../db/schema";
+import { softmodVotes, users } from "../../db/schema";
+import { eq } from "drizzle-orm";
 import { fixtureBytes } from "../../kkloader/__tests__/helpers";
 import { sha256Hex } from "../../cards/hash";
 import {
@@ -17,19 +18,28 @@ import {
   listSoftmods,
 } from "../service";
 import { softmodVersionPaths } from "../storage";
+import { setSoftmodVote } from "../votes";
 
 function zipmodWithGuid(
   guid: string,
   packageVersion = "1.2.3",
   extraPayload = "payload-a",
+  fields?: {
+    name?: string;
+    author?: string;
+    description?: string;
+  },
 ): Uint8Array {
+  const name = fields?.name ?? "Test Mod";
+  const author = fields?.author ?? "Tester";
+  const description = fields?.description ?? "A test mod";
   const manifest = `<?xml version="1.0"?>
 <Manifest>
   <guid>${guid}</guid>
-  <name>Test Mod</name>
+  <name>${name}</name>
   <version>${packageVersion}</version>
-  <author>Tester</author>
-  <description>A test mod</description>
+  <author>${author}</author>
+  <description>${description}</description>
 </Manifest>`;
   return zipSync({
     "manifest.xml": strToU8(manifest),
@@ -188,6 +198,54 @@ describe("softmod service", () => {
     expect(conflict.version).toBe(1);
   });
 
+  test("addSoftmodVersion bumps version, refreshes metadata, and writes v2 file", async () => {
+    const guid = "com.echbox.version-bump";
+    const v1Bytes = zipmodWithGuid(guid, "1.0.0", "v1-data");
+    const created = await createSoftmod({
+      authorId,
+      fileBytes: v1Bytes,
+      dbPath,
+      dataDir,
+    });
+
+    expect(created.title).toBe("Test Mod");
+    expect(created.modAuthor).toBe("Tester");
+
+    const v2Bytes = zipmodWithGuid(guid, "2.0.0", "v2-data-padded-extra", {
+      name: "Renamed Mod",
+      author: "New Author",
+      description: "Updated description",
+    });
+
+    const updated = await addSoftmodVersion({
+      softmodId: guid,
+      authorId,
+      fileBytes: v2Bytes,
+      notes: "Second release",
+      dbPath,
+      dataDir,
+    });
+
+    expect(updated.latestVersion).toBe(2);
+    expect(updated.title).toBe("Renamed Mod");
+    expect(updated.modAuthor).toBe("New Author");
+    expect(updated.description).toBe("Updated description");
+    expect(updated.versions).toHaveLength(2);
+    expect(updated.versions[1]!.version).toBe(2);
+    expect(updated.versions[1]!.packageVersion).toBe("2.0.0");
+    expect(updated.versions[1]!.notes).toBe("Second release");
+    expect(updated.downloadUrl).toBe(
+      `/api/softmods/${guid}/versions/2/download`,
+    );
+
+    const v2Paths = softmodVersionPaths(dataDir, guid, 2);
+    expect(existsSync(v2Paths.originalPath)).toBe(true);
+    const savedV2 = new Uint8Array(
+      await Bun.file(v2Paths.originalPath).arrayBuffer(),
+    );
+    expect(Buffer.from(savedV2).equals(Buffer.from(v2Bytes))).toBe(true);
+  });
+
   test("addSoftmodVersion as non-author throws 403", async () => {
     const fileBytes = await fixtureBytes("softmods", "testmod.zipmod");
     const created = await createSoftmod({
@@ -267,5 +325,47 @@ describe("softmod service", () => {
     expect(await getSoftmod(created.id, { dbPath })).toBeNull();
     expect(await findSoftmodByHash(sha256Hex(fileBytes), { dbPath })).toBeNull();
     expect(existsSync(paths.originalPath)).toBe(false);
+  });
+
+  test("deleteSoftmod removes seeded votes", async () => {
+    const fileBytes = await fixtureBytes("softmods", "testmod.zipmod");
+    const created = await createSoftmod({
+      authorId,
+      fileBytes,
+      dbPath,
+      dataDir,
+    });
+
+    setSoftmodVote({
+      softmodId: created.id,
+      userId: otherUserId,
+      vote: "like",
+      dbPath,
+    });
+
+    const db = getDb(dbPath);
+    expect(
+      db
+        .select()
+        .from(softmodVotes)
+        .where(eq(softmodVotes.softmodId, created.id))
+        .all(),
+    ).toHaveLength(1);
+
+    await deleteSoftmod({
+      softmodId: created.id,
+      authorId,
+      dbPath,
+      dataDir,
+    });
+
+    expect(await getSoftmod(created.id, { dbPath })).toBeNull();
+    expect(
+      db
+        .select()
+        .from(softmodVotes)
+        .where(eq(softmodVotes.softmodId, created.id))
+        .all(),
+    ).toHaveLength(0);
   });
 });

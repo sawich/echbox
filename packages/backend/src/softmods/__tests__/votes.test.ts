@@ -6,7 +6,7 @@ import { getDb } from "../../db/client";
 import { migrateDb } from "../../db/migrate";
 import { users } from "../../db/schema";
 import { fixtureBytes } from "../../kkloader/__tests__/helpers";
-import { createSoftmod } from "../service";
+import { createSoftmod, getSoftmod, listSoftmods } from "../service";
 import {
   getSoftmodLikesReceivedForAuthor,
   getSoftmodVoteCounts,
@@ -100,6 +100,33 @@ describe("softmod votes", () => {
       dbPath,
     });
     expect(cleared).toEqual({ likes: 0, dislikes: 0, myVote: null });
+  });
+
+  test("listSoftmods and getSoftmod reflect vote counts after setSoftmodVote", async () => {
+    setSoftmodVote({
+      softmodId,
+      userId: voterId,
+      vote: "like",
+      dbPath,
+    });
+
+    const detail = await getSoftmod(softmodId, {
+      dbPath,
+      dataDir,
+      viewerUserId: voterId,
+    });
+    expect(detail!.likes).toBe(1);
+    expect(detail!.dislikes).toBe(0);
+    expect(detail!.myVote).toBe("like");
+
+    const list = await listSoftmods({
+      dbPath,
+      dataDir,
+      viewerUserId: voterId,
+    });
+    expect(list).toHaveLength(1);
+    expect(list[0]!.likes).toBe(1);
+    expect(list[0]!.myVote).toBe("like");
   });
 
   test("getSoftmodLikesReceivedForAuthor aggregates votes on author uploads", () => {
