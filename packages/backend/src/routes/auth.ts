@@ -1,9 +1,15 @@
 import { eq } from "drizzle-orm";
-import { Elysia } from "elysia";
+import { Elysia, t } from "elysia";
 import {
   createDiscordAuthUrl,
   exchangeDiscordCodeForUser,
 } from "../auth/discord";
+import {
+  consumeAuthClaim,
+  createAuthClaim,
+  saveOAuthPending,
+  takeOAuthPending,
+} from "../auth/oauth-store";
 import {
   type User,
   buildBlankSessionCookie,
@@ -12,6 +18,7 @@ import {
   parseCookies,
   revokeSessionFromCookie,
   serializeCookie,
+  serializeSessionCookie,
 } from "../auth/session";
 import { getDb } from "../db/client";
 import { users } from "../db/schema";
@@ -19,6 +26,14 @@ import { users } from "../db/schema";
 const OAUTH_STATE_COOKIE = "discord_oauth_state";
 const OAUTH_VERIFIER_COOKIE = "discord_oauth_verifier";
 const OAUTH_COOKIE_MAX_AGE = 60 * 10; // 10 minutes
+
+function desktopAuthScheme(): string {
+  return (
+    Bun.env.DESKTOP_AUTH_SCHEME ??
+    process.env.DESKTOP_AUTH_SCHEME ??
+    "echbox"
+  );
+}
 
 export const authDerive = new Elysia({ name: "auth-derive" }).derive(
   { as: "global" },
@@ -71,8 +86,26 @@ export function upsertDiscordUser(profile: {
 
 export const authRoutes = new Elysia({ prefix: "/api/auth" })
   .use(authDerive)
-  .get("/discord", () => {
+  .get("/discord", ({ query }) => {
+    const desktop =
+      query.desktop === "1" ||
+      query.desktop === "true" ||
+      query.desktop === true;
+
     const { url, state, codeVerifier } = createDiscordAuthUrl();
+
+    if (desktop) {
+      saveOAuthPending({
+        state,
+        codeVerifier,
+        desktop: true,
+        expiresAt: new Date(
+          Date.now() + OAUTH_COOKIE_MAX_AGE * 1000,
+        ).toISOString(),
+      });
+      return Response.json({ url: url.toString() });
+    }
+
     const headers = new Headers();
     headers.set("Location", url.toString());
     headers.append(
@@ -100,27 +133,35 @@ export const authRoutes = new Elysia({ prefix: "/api/auth" })
     const state = typeof query.state === "string" ? query.state : null;
     const cookies = parseCookies(request.headers.get("cookie"));
     const storedState = cookies[OAUTH_STATE_COOKIE] ?? null;
-    const codeVerifier = cookies[OAUTH_VERIFIER_COOKIE] ?? null;
+    const cookieVerifier = cookies[OAUTH_VERIFIER_COOKIE] ?? null;
 
-    if (!code || !state || !storedState || state !== storedState) {
+    if (!code || !state) {
       set.status = 400;
       return { error: "Invalid OAuth state or missing code" };
+    }
+
+    let codeVerifier: string | null = null;
+    let desktop = false;
+
+    if (storedState && state === storedState) {
+      codeVerifier = cookieVerifier;
+      desktop = false;
+    } else {
+      const pending = takeOAuthPending(state);
+      if (!pending) {
+        set.status = 400;
+        return { error: "Invalid OAuth state or missing code" };
+      }
+      codeVerifier = pending.codeVerifier;
+      desktop = pending.desktop;
     }
 
     try {
       const profile = await exchangeDiscordCodeForUser(code, codeVerifier);
       const user = upsertDiscordUser(profile);
-      const { cookie } = await createSession(user.id);
-
-      const frontendUrl = (
-        Bun.env.FRONTEND_URL ??
-        process.env.FRONTEND_URL ??
-        "http://localhost:3000"
-      ).replace(/\/+$/, "");
+      const { id: sessionId, cookie } = await createSession(user.id);
 
       const headers = new Headers();
-      headers.set("Location", `${frontendUrl}/`);
-      headers.append("Set-Cookie", cookie);
       headers.append(
         "Set-Cookie",
         serializeCookie(OAUTH_STATE_COOKIE, "", { maxAge: 0, path: "/" }),
@@ -130,12 +171,53 @@ export const authRoutes = new Elysia({ prefix: "/api/auth" })
         serializeCookie(OAUTH_VERIFIER_COOKIE, "", { maxAge: 0, path: "/" }),
       );
 
+      if (desktop) {
+        const token = createAuthClaim(sessionId);
+        const scheme = desktopAuthScheme();
+        headers.set(
+          "Location",
+          `${scheme}://auth/callback?token=${encodeURIComponent(token)}`,
+        );
+        return new Response(null, { status: 302, headers });
+      }
+
+      const frontendUrl = (
+        Bun.env.FRONTEND_URL ??
+        process.env.FRONTEND_URL ??
+        "http://localhost:3000"
+      ).replace(/\/+$/, "");
+
+      headers.set("Location", `${frontendUrl}/`);
+      headers.append("Set-Cookie", cookie);
       return new Response(null, { status: 302, headers });
     } catch {
       set.status = 400;
       return { error: "Discord authentication failed" };
     }
   })
+  .post(
+    "/claim",
+    ({ body, set }) => {
+      const sessionId = consumeAuthClaim(body.token);
+      if (!sessionId) {
+        set.status = 400;
+        return { error: "Invalid or expired claim token" };
+      }
+
+      return new Response(JSON.stringify({ ok: true }), {
+        status: 200,
+        headers: {
+          "content-type": "application/json",
+          "set-cookie": serializeSessionCookie(sessionId),
+        },
+      });
+    },
+    {
+      body: t.Object({
+        token: t.String(),
+      }),
+    },
+  )
   .post("/logout", async ({ request }) => {
     const cookieHeader = request.headers.get("cookie");
     await revokeSessionFromCookie(cookieHeader);

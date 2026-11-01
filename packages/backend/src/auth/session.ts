@@ -102,6 +102,17 @@ export function buildBlankSessionCookie(): string {
   });
 }
 
+export function serializeSessionCookie(sessionId: string): string {
+  const secret = getSessionSecret();
+  const cookieValue = secret ? signSessionId(sessionId, secret) : sessionId;
+  return serializeCookie(SESSION_COOKIE_NAME, cookieValue, {
+    maxAge: SESSION_TTL_SECONDS,
+    path: "/",
+    httpOnly: true,
+    sameSite: "Lax",
+  });
+}
+
 export async function createSession(
   userId: string,
   dbPath?: string,
@@ -120,16 +131,7 @@ export async function createSession(
     })
     .run();
 
-  const secret = getSessionSecret();
-  const cookieValue = secret ? signSessionId(id, secret) : id;
-  const cookie = serializeCookie(SESSION_COOKIE_NAME, cookieValue, {
-    maxAge: SESSION_TTL_SECONDS,
-    path: "/",
-    httpOnly: true,
-    sameSite: "Lax",
-  });
-
-  return { id, cookie };
+  return { id, cookie: serializeSessionCookie(id) };
 }
 
 export function extractSessionIdFromCookieHeader(

@@ -3,6 +3,7 @@ import { mkdtempSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { app } from "../app";
+import { takeOAuthPending } from "../auth/oauth-store";
 import {
   SESSION_COOKIE_NAME,
   createSession,
@@ -261,6 +262,27 @@ describe("auth & sessions", () => {
     expect(setCookie).toContain("discord_oauth_state=");
   });
 
+  test("GET /api/auth/discord?desktop=1 returns JSON url and stores pending without oauth cookies", async () => {
+    const res = await app.handle(
+      new Request("http://localhost/api/auth/discord?desktop=1"),
+    );
+    expect(res.status).toBe(200);
+    const body = (await res.json()) as { url: string };
+    expect(body.url).toContain("https://discord.com/oauth2/authorize");
+    expect(body.url).toContain("client_id=test-client-id");
+    expect(body.url).toContain("scope=identify");
+
+    const setCookie = res.headers.get("set-cookie") ?? "";
+    expect(setCookie).not.toContain("discord_oauth_state=");
+
+    const state = new URL(body.url).searchParams.get("state");
+    expect(state).toBeTruthy();
+    const pending = takeOAuthPending(state!, dbPath);
+    expect(pending).not.toBeNull();
+    expect(pending?.desktop).toBe(true);
+    expect(pending?.codeVerifier.length).toBeGreaterThan(0);
+  });
+
   test("GET /api/auth/discord/callback exchanges mocked token, upserts user, sets session cookie, and redirects", async () => {
     const origFetch = globalThis.fetch;
     globalThis.fetch = (async (input: RequestInfo | URL) => {
@@ -345,6 +367,106 @@ describe("auth & sessions", () => {
       expect(meBody.avatar).toBe(
         "https://cdn.discordapp.com/avatars/discord-cb-999/rio_avatar.png",
       );
+    } finally {
+      globalThis.fetch = origFetch;
+    }
+  });
+
+  test("desktop callback redirects to echbox claim deep link; claim sets session once", async () => {
+    const origFetch = globalThis.fetch;
+    globalThis.fetch = (async (input: RequestInfo | URL) => {
+      const url =
+        typeof input === "string"
+          ? input
+          : input instanceof Request
+            ? input.url
+            : input.toString();
+      if (url.includes("/oauth2/token")) {
+        return new Response(
+          JSON.stringify({
+            access_token: "mock-access-token",
+            token_type: "Bearer",
+            expires_in: 3600,
+            scope: "identify",
+          }),
+          {
+            status: 200,
+            headers: { "content-type": "application/json" },
+          },
+        );
+      }
+      if (url.includes("/users/@me")) {
+        return new Response(
+          JSON.stringify({
+            id: "discord-desktop-111",
+            username: "hoshino",
+            global_name: "Hoshino",
+            avatar: "hoshino_avatar",
+          }),
+          {
+            status: 200,
+            headers: { "content-type": "application/json" },
+          },
+        );
+      }
+      return origFetch(input);
+    }) as typeof fetch;
+
+    try {
+      const startRes = await app.handle(
+        new Request("http://localhost/api/auth/discord?desktop=1"),
+      );
+      const { url } = (await startRes.json()) as { url: string };
+      const state = new URL(url).searchParams.get("state")!;
+
+      const callbackRes = await app.handle(
+        new Request(
+          `http://localhost/api/auth/discord/callback?code=mock-code&state=${encodeURIComponent(state)}`,
+        ),
+      );
+      expect(callbackRes.status).toBe(302);
+      const location = callbackRes.headers.get("location") ?? "";
+      expect(location.startsWith("echbox://auth/callback?token=")).toBe(true);
+      const token = new URL(location).searchParams.get("token");
+      expect(token).toBeTruthy();
+
+      const claimRes = await app.handle(
+        new Request("http://localhost/api/auth/claim", {
+          method: "POST",
+          headers: { "content-type": "application/json" },
+          body: JSON.stringify({ token }),
+        }),
+      );
+      expect(claimRes.status).toBe(200);
+      const claimBody = (await claimRes.json()) as { ok: boolean };
+      expect(claimBody.ok).toBe(true);
+
+      const cookies = claimRes.headers.getSetCookie?.() ?? [
+        claimRes.headers.get("set-cookie") ?? "",
+      ];
+      const sessionSetCookie =
+        cookies.find((c) => c.startsWith(`${SESSION_COOKIE_NAME}=`)) ?? "";
+      expect(sessionSetCookie).toContain(`${SESSION_COOKIE_NAME}=`);
+      const sessionCookiePair = sessionSetCookie.split(";")[0] ?? "";
+
+      const meRes = await app.handle(
+        new Request("http://localhost/api/auth/me", {
+          headers: { cookie: sessionCookiePair },
+        }),
+      );
+      expect(meRes.status).toBe(200);
+      const meBody = (await meRes.json()) as { discordId: string; username: string };
+      expect(meBody.discordId).toBe("discord-desktop-111");
+      expect(meBody.username).toBe("Hoshino");
+
+      const secondClaim = await app.handle(
+        new Request("http://localhost/api/auth/claim", {
+          method: "POST",
+          headers: { "content-type": "application/json" },
+          body: JSON.stringify({ token }),
+        }),
+      );
+      expect(secondClaim.status).toBe(400);
     } finally {
       globalThis.fetch = origFetch;
     }
