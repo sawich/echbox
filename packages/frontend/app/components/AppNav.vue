@@ -19,7 +19,7 @@ const linkClass = (active: boolean) =>
 
 <template>
   <nav
-    class="sticky top-0 z-20 border-b border-[var(--ed-outline-variant)] bg-[color-mix(in_oklab,var(--ed-surface)_92%,transparent)] backdrop-blur-md"
+    class="sticky top-0 z-20 border-b border-[var(--ed-outline-variant)] bg-[color-mix(in_oklab,var(--ed-surface)_92%,transparent)] backdrop-blur-md transition-[border-color,background-color] duration-300 ease-[var(--ed-ease-emphasized)]"
   >
     <div class="mx-auto flex h-14 w-full max-w-6xl items-center justify-between gap-6 px-5 sm:px-6">
       <div class="flex items-baseline gap-8">

@@ -1,6 +1,8 @@
 <template>
   <div class="ed-atmosphere min-h-dvh">
     <AppNav />
-    <slot />
+    <div class="ed-page-enter">
+      <slot />
+    </div>
   </div>
 </template>

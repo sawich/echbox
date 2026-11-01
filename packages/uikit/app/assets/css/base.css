@@ -116,6 +116,21 @@
     background-color: var(--ed-surface-container-highest);
   }
 
+  @keyframes ed-enter {
+    from {
+      opacity: 0;
+      transform: translateY(6px);
+    }
+    to {
+      opacity: 1;
+      transform: translateY(0);
+    }
+  }
+
+  .ed-page-enter {
+    animation: ed-enter 320ms var(--ed-ease-emphasized) both;
+  }
+
   @media (prefers-reduced-motion: reduce) {
     *,
     *::before,
