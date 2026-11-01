@@ -1,66 +1,35 @@
 import type { CardDetail, CardListItem } from "@echbox/shared";
 import { and, asc, desc, eq } from "drizzle-orm";
 import { getDb } from "../db/client";
-import { characterCardVersions, characterCards } from "../db/schema";
+import {
+  cardVotes,
+  characterCardVersions,
+  characterCards,
+  users,
+} from "../db/schema";
 import { KoikatuCharaData } from "../kkloader";
+import {
+  BadCardError,
+  CardNotFoundError,
+  DuplicateCardHashError,
+  ForbiddenCardError,
+} from "./errors";
 import { sha256Hex } from "./hash";
 import { writeWebpPreview } from "./preview";
 import { getVersionPaths, removeCardFiles, writeOriginalPng } from "./storage";
+import {
+  getVoteCounts,
+  getVoteCountsForCards,
+  type VoteCounts,
+} from "./votes";
 
-export class CardServiceError extends Error {
-  readonly status: number;
-  readonly statusCode: number;
-  readonly code: string;
-
-  constructor(status: number, code: string, message: string) {
-    super(message);
-    this.name = "CardServiceError";
-    this.status = status;
-    this.statusCode = status;
-    this.code = code;
-  }
-}
-
-export class DuplicateCardHashError extends CardServiceError {
-  readonly cardId: string;
-  readonly card_id: string;
-  readonly version: number;
-  readonly conflict: { cardId: string; version: number };
-
-  constructor(cardId: string, version: number) {
-    super(
-      409,
-      "CONFLICT",
-      `Duplicate card content hash (already exists in card ${cardId} v${version})`,
-    );
-    this.name = "DuplicateCardHashError";
-    this.cardId = cardId;
-    this.card_id = cardId;
-    this.version = version;
-    this.conflict = { cardId, version };
-  }
-}
-
-export class ForbiddenCardError extends CardServiceError {
-  constructor(message = "Forbidden: only the card author may modify this card") {
-    super(403, "FORBIDDEN", message);
-    this.name = "ForbiddenCardError";
-  }
-}
-
-export class BadCardError extends CardServiceError {
-  constructor(message = "Invalid Koikatsu character card") {
-    super(400, "BAD_CARD", message);
-    this.name = "BadCardError";
-  }
-}
-
-export class CardNotFoundError extends CardServiceError {
-  constructor(message = "Card not found") {
-    super(404, "NOT_FOUND", message);
-    this.name = "CardNotFoundError";
-  }
-}
+export {
+  BadCardError,
+  CardNotFoundError,
+  CardServiceError,
+  DuplicateCardHashError,
+  ForbiddenCardError,
+} from "./errors";
 
 export type CardServiceOptions = {
   dbPath?: string;
@@ -73,15 +42,27 @@ export type CharacterCardVersionDetail = CardDetail["versions"][number] & {
   previewPath: string;
 };
 
-export type CharacterCardDetail = Omit<CardDetail, "versions"> & {
-  authorId: string;
-  createdAt: string;
-  updatedAt: string;
-  versions: CharacterCardVersionDetail[];
+export type CharacterCardDetail = Omit<CardDetail, "versions"> &
+  VoteCounts & {
+    authorId: string;
+    authorUsername?: string | null;
+    authorAvatar?: string | null;
+    createdAt: string;
+    updatedAt: string;
+    versions: CharacterCardVersionDetail[];
+  };
+
+export type CharacterCardListItem = CardListItem &
+  VoteCounts & {
+    authorId: string;
+  };
+
+export type ListCharactersOptions = CardServiceOptions & {
+  viewerUserId?: string | null;
 };
 
-export type CharacterCardListItem = CardListItem & {
-  authorId: string;
+export type GetCardOptions = CardServiceOptions & {
+  viewerUserId?: string | null;
 };
 
 export type CreateCardInput = CardServiceOptions & {
@@ -169,7 +150,7 @@ export function findByHash(
 
 export async function getCard(
   id: string,
-  options?: CardServiceOptions,
+  options?: GetCardOptions,
 ): Promise<CharacterCardDetail | null> {
   const db = getDb(options?.dbPath);
   const card = db
@@ -198,21 +179,34 @@ export async function getCard(
     previewPath: v.previewPath,
   }));
 
+  const votes = getVoteCounts(card.id, options?.viewerUserId, options?.dbPath);
+  const author = db
+    .select({
+      username: users.username,
+      avatar: users.avatar,
+    })
+    .from(users)
+    .where(eq(users.id, card.authorId))
+    .get();
+
   return {
     id: card.id,
     type: "character",
     authorId: card.authorId,
+    authorUsername: author?.username ?? null,
+    authorAvatar: author?.avatar ?? null,
     slug: card.slug,
     title: card.title,
     latestVersion: card.latestVersion,
     createdAt: card.createdAt,
     updatedAt: card.updatedAt,
+    ...votes,
     versions,
   };
 }
 
 export async function listCharacters(
-  options?: CardServiceOptions,
+  options?: ListCharactersOptions,
 ): Promise<CharacterCardListItem[]> {
   const db = getDb(options?.dbPath);
   const cards = db
@@ -235,6 +229,12 @@ export async function listCharacters(
     versionsByCard.set(v.cardId, arr);
   }
 
+  const voteMap = getVoteCountsForCards(
+    cards.map((c) => c.id),
+    options?.viewerUserId,
+    options?.dbPath,
+  );
+
   const out: CharacterCardListItem[] = [];
   for (const card of cards) {
     const versions = versionsByCard.get(card.id) ?? [];
@@ -249,6 +249,12 @@ export async function listCharacters(
       ? (JSON.parse(latestRow.summaryJson) as Record<string, unknown>)
       : {};
 
+    const votes = voteMap.get(card.id) ?? {
+      likes: 0,
+      dislikes: 0,
+      myVote: null,
+    };
+
     out.push({
       id: card.id,
       type: "character",
@@ -259,6 +265,7 @@ export async function listCharacters(
       versionCount: versions.length || 1,
       imageUrl: imageUrl(card.id, card.latestVersion),
       summary,
+      ...votes,
     });
   }
 
@@ -540,6 +547,7 @@ export async function deleteCard(
   }
 
   db.transaction((tx) => {
+    tx.delete(cardVotes).where(eq(cardVotes.cardId, targetId)).run();
     tx.delete(characterCardVersions)
       .where(eq(characterCardVersions.cardId, targetId))
       .run();
