@@ -87,10 +87,7 @@ export function upsertDiscordUser(profile: {
 export const authRoutes = new Elysia({ prefix: "/api/auth" })
   .use(authDerive)
   .get("/discord", ({ query }) => {
-    const desktop =
-      query.desktop === "1" ||
-      query.desktop === "true" ||
-      query.desktop === true;
+    const desktop = query.desktop === "1" || query.desktop === "true";
 
     const { url, state, codeVerifier } = createDiscordAuthUrl();
 

@@ -1,3 +1,5 @@
+import { openUrl } from '@tauri-apps/plugin-opener'
+
 export interface AuthUser {
   id: string
   discordId: string
@@ -47,9 +49,42 @@ export function useAuth() {
     }
   }
 
-  function login() {
-    if (import.meta.client) {
-      window.location.href = `${apiUrl.value}/api/auth/discord`
+  async function claimSession(token: string): Promise<boolean> {
+    const { data, error } = await api.api.auth.claim.post(
+      { token },
+      {
+        fetch: {
+          credentials: 'include',
+        },
+      },
+    )
+    if (error || !data || !('ok' in data) || !data.ok) {
+      return false
+    }
+    await refresh()
+    return Boolean(user.value)
+  }
+
+  async function login() {
+    if (!import.meta.client) return
+
+    const res = await fetch(`${apiUrl.value}/api/auth/discord?desktop=1`, {
+      method: 'GET',
+      headers: { accept: 'application/json' },
+    })
+    if (!res.ok) {
+      throw new Error(`Discord auth start failed (${res.status})`)
+    }
+    const body = (await res.json()) as { url?: string }
+    if (!body.url) {
+      throw new Error('Discord auth start returned no url')
+    }
+
+    try {
+      await openUrl(body.url)
+    }
+    catch {
+      window.open(body.url, '_blank', 'noopener,noreferrer')
     }
   }
 
@@ -71,8 +106,9 @@ export function useAuth() {
     pending,
     initialized,
     isAuthenticated: computed(() => Boolean(user.value)),
-    loginUrl: computed(() => `${apiUrl.value}/api/auth/discord`),
+    loginUrl: computed(() => `${apiUrl.value}/api/auth/discord?desktop=1`),
     refresh,
+    claimSession,
     login,
     logout,
   }
