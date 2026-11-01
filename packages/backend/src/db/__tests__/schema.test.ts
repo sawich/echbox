@@ -9,6 +9,8 @@ import {
   characterCards,
   pluginVersions,
   plugins,
+  sceneVersions,
+  scenes,
   softmodVersions,
   softmods,
   users,
@@ -126,6 +128,65 @@ describe("schema", () => {
           notes: null,
           contentHash: hash,
           originalPath: "/tmp/original2.zipmod",
+          summaryJson: "{}",
+          createdAt: new Date().toISOString(),
+        }).run(),
+      ).toThrow();
+    } finally {
+      rmSync(dir, { recursive: true, force: true });
+    }
+  });
+
+  test("scene version content_hash is globally unique", () => {
+    const dir = mkdtempSync(join(tmpdir(), "echbox-db-scene-"));
+    const dbPath = join(dir, "test.db");
+    try {
+      const db = getDb(dbPath);
+      migrateDb(dbPath);
+
+      const userId = crypto.randomUUID();
+      const sceneId = crypto.randomUUID();
+      const hash = "d".repeat(64);
+
+      db.insert(users).values({
+        id: userId,
+        discordId: "discord-scene",
+        username: "tester",
+        avatar: null,
+        createdAt: new Date().toISOString(),
+      }).run();
+
+      db.insert(scenes).values({
+        id: sceneId,
+        authorId: userId,
+        slug: "test-scene",
+        title: "Test Scene",
+        latestVersion: 1,
+        createdAt: new Date().toISOString(),
+        updatedAt: new Date().toISOString(),
+      }).run();
+
+      db.insert(sceneVersions).values({
+        id: crypto.randomUUID(),
+        sceneId,
+        version: 1,
+        notes: null,
+        contentHash: hash,
+        originalPath: "/tmp/original.png",
+        previewPath: "/tmp/preview.webp",
+        summaryJson: "{}",
+        createdAt: new Date().toISOString(),
+      }).run();
+
+      expect(() =>
+        db.insert(sceneVersions).values({
+          id: crypto.randomUUID(),
+          sceneId,
+          version: 2,
+          notes: null,
+          contentHash: hash,
+          originalPath: "/tmp/original2.png",
+          previewPath: "/tmp/preview2.webp",
           summaryJson: "{}",
           createdAt: new Date().toISOString(),
         }).run(),

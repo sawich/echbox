@@ -85,6 +85,72 @@ export const cardVotes = sqliteTable(
 
 export type CardVoteValue = "like" | "dislike";
 
+export const scenes = sqliteTable(
+  "scenes",
+  {
+    id: text("id").primaryKey(),
+    authorId: text("author_id")
+      .notNull()
+      .references(() => users.id),
+    slug: text("slug").notNull(),
+    title: text("title").notNull(),
+    latestVersion: integer("latest_version").notNull(),
+    createdAt: text("created_at").notNull(),
+    updatedAt: text("updated_at").notNull(),
+  },
+  (table) => [index("scenes_author_id_idx").on(table.authorId)],
+);
+
+export const sceneVersions = sqliteTable(
+  "scene_versions",
+  {
+    id: text("id").primaryKey(),
+    sceneId: text("scene_id")
+      .notNull()
+      .references(() => scenes.id),
+    version: integer("version").notNull(),
+    notes: text("notes"),
+    contentHash: text("content_hash").notNull().unique(),
+    originalPath: text("original_path").notNull(),
+    previewPath: text("preview_path").notNull(),
+    summaryJson: text("summary_json").notNull(),
+    createdAt: text("created_at").notNull(),
+  },
+  (table) => [
+    uniqueIndex("scene_versions_scene_id_version_idx").on(
+      table.sceneId,
+      table.version,
+    ),
+  ],
+);
+
+/** "like" | "dislike" stored as text */
+export const sceneVotes = sqliteTable(
+  "scene_votes",
+  {
+    id: text("id").primaryKey(),
+    sceneId: text("scene_id")
+      .notNull()
+      .references(() => scenes.id),
+    userId: text("user_id")
+      .notNull()
+      .references(() => users.id),
+    vote: text("vote").notNull(),
+    createdAt: text("created_at").notNull(),
+    updatedAt: text("updated_at").notNull(),
+  },
+  (table) => [
+    uniqueIndex("scene_votes_scene_id_user_id_idx").on(
+      table.sceneId,
+      table.userId,
+    ),
+    index("scene_votes_scene_id_idx").on(table.sceneId),
+    index("scene_votes_user_id_idx").on(table.userId),
+  ],
+);
+
+export type SceneVoteValue = "like" | "dislike";
+
 export const softmods = sqliteTable(
   "softmods",
   {
