@@ -279,6 +279,119 @@ describe("Plugin HTTP routes", () => {
     expect(voteBody.myVote).toBe("like");
   });
 
+  test("DELETE /api/plugins/:id enforces auth and author-only (401/403/200)", async () => {
+    const fileBytes = pluginZip("delete-http");
+    const createRes = await createPluginViaHttp("Delete me", fileBytes, authorCookie);
+    expect(createRes.status).toBe(201);
+    const created = (await createRes.json()) as { id: string };
+
+    const unauthDel = await app.handle(
+      new Request(`http://localhost/api/plugins/${created.id}`, {
+        method: "DELETE",
+      }),
+    );
+    expect(unauthDel.status).toBe(401);
+
+    const forbidDel = await app.handle(
+      new Request(`http://localhost/api/plugins/${created.id}`, {
+        method: "DELETE",
+        headers: { cookie: otherCookie },
+      }),
+    );
+    expect(forbidDel.status).toBe(403);
+
+    const delRes = await app.handle(
+      new Request(`http://localhost/api/plugins/${created.id}`, {
+        method: "DELETE",
+        headers: { cookie: authorCookie },
+      }),
+    );
+    expect(delRes.status).toBe(200);
+
+    const afterGet = await app.handle(
+      new Request(`http://localhost/api/plugins/${created.id}`),
+    );
+    expect(afterGet.status).toBe(404);
+  });
+
+  test("POST /api/plugins/:id/versions enforces auth, author-only, success, and duplicate hash 409", async () => {
+    const v1Bytes = pluginZip("version-http-v1");
+    const createRes = await createPluginViaHttp("Versions", v1Bytes, authorCookie);
+    expect(createRes.status).toBe(201);
+    const created = (await createRes.json()) as { id: string };
+
+    const v2Bytes = pluginZip("version-http-v2-extra");
+
+    const unauthVerForm = new FormData();
+    unauthVerForm.append(
+      "file",
+      new File([v2Bytes], "v2.zip", { type: "application/zip" }),
+    );
+    const unauthVerRes = await app.handle(
+      new Request(`http://localhost/api/plugins/${created.id}/versions`, {
+        method: "POST",
+        body: unauthVerForm,
+      }),
+    );
+    expect(unauthVerRes.status).toBe(401);
+
+    const forbidVerForm = new FormData();
+    forbidVerForm.append(
+      "file",
+      new File([v2Bytes], "v2.zip", { type: "application/zip" }),
+    );
+    const forbidVerRes = await app.handle(
+      new Request(`http://localhost/api/plugins/${created.id}/versions`, {
+        method: "POST",
+        headers: { cookie: otherCookie },
+        body: forbidVerForm,
+      }),
+    );
+    expect(forbidVerRes.status).toBe(403);
+
+    const verForm = new FormData();
+    verForm.append(
+      "file",
+      new File([v2Bytes], "v2.zip", { type: "application/zip" }),
+    );
+    verForm.append("notes", "Second release");
+    const verRes = await app.handle(
+      new Request(`http://localhost/api/plugins/${created.id}/versions`, {
+        method: "POST",
+        headers: { cookie: authorCookie },
+        body: verForm,
+      }),
+    );
+    expect(verRes.status).toBe(200);
+    const updated = (await verRes.json()) as {
+      latestVersion: number;
+      versions: { version: number; notes?: string }[];
+    };
+    expect(updated.latestVersion).toBe(2);
+    expect(updated.versions).toHaveLength(2);
+    expect(updated.versions[1]!.notes).toBe("Second release");
+
+    const dupVerForm = new FormData();
+    dupVerForm.append(
+      "file",
+      new File([v1Bytes], "v1.zip", { type: "application/zip" }),
+    );
+    const dupVerRes = await app.handle(
+      new Request(`http://localhost/api/plugins/${created.id}/versions`, {
+        method: "POST",
+        headers: { cookie: authorCookie },
+        body: dupVerForm,
+      }),
+    );
+    expect(dupVerRes.status).toBe(409);
+    const dupBody = (await dupVerRes.json()) as {
+      pluginId: string;
+      version: number;
+    };
+    expect(dupBody.pluginId).toBe(created.id);
+    expect(dupBody.version).toBe(1);
+  });
+
   test("POST /api/plugins requires auth (401)", async () => {
     const fileBytes = await fixtureBytes("plugins", "testplugin.zip");
     const form = new FormData();

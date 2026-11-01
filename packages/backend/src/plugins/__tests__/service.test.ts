@@ -279,6 +279,20 @@ describe("plugin service", () => {
       dbPath,
     });
 
+    let forbidden: unknown;
+    try {
+      await deletePlugin({
+        pluginId: created.id,
+        authorId: otherUserId,
+        dbPath,
+        dataDir,
+      });
+    } catch (err) {
+      forbidden = err;
+    }
+    expect((forbidden as { status: number }).status).toBe(403);
+    expect(existsSync(paths.originalPath)).toBe(true);
+
     await deletePlugin({
       pluginId: created.id,
       authorId,
