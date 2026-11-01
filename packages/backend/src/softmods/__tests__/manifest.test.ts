@@ -1,5 +1,5 @@
-import { expect, test } from "bun:test";
-import { strToU8, zipSync } from "fflate";
+import { describe, expect, test } from "bun:test";
+import { strToU8, unzipSync, zipSync } from "fflate";
 import { fixtureBytes } from "../../kkloader/__tests__/helpers";
 import { parseSoftmodManifest } from "../manifest";
 
@@ -69,4 +69,60 @@ test("parseSoftmodManifest reads ./manifest.xml entry", () => {
   const m = parseSoftmodManifest(bytes);
   expect(m.guid).toBe("com.echbox.testmod");
   expect(m.name).toBe("Test Mod");
+});
+
+describe("parseSoftmodManifest guid allowlist (C1)", () => {
+  const hostile = [
+    "..",
+    ".",
+    "../..",
+    "../../../tmp/x",
+    "a/b",
+    "a\\b",
+    "/etc/passwd",
+    "foo..bar",
+    ".hidden",
+    "-leading-dash",
+    "has space",
+    "x".repeat(129),
+  ];
+
+  for (const guid of hostile) {
+    test(`rejects hostile guid ${JSON.stringify(guid.slice(0, 20))}`, () => {
+      const bytes = zipWithManifest(validManifest.replace("com.echbox.testmod", guid));
+      expect(() => parseSoftmodManifest(bytes)).toThrow(/guid/i);
+    });
+  }
+
+  for (const guid of ["com.echbox.testmod", "Mod_Name-1.0", "a", "9lives"]) {
+    test(`accepts Sideloader-style guid ${guid}`, () => {
+      const bytes = zipWithManifest(validManifest.replace("com.echbox.testmod", guid));
+      expect(parseSoftmodManifest(bytes).guid).toBe(guid);
+    });
+  }
+});
+
+describe("parseSoftmodManifest only inflates manifest.xml (I3)", () => {
+  function zipWithCorruptBomb(): Uint8Array {
+    const bytes = zipSync({
+      "bomb.bin": new Uint8Array(2 * 1024 * 1024),
+      "manifest.xml": strToU8(validManifest),
+    });
+    // Local header (30) + name length (8) => start of the deflate stream.
+    for (let i = 38; i < 48; i++) bytes[i] = 0xff;
+    return bytes;
+  }
+
+  test("corrupt unrelated entry is never inflated", () => {
+    const bytes = zipWithCorruptBomb();
+    // Sanity: inflating every entry would fail on this archive.
+    expect(() => unzipSync(bytes)).toThrow();
+    expect(parseSoftmodManifest(bytes).guid).toBe("com.echbox.testmod");
+  });
+
+  test("rejects an oversized manifest.xml without inflating it", () => {
+    const huge = `<guid>x</guid>${" ".repeat(2 * 1024 * 1024)}`;
+    const bytes = zipWithManifest(huge);
+    expect(() => parseSoftmodManifest(bytes)).toThrow(/too large/i);
+  });
 });

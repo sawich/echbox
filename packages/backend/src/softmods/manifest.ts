@@ -1,4 +1,5 @@
 import { strFromU8, unzipSync } from "fflate";
+import { isSafeStorageId } from "../common/safe-path";
 
 export type SoftmodManifest = {
   guid: string;
@@ -11,6 +12,8 @@ export type SoftmodManifest = {
 };
 
 const MANIFEST_ENTRY = "manifest.xml";
+/** Upper bound for the inflated manifest.xml (decompression-bomb guard). */
+const MAX_MANIFEST_BYTES = 1024 * 1024;
 
 function manifestEntryName(path: string): string | null {
   const normalized = path.startsWith("./") ? path.slice(2) : path;
@@ -43,6 +46,11 @@ function parseManifestXml(xml: string): SoftmodManifest {
   if (!guid) {
     throw new Error("Softmod manifest is missing a guid");
   }
+  if (!isSafeStorageId(guid)) {
+    throw new Error(
+      "Softmod manifest guid is invalid (letters, digits, dots, hyphens and underscores only)",
+    );
+  }
 
   const name = readTag(xml, "name") ?? "";
   const version = readTag(xml, "version") ?? "";
@@ -73,11 +81,25 @@ function parseManifestXml(xml: string): SoftmodManifest {
 }
 
 export function parseSoftmodManifest(archiveBytes: Uint8Array): SoftmodManifest {
+  let manifestTooLarge = false;
   let entries: Record<string, Uint8Array>;
   try {
-    entries = unzipSync(archiveBytes);
+    // Only inflate manifest.xml; never decompress other entries.
+    entries = unzipSync(archiveBytes, {
+      filter: (file) => {
+        if (manifestEntryName(file.name) === null) return false;
+        if (file.originalSize > MAX_MANIFEST_BYTES) {
+          manifestTooLarge = true;
+          return false;
+        }
+        return true;
+      },
+    });
   } catch {
     throw new Error("Softmod archive is not a valid zip file");
+  }
+  if (manifestTooLarge) {
+    throw new Error("Softmod manifest.xml is too large");
   }
   const xml = readManifestXml(entries);
   return parseManifestXml(xml);

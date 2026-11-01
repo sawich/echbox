@@ -1,5 +1,8 @@
-import { mkdir, rm } from "node:fs/promises";
+import { mkdirSync, renameSync } from "node:fs";
+import { rm } from "node:fs/promises";
 import { dirname, join } from "node:path";
+import { isSafeStorageId, resolveWithin } from "../common/safe-path";
+import { BadSoftmodError } from "./errors";
 
 const defaultDataDir = join(import.meta.dir, "../../data");
 
@@ -12,8 +15,23 @@ export function getDataDir(dataDir?: string): string {
   );
 }
 
+export function getSoftmodsRoot(dataDir?: string): string {
+  return join(getDataDir(dataDir), "softmods");
+}
+
+export function assertSafeSoftmodId(softmodId: string): void {
+  if (!isSafeStorageId(softmodId)) {
+    throw new BadSoftmodError(
+      "Softmod GUID may only contain letters, digits, dots, hyphens and underscores",
+    );
+  }
+}
+
+/** Per-softmod directory, guaranteed to live strictly under the softmods root. */
 export function getSoftmodDir(softmodId: string, dataDir?: string): string {
-  return join(getDataDir(dataDir), "softmods", softmodId);
+  assertSafeSoftmodId(softmodId);
+  const root = getSoftmodsRoot(dataDir);
+  return resolveWithin(root, join(root, softmodId));
 }
 
 export function softmodVersionPaths(
@@ -28,12 +46,15 @@ export function softmodVersionPaths(
   };
 }
 
-export async function writeOriginalZipmod(
-  bytes: Uint8Array,
+/** Synchronously moves a staged upload into place (safe inside a DB txn). */
+export function placeStagedZipmod(
+  stagedPath: string,
   destPath: string,
-): Promise<void> {
-  await mkdir(dirname(destPath), { recursive: true });
-  await Bun.write(destPath, bytes);
+  dataDir?: string,
+): void {
+  const dest = resolveWithin(getSoftmodsRoot(dataDir), destPath);
+  mkdirSync(dirname(dest), { recursive: true });
+  renameSync(stagedPath, dest);
 }
 
 export async function removeSoftmodFiles(
@@ -42,4 +63,11 @@ export async function removeSoftmodFiles(
 ): Promise<void> {
   const dir = getSoftmodDir(softmodId, dataDir);
   await rm(dir, { recursive: true, force: true });
+}
+
+export async function removePlacedFile(
+  path: string,
+  dataDir?: string,
+): Promise<void> {
+  await rm(resolveWithin(getSoftmodsRoot(dataDir), path), { force: true });
 }

@@ -1,5 +1,11 @@
 import { and, asc, desc, eq } from "drizzle-orm";
 import { sha256Hex } from "../cards/hash";
+import { assertNonEmptyZip } from "../common/zip";
+import {
+  discardStaged,
+  isUniqueConstraintError,
+  stageUpload,
+} from "../common/staging";
 import { getDb } from "../db/client";
 import { softmodVersions, softmodVotes, softmods, users } from "../db/schema";
 import {
@@ -11,9 +17,12 @@ import {
 } from "./errors";
 import { parseSoftmodManifest } from "./manifest";
 import {
+  assertSafeSoftmodId,
+  getSoftmodsRoot,
+  placeStagedZipmod,
+  removePlacedFile,
   removeSoftmodFiles,
   softmodVersionPaths,
-  writeOriginalZipmod,
 } from "./storage";
 import {
   getSoftmodVoteCounts,
@@ -108,6 +117,16 @@ export type DeleteSoftmodInput = SoftmodServiceOptions & {
 
 function downloadUrl(softmodId: string, version: number): string {
   return `/api/softmods/${softmodId}/versions/${version}/download`;
+}
+
+function validateArchive(fileBytes: Uint8Array): void {
+  try {
+    assertNonEmptyZip(fileBytes);
+  } catch (err) {
+    throw new BadSoftmodError(
+      err instanceof Error ? err.message : "Invalid softmod archive",
+    );
+  }
 }
 
 function parseManifest(fileBytes: Uint8Array) {
@@ -285,6 +304,8 @@ export async function createSoftmod(
 ): Promise<SoftmodDetail> {
   const { authorId, fileBytes, notes, dbPath, dataDir } = input;
 
+  validateArchive(fileBytes);
+
   const contentHash = sha256Hex(fileBytes);
   const existingHash = findSoftmodByHash(contentHash, { dbPath });
   if (existingHash) {
@@ -296,6 +317,7 @@ export async function createSoftmod(
 
   const manifest = parseManifest(fileBytes);
   const softmodId = manifest.guid;
+  assertSafeSoftmodId(softmodId);
 
   const db = getDb(dbPath);
   const existingGuid = db
@@ -312,40 +334,68 @@ export async function createSoftmod(
   const versionId = crypto.randomUUID();
   const now = new Date().toISOString();
   const { originalPath } = softmodVersionPaths(dataDir, softmodId, version);
-
-  await writeOriginalZipmod(fileBytes, originalPath);
-
   const summaryJson = JSON.stringify(manifest.raw);
 
-  db.transaction((tx) => {
-    tx.insert(softmods)
-      .values({
-        id: softmodId,
-        authorId,
-        title: manifest.name || "Untitled",
-        modAuthor: manifest.author || null,
-        description: manifest.description,
-        website: manifest.website,
-        latestVersion: version,
-        createdAt: now,
-        updatedAt: now,
-      })
-      .run();
+  // Stage bytes first; the final path is only written inside the DB
+  // transaction, so a losing concurrent upload never overwrites live files.
+  const stagedPath = await stageUpload(getSoftmodsRoot(dataDir), fileBytes);
+  let placed = false;
 
-    tx.insert(softmodVersions)
-      .values({
-        id: versionId,
-        softmodId,
-        version,
-        packageVersion: manifest.version,
-        notes: notes ?? null,
-        contentHash,
-        originalPath,
-        summaryJson,
-        createdAt: now,
-      })
-      .run();
-  });
+  try {
+    db.transaction(
+      (tx) => {
+        tx.insert(softmods)
+          .values({
+            id: softmodId,
+            authorId,
+            title: manifest.name || "Untitled",
+            modAuthor: manifest.author || null,
+            description: manifest.description,
+            website: manifest.website,
+            latestVersion: version,
+            createdAt: now,
+            updatedAt: now,
+          })
+          .run();
+
+        tx.insert(softmodVersions)
+          .values({
+            id: versionId,
+            softmodId,
+            version,
+            packageVersion: manifest.version,
+            notes: notes ?? null,
+            contentHash,
+            originalPath,
+            summaryJson,
+            createdAt: now,
+          })
+          .run();
+
+        placeStagedZipmod(stagedPath, originalPath, dataDir);
+        placed = true;
+      },
+      { behavior: "immediate" },
+    );
+  } catch (err) {
+    await discardStaged(stagedPath);
+    if (placed) await removePlacedFile(originalPath, dataDir);
+    if (isUniqueConstraintError(err)) {
+      const dupHash = findSoftmodByHash(contentHash, { dbPath });
+      if (dupHash) {
+        throw new DuplicateSoftmodHashError(dupHash.softmodId, dupHash.version);
+      }
+      const dupGuid = db
+        .select({ id: softmods.id })
+        .from(softmods)
+        .where(eq(softmods.id, softmodId))
+        .get();
+      if (dupGuid) {
+        throw new SoftmodGuidConflictError(softmodId);
+      }
+    }
+    throw err;
+  }
 
   const detail = await getSoftmod(softmodId, { dbPath, dataDir });
   return detail!;
@@ -371,6 +421,8 @@ export async function addSoftmodVersion(
     throw new ForbiddenSoftmodError();
   }
 
+  validateArchive(fileBytes);
+
   const contentHash = sha256Hex(fileBytes);
   const existingHash = findSoftmodByHash(contentHash, { dbPath });
   if (existingHash) {
@@ -386,47 +438,80 @@ export async function addSoftmodVersion(
       `Manifest guid ${manifest.guid} does not match softmod id ${softmodId}`,
     );
   }
+  assertSafeSoftmodId(softmodId);
 
-  const nextVersion = softmod.latestVersion + 1;
   const versionId = crypto.randomUUID();
   const now = new Date().toISOString();
-  const { originalPath } = softmodVersionPaths(
-    dataDir,
-    softmodId,
-    nextVersion,
-  );
-
-  await writeOriginalZipmod(fileBytes, originalPath);
-
   const summaryJson = JSON.stringify(manifest.raw);
 
-  db.transaction((tx) => {
-    tx.insert(softmodVersions)
-      .values({
-        id: versionId,
-        softmodId,
-        version: nextVersion,
-        packageVersion: manifest.version,
-        notes: notes ?? null,
-        contentHash,
-        originalPath,
-        summaryJson,
-        createdAt: now,
-      })
-      .run();
+  const stagedPath = await stageUpload(getSoftmodsRoot(dataDir), fileBytes);
+  let placedPath: string | null = null;
 
-    tx.update(softmods)
-      .set({
-        title: manifest.name || softmod.title,
-        modAuthor: manifest.author || null,
-        description: manifest.description,
-        website: manifest.website,
-        latestVersion: nextVersion,
-        updatedAt: now,
-      })
-      .where(eq(softmods.id, softmodId))
-      .run();
-  });
+  try {
+    db.transaction(
+      (tx) => {
+        // Re-read inside the write lock so concurrent uploads get distinct versions.
+        const current = tx
+          .select()
+          .from(softmods)
+          .where(eq(softmods.id, softmodId))
+          .get();
+        if (!current) {
+          throw new SoftmodNotFoundError();
+        }
+        if (current.authorId !== authorId) {
+          throw new ForbiddenSoftmodError();
+        }
+
+        const nextVersion = current.latestVersion + 1;
+        const { originalPath } = softmodVersionPaths(
+          dataDir,
+          softmodId,
+          nextVersion,
+        );
+
+        tx.insert(softmodVersions)
+          .values({
+            id: versionId,
+            softmodId,
+            version: nextVersion,
+            packageVersion: manifest.version,
+            notes: notes ?? null,
+            contentHash,
+            originalPath,
+            summaryJson,
+            createdAt: now,
+          })
+          .run();
+
+        tx.update(softmods)
+          .set({
+            title: manifest.name || current.title,
+            modAuthor: manifest.author || null,
+            description: manifest.description,
+            website: manifest.website,
+            latestVersion: nextVersion,
+            updatedAt: now,
+          })
+          .where(eq(softmods.id, softmodId))
+          .run();
+
+        placeStagedZipmod(stagedPath, originalPath, dataDir);
+        placedPath = originalPath;
+      },
+      { behavior: "immediate" },
+    );
+  } catch (err) {
+    await discardStaged(stagedPath);
+    if (placedPath) await removePlacedFile(placedPath, dataDir);
+    if (isUniqueConstraintError(err)) {
+      const dupHash = findSoftmodByHash(contentHash, { dbPath });
+      if (dupHash) {
+        throw new DuplicateSoftmodHashError(dupHash.softmodId, dupHash.version);
+      }
+    }
+    throw err;
+  }
 
   const detail = await getSoftmod(softmodId, { dbPath, dataDir });
   return detail!;

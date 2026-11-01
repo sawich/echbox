@@ -1,5 +1,11 @@
 import { and, asc, desc, eq } from "drizzle-orm";
 import { sha256Hex } from "../cards/hash";
+import { assertNonEmptyZip } from "../common/zip";
+import {
+  discardStaged,
+  isUniqueConstraintError,
+  stageUpload,
+} from "../common/staging";
 import { getDb } from "../db/client";
 import { pluginVersions, pluginVotes, plugins, users } from "../db/schema";
 import {
@@ -9,9 +15,11 @@ import {
   PluginNotFoundError,
 } from "./errors";
 import {
+  getPluginsRoot,
+  placeStagedZip,
   pluginVersionPaths,
+  removePlacedFile,
   removePluginFiles,
-  writeOriginalZip,
 } from "./storage";
 import {
   getPluginVoteCounts,
@@ -119,6 +127,16 @@ function normalizeTitle(title: string): string {
     throw new BadPluginError("Plugin title is required");
   }
   return trimmed;
+}
+
+function validateArchive(fileBytes: Uint8Array): void {
+  try {
+    assertNonEmptyZip(fileBytes);
+  } catch (err) {
+    throw new BadPluginError(
+      err instanceof Error ? err.message : "Invalid plugin archive",
+    );
+  }
 }
 
 export function findPluginByHash(
@@ -271,6 +289,9 @@ export async function createPlugin(
   const { authorId, title, description, notes, fileBytes, dbPath, dataDir } =
     input;
 
+  const normalizedTitle = normalizeTitle(title);
+  validateArchive(fileBytes);
+
   const contentHash = sha256Hex(fileBytes);
   const existingHash = findPluginByHash(contentHash, { dbPath });
   if (existingHash) {
@@ -281,42 +302,59 @@ export async function createPlugin(
   }
 
   const pluginId = crypto.randomUUID();
-  const normalizedTitle = normalizeTitle(title);
   const version = 1;
   const versionId = crypto.randomUUID();
   const now = new Date().toISOString();
   const { originalPath } = pluginVersionPaths(dataDir, pluginId, version);
 
-  await writeOriginalZip(fileBytes, originalPath);
-
   const db = getDb(dbPath);
+  const stagedPath = await stageUpload(getPluginsRoot(dataDir), fileBytes);
+  let placed = false;
 
-  db.transaction((tx) => {
-    tx.insert(plugins)
-      .values({
-        id: pluginId,
-        authorId,
-        title: normalizedTitle,
-        description: description?.trim() || null,
-        latestVersion: version,
-        createdAt: now,
-        updatedAt: now,
-      })
-      .run();
+  try {
+    db.transaction(
+      (tx) => {
+        tx.insert(plugins)
+          .values({
+            id: pluginId,
+            authorId,
+            title: normalizedTitle,
+            description: description?.trim() || null,
+            latestVersion: version,
+            createdAt: now,
+            updatedAt: now,
+          })
+          .run();
 
-    tx.insert(pluginVersions)
-      .values({
-        id: versionId,
-        pluginId,
-        version,
-        notes: notes ?? null,
-        contentHash,
-        originalPath,
-        summaryJson: EMPTY_SUMMARY_JSON,
-        createdAt: now,
-      })
-      .run();
-  });
+        tx.insert(pluginVersions)
+          .values({
+            id: versionId,
+            pluginId,
+            version,
+            notes: notes ?? null,
+            contentHash,
+            originalPath,
+            summaryJson: EMPTY_SUMMARY_JSON,
+            createdAt: now,
+          })
+          .run();
+
+        placeStagedZip(stagedPath, originalPath, dataDir);
+        placed = true;
+      },
+      { behavior: "immediate" },
+    );
+  } catch (err) {
+    await discardStaged(stagedPath);
+    if (placed) await removePlacedFile(originalPath, dataDir);
+    if (isUniqueConstraintError(err)) {
+      const dupHash = findPluginByHash(contentHash, { dbPath });
+      if (dupHash) {
+        throw new DuplicatePluginHashError(dupHash.pluginId, dupHash.version);
+      }
+    }
+    throw err;
+  }
 
   const detail = await getPlugin(pluginId, { dbPath, dataDir });
   return detail!;
@@ -338,6 +376,8 @@ export async function addPluginVersion(
     throw new ForbiddenPluginError();
   }
 
+  validateArchive(fileBytes);
+
   const contentHash = sha256Hex(fileBytes);
   const existingHash = findPluginByHash(contentHash, { dbPath });
   if (existingHash) {
@@ -347,35 +387,72 @@ export async function addPluginVersion(
     );
   }
 
-  const nextVersion = plugin.latestVersion + 1;
   const versionId = crypto.randomUUID();
   const now = new Date().toISOString();
-  const { originalPath } = pluginVersionPaths(dataDir, pluginId, nextVersion);
 
-  await writeOriginalZip(fileBytes, originalPath);
+  const stagedPath = await stageUpload(getPluginsRoot(dataDir), fileBytes);
+  let placedPath: string | null = null;
 
-  db.transaction((tx) => {
-    tx.insert(pluginVersions)
-      .values({
-        id: versionId,
-        pluginId,
-        version: nextVersion,
-        notes: notes ?? null,
-        contentHash,
-        originalPath,
-        summaryJson: EMPTY_SUMMARY_JSON,
-        createdAt: now,
-      })
-      .run();
+  try {
+    db.transaction(
+      (tx) => {
+        // Re-read inside the write lock so concurrent uploads get distinct versions.
+        const current = tx
+          .select()
+          .from(plugins)
+          .where(eq(plugins.id, pluginId))
+          .get();
+        if (!current) {
+          throw new PluginNotFoundError();
+        }
+        if (current.authorId !== authorId) {
+          throw new ForbiddenPluginError();
+        }
 
-    tx.update(plugins)
-      .set({
-        latestVersion: nextVersion,
-        updatedAt: now,
-      })
-      .where(eq(plugins.id, pluginId))
-      .run();
-  });
+        const nextVersion = current.latestVersion + 1;
+        const { originalPath } = pluginVersionPaths(
+          dataDir,
+          pluginId,
+          nextVersion,
+        );
+
+        tx.insert(pluginVersions)
+          .values({
+            id: versionId,
+            pluginId,
+            version: nextVersion,
+            notes: notes ?? null,
+            contentHash,
+            originalPath,
+            summaryJson: EMPTY_SUMMARY_JSON,
+            createdAt: now,
+          })
+          .run();
+
+        tx.update(plugins)
+          .set({
+            latestVersion: nextVersion,
+            updatedAt: now,
+          })
+          .where(eq(plugins.id, pluginId))
+          .run();
+
+        placeStagedZip(stagedPath, originalPath, dataDir);
+        placedPath = originalPath;
+      },
+      { behavior: "immediate" },
+    );
+  } catch (err) {
+    await discardStaged(stagedPath);
+    if (placedPath) await removePlacedFile(placedPath, dataDir);
+    if (isUniqueConstraintError(err)) {
+      const dupHash = findPluginByHash(contentHash, { dbPath });
+      if (dupHash) {
+        throw new DuplicatePluginHashError(dupHash.pluginId, dupHash.version);
+      }
+    }
+    throw err;
+  }
 
   const detail = await getPlugin(pluginId, { dbPath, dataDir });
   return detail!;
