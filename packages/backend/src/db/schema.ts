@@ -60,3 +60,160 @@ export const characterCardVersions = sqliteTable(
     ),
   ],
 );
+
+/** "like" | "dislike" stored as text */
+export const cardVotes = sqliteTable(
+  "card_votes",
+  {
+    id: text("id").primaryKey(),
+    cardId: text("card_id")
+      .notNull()
+      .references(() => characterCards.id),
+    userId: text("user_id")
+      .notNull()
+      .references(() => users.id),
+    vote: text("vote").notNull(),
+    createdAt: text("created_at").notNull(),
+    updatedAt: text("updated_at").notNull(),
+  },
+  (table) => [
+    uniqueIndex("card_votes_card_id_user_id_idx").on(table.cardId, table.userId),
+    index("card_votes_card_id_idx").on(table.cardId),
+    index("card_votes_user_id_idx").on(table.userId),
+  ],
+);
+
+export type CardVoteValue = "like" | "dislike";
+
+export const softmods = sqliteTable(
+  "softmods",
+  {
+    id: text("id").primaryKey(),
+    authorId: text("author_id")
+      .notNull()
+      .references(() => users.id),
+    title: text("title").notNull(),
+    modAuthor: text("mod_author"),
+    description: text("description").notNull(),
+    website: text("website"),
+    latestVersion: integer("latest_version").notNull(),
+    createdAt: text("created_at").notNull(),
+    updatedAt: text("updated_at").notNull(),
+  },
+  (table) => [index("softmods_author_id_idx").on(table.authorId)],
+);
+
+export const softmodVersions = sqliteTable(
+  "softmod_versions",
+  {
+    id: text("id").primaryKey(),
+    softmodId: text("softmod_id")
+      .notNull()
+      .references(() => softmods.id),
+    version: integer("version").notNull(),
+    packageVersion: text("package_version").notNull(),
+    notes: text("notes"),
+    contentHash: text("content_hash").notNull().unique(),
+    originalPath: text("original_path").notNull(),
+    summaryJson: text("summary_json").notNull(),
+    createdAt: text("created_at").notNull(),
+  },
+  (table) => [
+    uniqueIndex("softmod_versions_softmod_id_version_idx").on(
+      table.softmodId,
+      table.version,
+    ),
+  ],
+);
+
+/** "like" | "dislike" stored as text */
+export const softmodVotes = sqliteTable(
+  "softmod_votes",
+  {
+    id: text("id").primaryKey(),
+    softmodId: text("softmod_id")
+      .notNull()
+      .references(() => softmods.id),
+    userId: text("user_id")
+      .notNull()
+      .references(() => users.id),
+    vote: text("vote").notNull(),
+    createdAt: text("created_at").notNull(),
+    updatedAt: text("updated_at").notNull(),
+  },
+  (table) => [
+    uniqueIndex("softmod_votes_softmod_id_user_id_idx").on(
+      table.softmodId,
+      table.userId,
+    ),
+    index("softmod_votes_softmod_id_idx").on(table.softmodId),
+    index("softmod_votes_user_id_idx").on(table.userId),
+  ],
+);
+
+export type SoftmodVoteValue = "like" | "dislike";
+
+export const plugins = sqliteTable(
+  "plugins",
+  {
+    id: text("id").primaryKey(),
+    authorId: text("author_id")
+      .notNull()
+      .references(() => users.id),
+    title: text("title").notNull(),
+    description: text("description"),
+    latestVersion: integer("latest_version").notNull(),
+    createdAt: text("created_at").notNull(),
+    updatedAt: text("updated_at").notNull(),
+  },
+  (table) => [index("plugins_author_id_idx").on(table.authorId)],
+);
+
+export const pluginVersions = sqliteTable(
+  "plugin_versions",
+  {
+    id: text("id").primaryKey(),
+    pluginId: text("plugin_id")
+      .notNull()
+      .references(() => plugins.id),
+    version: integer("version").notNull(),
+    notes: text("notes"),
+    contentHash: text("content_hash").notNull().unique(),
+    originalPath: text("original_path").notNull(),
+    summaryJson: text("summary_json").notNull(),
+    createdAt: text("created_at").notNull(),
+  },
+  (table) => [
+    uniqueIndex("plugin_versions_plugin_id_version_idx").on(
+      table.pluginId,
+      table.version,
+    ),
+  ],
+);
+
+/** "like" | "dislike" stored as text */
+export const pluginVotes = sqliteTable(
+  "plugin_votes",
+  {
+    id: text("id").primaryKey(),
+    pluginId: text("plugin_id")
+      .notNull()
+      .references(() => plugins.id),
+    userId: text("user_id")
+      .notNull()
+      .references(() => users.id),
+    vote: text("vote").notNull(),
+    createdAt: text("created_at").notNull(),
+    updatedAt: text("updated_at").notNull(),
+  },
+  (table) => [
+    uniqueIndex("plugin_votes_plugin_id_user_id_idx").on(
+      table.pluginId,
+      table.userId,
+    ),
+    index("plugin_votes_plugin_id_idx").on(table.pluginId),
+    index("plugin_votes_user_id_idx").on(table.userId),
+  ],
+);
+
+export type PluginVoteValue = "like" | "dislike";

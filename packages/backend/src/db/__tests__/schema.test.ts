@@ -7,6 +7,10 @@ import { migrateDb } from "../migrate";
 import {
   characterCardVersions,
   characterCards,
+  pluginVersions,
+  plugins,
+  softmodVersions,
+  softmods,
   users,
 } from "../schema";
 
@@ -61,6 +65,124 @@ describe("schema", () => {
           contentHash: hash,
           originalPath: "/tmp/original2.png",
           previewPath: "/tmp/preview2.webp",
+          summaryJson: "{}",
+          createdAt: new Date().toISOString(),
+        }).run(),
+      ).toThrow();
+    } finally {
+      rmSync(dir, { recursive: true, force: true });
+    }
+  });
+
+  test("softmod version content_hash is globally unique", () => {
+    const dir = mkdtempSync(join(tmpdir(), "echbox-db-softmod-"));
+    const dbPath = join(dir, "test.db");
+    try {
+      const db = getDb(dbPath);
+      migrateDb(dbPath);
+
+      const userId = crypto.randomUUID();
+      const softmodId = crypto.randomUUID();
+      const hash = "b".repeat(64);
+
+      db.insert(users).values({
+        id: userId,
+        discordId: "discord-softmod",
+        username: "tester",
+        avatar: null,
+        createdAt: new Date().toISOString(),
+      }).run();
+
+      db.insert(softmods).values({
+        id: softmodId,
+        authorId: userId,
+        title: "Test Softmod",
+        modAuthor: "Mod Author",
+        description: "Desc",
+        website: null,
+        latestVersion: 1,
+        createdAt: new Date().toISOString(),
+        updatedAt: new Date().toISOString(),
+      }).run();
+
+      db.insert(softmodVersions).values({
+        id: crypto.randomUUID(),
+        softmodId,
+        version: 1,
+        packageVersion: "1.0.0",
+        notes: null,
+        contentHash: hash,
+        originalPath: "/tmp/original.zipmod",
+        summaryJson: "{}",
+        createdAt: new Date().toISOString(),
+      }).run();
+
+      expect(() =>
+        db.insert(softmodVersions).values({
+          id: crypto.randomUUID(),
+          softmodId,
+          version: 2,
+          packageVersion: "2.0.0",
+          notes: null,
+          contentHash: hash,
+          originalPath: "/tmp/original2.zipmod",
+          summaryJson: "{}",
+          createdAt: new Date().toISOString(),
+        }).run(),
+      ).toThrow();
+    } finally {
+      rmSync(dir, { recursive: true, force: true });
+    }
+  });
+
+  test("plugin version content_hash is globally unique", () => {
+    const dir = mkdtempSync(join(tmpdir(), "echbox-db-plugin-"));
+    const dbPath = join(dir, "test.db");
+    try {
+      const db = getDb(dbPath);
+      migrateDb(dbPath);
+
+      const userId = crypto.randomUUID();
+      const pluginId = crypto.randomUUID();
+      const hash = "c".repeat(64);
+
+      db.insert(users).values({
+        id: userId,
+        discordId: "discord-plugin",
+        username: "tester",
+        avatar: null,
+        createdAt: new Date().toISOString(),
+      }).run();
+
+      db.insert(plugins).values({
+        id: pluginId,
+        authorId: userId,
+        title: "Test Plugin",
+        description: "Desc",
+        latestVersion: 1,
+        createdAt: new Date().toISOString(),
+        updatedAt: new Date().toISOString(),
+      }).run();
+
+      db.insert(pluginVersions).values({
+        id: crypto.randomUUID(),
+        pluginId,
+        version: 1,
+        notes: null,
+        contentHash: hash,
+        originalPath: "/tmp/original.zip",
+        summaryJson: "{}",
+        createdAt: new Date().toISOString(),
+      }).run();
+
+      expect(() =>
+        db.insert(pluginVersions).values({
+          id: crypto.randomUUID(),
+          pluginId,
+          version: 2,
+          notes: null,
+          contentHash: hash,
+          originalPath: "/tmp/original2.zip",
           summaryJson: "{}",
           createdAt: new Date().toISOString(),
         }).run(),
