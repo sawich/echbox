@@ -153,6 +153,47 @@ describe("Softmod HTTP routes", () => {
     );
   });
 
+  test("POST /api/softmods rejects duplicate content hash with 409", async () => {
+    const fileBytes = await fixtureBytes("softmods", "testmod.zipmod");
+
+    const form1 = new FormData();
+    form1.append(
+      "file",
+      new File([fileBytes], "testmod.zipmod", { type: "application/zip" }),
+    );
+    const res1 = await app.handle(
+      new Request("http://localhost/api/softmods", {
+        method: "POST",
+        headers: { cookie: authorCookie },
+        body: form1,
+      }),
+    );
+    expect(res1.status).toBe(201);
+    const created = (await res1.json()) as { id: string };
+
+    const form2 = new FormData();
+    form2.append(
+      "file",
+      new File([fileBytes], "testmod.zipmod", { type: "application/zip" }),
+    );
+    const res2 = await app.handle(
+      new Request("http://localhost/api/softmods", {
+        method: "POST",
+        headers: { cookie: otherCookie },
+        body: form2,
+      }),
+    );
+    expect(res2.status).toBe(409);
+    const conflictBody = (await res2.json()) as {
+      softmodId: string;
+      version: number;
+      code: string;
+    };
+    expect(conflictBody.code).toBe("CONFLICT");
+    expect(conflictBody.softmodId).toBe(created.id);
+    expect(conflictBody.version).toBe(1);
+  });
+
   test("POST /api/softmods requires auth (401)", async () => {
     const fileBytes = await fixtureBytes("softmods", "testmod.zipmod");
     const form = new FormData();
@@ -357,6 +398,96 @@ describe("Softmod HTTP routes", () => {
     for (const v of detail.versions) {
       expect(v.originalPath).toBeUndefined();
     }
+  });
+
+  test("POST /api/softmods/:id/versions enforces auth and author-only (401/403/200)", async () => {
+    const v1Bytes = await fixtureBytes("softmods", "testmod.zipmod");
+    const createForm = new FormData();
+    createForm.append(
+      "file",
+      new File([v1Bytes], "testmod.zipmod", { type: "application/zip" }),
+    );
+
+    const createRes = await app.handle(
+      new Request("http://localhost/api/softmods", {
+        method: "POST",
+        headers: { cookie: authorCookie },
+        body: createForm,
+      }),
+    );
+    expect(createRes.status).toBe(201);
+    const created = (await createRes.json()) as { id: string };
+
+    const v2Bytes = zipmodWithGuid(created.id, "2.0.0", "v2-payload-extra");
+
+    const unauthVerForm = new FormData();
+    unauthVerForm.append(
+      "file",
+      new File([v2Bytes], "v2.zipmod", { type: "application/zip" }),
+    );
+    const unauthVerRes = await app.handle(
+      new Request(`http://localhost/api/softmods/${created.id}/versions`, {
+        method: "POST",
+        body: unauthVerForm,
+      }),
+    );
+    expect(unauthVerRes.status).toBe(401);
+
+    const forbidVerForm = new FormData();
+    forbidVerForm.append(
+      "file",
+      new File([v2Bytes], "v2.zipmod", { type: "application/zip" }),
+    );
+    const forbidVerRes = await app.handle(
+      new Request(`http://localhost/api/softmods/${created.id}/versions`, {
+        method: "POST",
+        headers: { cookie: otherCookie },
+        body: forbidVerForm,
+      }),
+    );
+    expect(forbidVerRes.status).toBe(403);
+
+    const verForm = new FormData();
+    verForm.append(
+      "file",
+      new File([v2Bytes], "v2.zipmod", { type: "application/zip" }),
+    );
+    verForm.append("notes", "Second release");
+    const verRes = await app.handle(
+      new Request(`http://localhost/api/softmods/${created.id}/versions`, {
+        method: "POST",
+        headers: { cookie: authorCookie },
+        body: verForm,
+      }),
+    );
+    expect(verRes.status).toBe(200);
+    const updated = (await verRes.json()) as {
+      latestVersion: number;
+      versions: { version: number; notes?: string }[];
+    };
+    expect(updated.latestVersion).toBe(2);
+    expect(updated.versions).toHaveLength(2);
+    expect(updated.versions[1]!.notes).toBe("Second release");
+
+    const dupVerForm = new FormData();
+    dupVerForm.append(
+      "file",
+      new File([v1Bytes], "testmod.zipmod", { type: "application/zip" }),
+    );
+    const dupVerRes = await app.handle(
+      new Request(`http://localhost/api/softmods/${created.id}/versions`, {
+        method: "POST",
+        headers: { cookie: authorCookie },
+        body: dupVerForm,
+      }),
+    );
+    expect(dupVerRes.status).toBe(409);
+    const dupBody = (await dupVerRes.json()) as {
+      softmodId: string;
+      version: number;
+    };
+    expect(dupBody.softmodId).toBe(created.id);
+    expect(dupBody.version).toBe(1);
   });
 
   test("PUT /api/softmods/:id/vote requires auth and updates counts", async () => {
