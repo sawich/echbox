@@ -1,20 +1,16 @@
 @layer base {
-  html {
-    color-scheme: dark;
-  }
-
   body {
     min-height: 100dvh;
     background-color: var(--ed-surface);
     color: var(--ed-on-surface);
     font-family: var(--font-sans);
-    font-feature-settings: "ss01" 1;
+    font-feature-settings: "ss01" 1, "cv11" 1;
     -webkit-font-smoothing: antialiased;
     text-rendering: optimizeLegibility;
   }
 
   ::selection {
-    background: color-mix(in oklab, var(--ed-primary) 40%, transparent);
+    background: color-mix(in oklab, var(--ed-primary) 30%, transparent);
     color: var(--ed-on-surface);
   }
 
@@ -33,67 +29,116 @@
   h3,
   .font-display {
     font-family: var(--font-display);
-    letter-spacing: -0.01em;
+    letter-spacing: -0.025em;
+    text-wrap: balance;
   }
 
   .ed-display-lg {
     font-family: var(--font-display);
-    font-size: 3.25rem;
-    line-height: 1.05;
-    font-weight: 400;
-    letter-spacing: -0.02em;
+    font-size: clamp(2.5rem, 5vw + 1rem, 4rem);
+    line-height: 1;
+    font-weight: 600;
+    letter-spacing: -0.04em;
   }
 
   .ed-headline-md {
     font-family: var(--font-display);
-    font-size: 1.75rem;
-    line-height: 1.2;
-    font-weight: 400;
-    letter-spacing: -0.01em;
+    font-size: clamp(1.875rem, 2vw + 1.25rem, 2.5rem);
+    line-height: 1.1;
+    font-weight: 600;
+    letter-spacing: -0.03em;
   }
 
   .ed-title-md {
     font-size: 0.9375rem;
     line-height: 1.4;
     font-weight: 600;
-    letter-spacing: 0.01em;
+    letter-spacing: -0.01em;
   }
 
   .ed-body-md {
     font-size: 0.875rem;
-    line-height: 1.45;
+    line-height: 1.55;
     font-weight: 400;
-    letter-spacing: 0.01em;
   }
 
   .ed-label-md {
+    font-size: 0.8125rem;
+    line-height: 1.35;
+    font-weight: 500;
+  }
+
+  .ed-eyebrow {
+    font-family: var(--font-mono);
     font-size: 0.6875rem;
     line-height: 1.35;
-    font-weight: 600;
-    letter-spacing: 0.06em;
+    font-weight: 500;
+    letter-spacing: 0.08em;
     text-transform: uppercase;
   }
 
-  /* Soft ink wash — edge-to-edge, no neon orbs */
+  .ed-text-gradient {
+    background: linear-gradient(110deg, var(--ed-primary) 10%, var(--ed-secondary) 90%);
+    -webkit-background-clip: text;
+    background-clip: text;
+    color: transparent;
+  }
+
+  /* Ambient glow + fading dot grid behind the page */
   .ed-atmosphere {
     position: relative;
     isolation: isolate;
-    background:
-      radial-gradient(100% 70% at 0% 0%, color-mix(in oklab, var(--ed-primary) 8%, transparent), transparent 50%),
-      radial-gradient(80% 60% at 100% 10%, color-mix(in oklab, var(--ed-secondary) 6%, transparent), transparent 45%),
-      var(--ed-surface);
+    background-color: var(--ed-surface);
   }
 
   .ed-atmosphere::before {
     content: "";
     pointer-events: none;
     position: absolute;
-    inset: 0;
+    inset: 0 0 auto;
+    height: 640px;
     z-index: -1;
-    opacity: 0.22;
-    background-image: url("data:image/svg+xml,%3Csvg viewBox='0 0 200 200' xmlns='http://www.w3.org/2000/svg'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.85' numOctaves='4' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23n)' opacity='0.55'/%3E%3C/svg%3E");
-    background-size: 180px 180px;
-    mix-blend-mode: soft-light;
+    background:
+      radial-gradient(60% 80% at 15% 0%, var(--ed-glow), transparent 70%),
+      radial-gradient(50% 70% at 85% 0%, var(--ed-glow-secondary), transparent 70%);
+  }
+
+  .ed-atmosphere::after {
+    content: "";
+    pointer-events: none;
+    position: absolute;
+    inset: 0 0 auto;
+    height: 560px;
+    z-index: -1;
+    background-image: radial-gradient(var(--ed-grid-dot) 1px, transparent 1px);
+    background-size: 22px 22px;
+    mask-image: linear-gradient(to bottom, black, transparent);
+  }
+
+  .ed-glass {
+    background-color: color-mix(in oklab, var(--ed-surface) 72%, transparent);
+    backdrop-filter: saturate(1.6) blur(16px);
+    -webkit-backdrop-filter: saturate(1.6) blur(16px);
+  }
+
+  .ed-card {
+    border-radius: var(--radius-xl);
+    background-color: var(--ed-surface-container);
+    box-shadow: var(--ed-shadow-card);
+    border: 1px solid var(--ed-outline-variant);
+  }
+
+  .ed-card-interactive {
+    transition:
+      transform 260ms var(--ed-ease-emphasized),
+      box-shadow 260ms var(--ed-ease-emphasized),
+      border-color 260ms var(--ed-ease-emphasized);
+  }
+
+  .ed-card-interactive:hover {
+    transform: translateY(-3px);
+    box-shadow: var(--ed-shadow-lift);
+    border-color: color-mix(in oklab, var(--ed-primary) 40%, var(--ed-outline-variant));
   }
 
   .ed-elev-0 {
@@ -119,7 +164,7 @@
   @keyframes ed-enter {
     from {
       opacity: 0;
-      transform: translateY(6px);
+      transform: translateY(8px);
     }
     to {
       opacity: 1;
@@ -128,8 +173,22 @@
   }
 
   .ed-page-enter {
-    animation: ed-enter 320ms var(--ed-ease-emphasized) both;
+    animation: ed-enter 420ms var(--ed-ease-emphasized) both;
   }
+
+  /* Stagger children of a grid as they mount */
+  .ed-stagger > * {
+    animation: ed-enter 480ms var(--ed-ease-emphasized) both;
+  }
+
+  .ed-stagger > *:nth-child(2) { animation-delay: 30ms; }
+  .ed-stagger > *:nth-child(3) { animation-delay: 60ms; }
+  .ed-stagger > *:nth-child(4) { animation-delay: 90ms; }
+  .ed-stagger > *:nth-child(5) { animation-delay: 120ms; }
+  .ed-stagger > *:nth-child(6) { animation-delay: 150ms; }
+  .ed-stagger > *:nth-child(7) { animation-delay: 180ms; }
+  .ed-stagger > *:nth-child(8) { animation-delay: 210ms; }
+  .ed-stagger > *:nth-child(n + 9) { animation-delay: 240ms; }
 
   @media (prefers-reduced-motion: reduce) {
     *,

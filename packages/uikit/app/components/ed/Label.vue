@@ -1,5 +1,5 @@
 <template>
-  <span class="ed-label-md text-[var(--ed-on-surface-variant)]">
+  <span class="ed-eyebrow text-[var(--ed-on-surface-variant)]">
     <slot />
   </span>
 </template>

@@ -30,6 +30,11 @@ export default defineNuxtConfig({
       // Tauri requires a consistent port
       strictPort: true,
     },
+    optimizeDeps: {
+      include: [
+        '@elysiajs/eden',
+      ]
+    }
   },
   // Avoids error [unhandledRejection] EMFILE: too many open files, watch
   ignore: ['**/src-tauri/**'],

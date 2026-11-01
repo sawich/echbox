@@ -1,5 +1,6 @@
 <script setup lang="ts">
 import type { PluginListItem, SoftmodListItem } from '@echbox/shared'
+import { type CatalogSort, filterCatalog } from '~/utils/catalog'
 
 const props = defineProps<{
   modKind: 'plugin' | 'softmod'
@@ -32,7 +33,18 @@ const { data, error, status, refresh } = await useAsyncData(
   { watch: [() => props.modKind] },
 )
 
-const items = computed(() => data.value ?? [])
+const items = computed<(PluginListItem | SoftmodListItem)[]>(() => data.value ?? [])
+
+const query = ref('')
+const sort = ref<CatalogSort>('recent')
+const visibleItems = computed(() =>
+  filterCatalog(items.value, query.value, sort.value, item => [
+    item.title,
+    item.description,
+    item.uploader.username,
+    'modAuthor' in item ? item.modAuthor : null,
+  ]),
+)
 
 const showUpload = ref(false)
 const uploadFile = ref<File | null>(null)
@@ -42,7 +54,6 @@ const uploadNotes = ref('')
 const uploadBusy = ref(false)
 const uploadError = ref<string | null>(null)
 const duplicateHit = ref<{ id: string, version?: number } | null>(null)
-const fileInputKey = ref(0)
 
 const uploadAccept = computed(() =>
   props.modKind === 'plugin' ? '.zip,application/zip' : '.zipmod',
@@ -72,7 +83,6 @@ function resetUploadForm() {
   uploadNotes.value = ''
   uploadError.value = null
   duplicateHit.value = null
-  fileInputKey.value += 1
 }
 
 watch(showUpload, (open) => {
@@ -87,10 +97,8 @@ async function computeSha256Hex(file: File): Promise<string> {
     .join('')
 }
 
-async function onFileSelected(event: Event) {
-  const input = event.target as HTMLInputElement
-  const file = input.files?.[0] ?? null
-  uploadFile.value = file
+async function onFileSelected(file: File | null | undefined) {
+  uploadFile.value = file ?? null
   uploadError.value = null
   duplicateHit.value = null
 
@@ -181,172 +189,173 @@ const canSubmitUpload = computed(() => {
 </script>
 
 <template>
-  <main class="mx-auto w-full max-w-6xl px-5 py-7 sm:px-6 sm:py-8">
-    <header class="mb-6 flex flex-wrap items-end justify-between gap-4">
-      <div class="space-y-1.5">
-        <EdLabel>Library</EdLabel>
-        <h1 class="font-[family-name:var(--font-display)] text-3xl tracking-tight text-[var(--ed-on-surface)] sm:text-4xl">
-          {{ title }}
-        </h1>
-        <p class="ed-body-md max-w-xl text-[var(--ed-on-surface-variant)]">
-          {{ description }}
-        </p>
-      </div>
-
-      <UModal
-        v-if="user"
-        v-model:open="showUpload"
-        :title="uploadModalTitle"
-        :description="uploadModalDescription"
-        :ui="{ content: 'sm:max-w-lg' }"
-      >
-        <UButton
-          icon="i-lucide-upload"
-          color="primary"
+  <main class="mx-auto w-full max-w-5xl space-y-8 px-4 py-8 sm:px-6 sm:py-12">
+    <PageHeader
+      eyebrow="Library"
+      :icon="modKind === 'plugin' ? 'i-lucide-puzzle' : 'i-lucide-package'"
+      :title="title"
+      :description="description"
+      :count="status === 'success' ? items.length : null"
+    >
+      <template #actions>
+        <UModal
+          v-if="user"
+          v-model:open="showUpload"
+          :title="uploadModalTitle"
+          :description="uploadModalDescription"
+          :ui="{ content: 'sm:max-w-lg' }"
         >
-          Upload
-        </UButton>
-
-        <template #body>
-          <form
-            :id="`${modKind}-upload-form`"
-            class="grid gap-4"
-            @submit.prevent="submitUpload"
+          <UButton
+            icon="i-lucide-plus"
+            color="primary"
+            size="lg"
           >
-            <div class="space-y-1.5">
-              <label class="ed-label-md block text-[var(--ed-on-surface-variant)]">
-                {{ modKind === 'plugin' ? 'Plugin ZIP file' : 'Softmod (.zipmod) file' }}
-              </label>
-              <input
-                :key="fileInputKey"
-                type="file"
+            {{ uploadModalTitle }}
+          </UButton>
+
+          <template #body>
+            <form
+              :id="`${modKind}-upload-form`"
+              class="grid gap-5"
+              @submit.prevent="submitUpload"
+            >
+              <UFileUpload
+                :model-value="uploadFile"
                 :accept="uploadAccept"
-                required
-                class="block w-full rounded-[var(--radius-md)] border border-[var(--ed-outline-variant)] bg-[var(--ed-surface-container)] px-3 py-2 text-sm text-[var(--ed-on-surface)] file:mr-3 file:rounded-[var(--radius-sm)] file:border-0 file:bg-[var(--ed-primary-container)] file:px-3 file:py-1 file:text-xs file:font-medium file:text-[var(--ed-on-primary-container)]"
-                @change="onFileSelected"
-              >
-            </div>
-
-            <template v-if="modKind === 'plugin'">
-              <div class="space-y-1.5">
-                <label class="ed-label-md block text-[var(--ed-on-surface-variant)]">
-                  Title (required)
-                </label>
-                <UInput
-                  v-model="uploadTitle"
-                  placeholder="Plugin title"
-                  required
-                />
-              </div>
-              <div class="space-y-1.5">
-                <label class="ed-label-md block text-[var(--ed-on-surface-variant)]">
-                  Description (optional)
-                </label>
-                <UTextarea
-                  v-model="uploadDescription"
-                  placeholder="What does this plugin do?"
-                  :rows="3"
-                />
-              </div>
-            </template>
-
-            <div class="space-y-1.5">
-              <label class="ed-label-md block text-[var(--ed-on-surface-variant)]">
-                Release notes (optional)
-              </label>
-              <UInput
-                v-model="uploadNotes"
-                placeholder="Initial release notes"
+                icon="i-lucide-file-archive"
+                :label="modKind === 'plugin' ? 'Drop plugin ZIP here' : 'Drop .zipmod here'"
+                description="or click to browse"
+                layout="list"
+                class="min-h-40"
+                @update:model-value="onFileSelected"
               />
-            </div>
 
-            <div
-              v-if="duplicateHit"
-              class="rounded-[var(--radius-md)] border border-[var(--ed-secondary)] bg-[color-mix(in_oklab,var(--ed-secondary-container)_40%,transparent)] p-3 text-sm text-[var(--ed-on-secondary-container)]"
-            >
-              This file already exists as
-              <NuxtLink
-                :to="duplicateLinkTo"
-                class="font-semibold underline"
-                @click="showUpload = false"
+              <template v-if="modKind === 'plugin'">
+                <UFormField
+                  label="Title"
+                  required
+                >
+                  <UInput
+                    v-model="uploadTitle"
+                    placeholder="Plugin title"
+                    required
+                    class="w-full"
+                  />
+                </UFormField>
+                <UFormField
+                  label="Description"
+                  hint="Optional"
+                >
+                  <UTextarea
+                    v-model="uploadDescription"
+                    placeholder="What does this plugin do?"
+                    :rows="3"
+                    autoresize
+                    class="w-full"
+                  />
+                </UFormField>
+              </template>
+
+              <UFormField
+                label="Release notes"
+                hint="Optional"
               >
-                {{ modKind === 'plugin' ? 'plugin' : 'softmod' }} {{ duplicateHit.id }}<template v-if="duplicateHit.version"> (v{{ duplicateHit.version }})</template>
-              </NuxtLink>.
+                <UInput
+                  v-model="uploadNotes"
+                  placeholder="Initial release notes"
+                  class="w-full"
+                />
+              </UFormField>
+
+              <DuplicateNotice
+                v-if="duplicateHit"
+                :to="duplicateLinkTo"
+                :label="`${modKind} ${duplicateHit.id}${duplicateHit.version ? ` (v${duplicateHit.version})` : ''}`"
+                lead="This file already exists as"
+                @navigate="showUpload = false"
+              />
+
+              <UAlert
+                v-if="uploadError"
+                color="error"
+                variant="subtle"
+                icon="i-lucide-circle-alert"
+                :title="uploadError"
+              />
+            </form>
+          </template>
+
+          <template #footer="{ close }">
+            <div class="flex w-full justify-end gap-2">
+              <UButton
+                type="button"
+                variant="ghost"
+                color="neutral"
+                @click="close()"
+              >
+                Cancel
+              </UButton>
+              <UButton
+                type="submit"
+                :form="`${modKind}-upload-form`"
+                color="primary"
+                icon="i-lucide-check"
+                :loading="uploadBusy"
+                :disabled="!canSubmitUpload"
+              >
+                Publish
+              </UButton>
             </div>
+          </template>
+        </UModal>
+      </template>
+    </PageHeader>
 
-            <p
-              v-if="uploadError"
-              class="ed-body-md text-[var(--ed-error)]"
-            >
-              {{ uploadError }}
-            </p>
-          </form>
-        </template>
+    <CatalogToolbar
+      v-if="status === 'success' && items.length > 0"
+      v-model:query="query"
+      v-model:sort="sort"
+      :placeholder="`Search ${modKind === 'plugin' ? 'plugins' : 'softmods'} by name, author…`"
+    />
 
-        <template #footer="{ close }">
-          <div class="flex w-full justify-end gap-3">
-            <UButton
-              type="button"
-              variant="ghost"
-              color="neutral"
-              @click="close()"
-            >
-              Cancel
-            </UButton>
-            <UButton
-              type="submit"
-              :form="`${modKind}-upload-form`"
-              color="primary"
-              icon="i-lucide-check"
-              :loading="uploadBusy"
-              :disabled="!canSubmitUpload"
-            >
-              Publish
-            </UButton>
-          </div>
-        </template>
-      </UModal>
-    </header>
-
-    <div
+    <GallerySkeleton
       v-if="status === 'pending'"
-      class="ed-body-md text-[var(--ed-on-surface-variant)]"
-    >
-      Loading…
-    </div>
+      variant="row"
+      :count="5"
+    />
 
-    <EdSurface
+    <LoadError
       v-else-if="error"
-      :elev="2"
-      class="space-y-3 p-5"
-    >
-      <p class="ed-title-md text-[var(--ed-error)]">
-        Could not load catalog
-      </p>
-      <p class="ed-body-md text-[var(--ed-on-surface-variant)]">
-        {{ error.message || 'Is the backend running on the API URL?' }}
-      </p>
-      <UButton
-        size="sm"
-        @click="refresh()"
-      >
-        Retry
-      </UButton>
-    </EdSurface>
+      title="Could not load catalog"
+      :message="error.message"
+      @retry="refresh()"
+    />
 
-    <p
+    <UEmpty
       v-else-if="items.length === 0"
-      class="ed-body-md text-[var(--ed-on-surface-variant)]"
-    >
-      Nothing published yet.
-    </p>
+      :icon="modKind === 'plugin' ? 'i-lucide-puzzle' : 'i-lucide-package'"
+      title="Nothing published yet"
+      :description="user ? 'Be the first to share one.' : 'Sign in to share the first one.'"
+      variant="soft"
+      class="py-16"
+    />
+
+    <UEmpty
+      v-else-if="visibleItems.length === 0"
+      icon="i-lucide-search-x"
+      title="Nothing matches"
+      :description="`Nothing matches “${query}”.`"
+      variant="naked"
+      :actions="[{ label: 'Clear search', color: 'neutral', variant: 'outline', onClick: () => { query = '' } }]"
+      class="py-16"
+    />
 
     <div
       v-else
-      class="space-y-3"
+      class="ed-stagger space-y-3"
     >
       <ModRow
-        v-for="item in items"
+        v-for="item in visibleItems"
         :key="item.id"
         :mod-kind="modKind"
         :item="item"

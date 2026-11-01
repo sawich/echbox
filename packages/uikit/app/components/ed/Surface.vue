@@ -1,7 +1,7 @@
 <script setup lang="ts">
 withDefaults(
   defineProps<{
-    /** Editorial tonal elevation (dark: higher = lighter). */
+    /** Tonal elevation (higher = more contrast against the page). */
     elev?: 0 | 1 | 2 | 3 | 4
     as?: string
   }>(),
@@ -15,7 +15,7 @@ withDefaults(
 <template>
   <component
     :is="as"
-    class="rounded-[var(--radius-md)]"
+    class="rounded-[var(--radius-xl)] border border-[var(--ed-outline-variant)]"
     :class="`ed-elev-${elev}`"
   >
     <slot />

@@ -180,9 +180,8 @@ const uploadingVersion = ref(false)
 const versionError = ref<string | null>(null)
 const versionDuplicateHit = ref<UploadDuplicateHit | null>(null)
 
-function onVersionFileChange(event: Event) {
-  const input = event.target as HTMLInputElement
-  versionFile.value = input.files?.[0] ?? null
+function onVersionFileChange(file: File | null | undefined) {
+  versionFile.value = file ?? null
   versionError.value = null
   versionDuplicateHit.value = null
 }
@@ -231,7 +230,6 @@ async function submitNewVersion() {
   }
 }
 
-const confirmingDelete = ref(false)
 const deleting = ref(false)
 const deleteError = ref<string | null>(null)
 
@@ -262,304 +260,252 @@ async function handleDelete() {
 </script>
 
 <template>
-  <main class="mx-auto w-full max-w-5xl px-5 py-7 sm:px-6 sm:py-8">
-    <div class="mb-6">
-      <UButton
-        to="/plugins"
-        variant="ghost"
-        color="neutral"
-        size="sm"
-        icon="i-lucide-arrow-left"
-      >
-        Plugins
-      </UButton>
-    </div>
+  <main class="mx-auto w-full max-w-6xl px-4 py-6 sm:px-6 sm:py-10">
+    <UButton
+      to="/plugins"
+      variant="link"
+      color="neutral"
+      icon="i-lucide-arrow-left"
+      class="mb-6 px-0"
+    >
+      Plugins
+    </UButton>
 
-    <div
+    <DetailSkeleton
       v-if="status === 'pending'"
-      class="ed-body-md text-[var(--ed-on-surface-variant)]"
-    >
-      Loading plugin…
-    </div>
+      media="none"
+    />
 
-    <EdSurface
+    <LoadError
       v-else-if="error || !data"
-      :elev="2"
-      class="space-y-3 p-6"
-    >
-      <p class="ed-title-md text-[var(--ed-error)]">
-        Plugin unavailable
-      </p>
-      <p class="ed-body-md text-[var(--ed-on-surface-variant)]">
-        {{ error?.message || 'Not found' }}
-      </p>
-    </EdSurface>
+      title="Plugin unavailable"
+      :message="error?.message || 'Not found'"
+      @retry="refresh()"
+    />
 
     <div
       v-else
-      class="space-y-6"
+      class="space-y-8"
     >
-      <header class="space-y-3">
-        <div class="flex flex-wrap items-center gap-2">
-          <UBadge color="neutral">
-            plugin
-          </UBadge>
-          <UBadge
-            v-if="data.versionCount > 1"
-            color="primary"
-          >
-            {{ data.versionCount }} versions
-          </UBadge>
-          <UBadge
-            v-if="isAuthor"
-            color="secondary"
-            variant="soft"
-          >
-            Author
-          </UBadge>
+      <header class="flex flex-col gap-5 sm:flex-row sm:items-start">
+        <span class="grid size-16 shrink-0 place-items-center rounded-[var(--radius-xl)] bg-gradient-to-br from-[color-mix(in_oklab,var(--ed-secondary)_28%,transparent)] to-[color-mix(in_oklab,var(--ed-secondary)_6%,transparent)] text-secondary shadow-[var(--ed-shadow-card)]">
+          <UIcon
+            name="i-lucide-puzzle"
+            class="size-7"
+          />
+        </span>
+        <div class="min-w-0 flex-1 space-y-3">
+          <div class="flex flex-wrap items-center gap-2">
+            <UBadge
+              color="neutral"
+              variant="subtle"
+            >
+              Plugin
+            </UBadge>
+            <UBadge
+              v-if="data.versionCount > 1"
+              color="primary"
+              variant="subtle"
+              icon="i-lucide-history"
+            >
+              {{ data.versionCount }} versions
+            </UBadge>
+            <UBadge
+              v-if="isAuthor"
+              color="secondary"
+              variant="subtle"
+              icon="i-lucide-badge-check"
+            >
+              You're the uploader
+            </UBadge>
+          </div>
+          <h1 class="ed-headline-md text-highlighted">
+            {{ data.title }}
+          </h1>
+          <CopyId :value="data.id" />
         </div>
-        <h1 class="font-[family-name:var(--font-display)] text-3xl font-bold tracking-tight text-[var(--ed-on-surface)]">
-          {{ data.title }}
-        </h1>
-        <p class="ed-label-md text-[var(--ed-on-surface-variant)]">
-          {{ data.id }}
-        </p>
-        <p class="ed-label-md text-[var(--ed-on-surface-variant)]">
-          Uploader:
-          <NuxtLink
-            :to="`/u/${data.uploader.id}`"
-            class="text-[var(--ed-primary)] underline-offset-2 hover:underline"
-          >
-            {{ data.uploader.username }}
-          </NuxtLink>
-        </p>
-        <p
-          v-if="data.description"
-          class="ed-body-md text-[var(--ed-on-surface-variant)]"
-        >
-          {{ data.description }}
-        </p>
-        <UButton
-          :href="activeDownloadHref"
-          external
-          download
-          color="primary"
-          icon="i-lucide-download"
-        >
-          Download v{{ active?.version ?? data.latestVersion }}
-        </UButton>
       </header>
 
-      <section class="space-y-2">
-        <h2 class="ed-title-md text-[var(--ed-on-surface)]">
-          Rating
-        </h2>
-        <CardVoteControls
-          :likes="data.likes"
-          :dislikes="data.dislikes"
-          :my-vote="data.myVote"
-          :interactive="canVote"
-          :busy="voteBusy"
-          @vote="submitVote"
-        />
-        <p
-          v-if="!user"
-          class="ed-label-md text-[var(--ed-on-surface-variant)]"
-        >
-          <button
-            type="button"
-            class="text-[var(--ed-primary)] underline-offset-2 hover:underline"
-            @click="login"
+      <div class="grid gap-6 lg:grid-cols-[1fr_320px] lg:gap-8">
+        <div class="min-w-0 space-y-6">
+          <SectionCard
+            v-if="data.description"
+            title="About"
+            icon="i-lucide-align-left"
           >
-            Log in
-          </button>
-          to like or dislike.
-        </p>
-        <p
-          v-if="voteError"
-          class="ed-body-md text-[var(--ed-error)]"
-        >
-          {{ voteError }}
-        </p>
-      </section>
+            <p class="text-pretty whitespace-pre-line text-toned">
+              {{ data.description }}
+            </p>
+          </SectionCard>
 
-      <section class="space-y-3">
-        <h2 class="ed-title-md text-[var(--ed-on-surface)]">
-          Versions
-        </h2>
-        <div class="flex flex-wrap gap-2">
-          <UButton
-            v-for="ver in data.versions"
-            :key="ver.version"
-            size="sm"
-            :variant="selectedVersion === ver.version ? 'solid' : 'outline'"
-            @click="selectedVersion = ver.version"
+          <SectionCard
+            title="Versions"
+            icon="i-lucide-history"
+            :description="`${data.versionCount} published`"
           >
-            v{{ ver.version }}
-          </UButton>
+            <VersionList
+              v-model="selectedVersion"
+              :versions="data.versions"
+            />
+          </SectionCard>
+
+          <SectionCard
+            v-if="isAuthor"
+            eyebrow="Author controls"
+            title="Manage plugin"
+            icon="i-lucide-settings-2"
+          >
+            <div class="space-y-6">
+              <form
+                class="space-y-3"
+                @submit.prevent="saveMetadata"
+              >
+                <UFormField label="Title">
+                  <UInput
+                    v-model="editTitle"
+                    placeholder="Plugin title"
+                    class="w-full"
+                  />
+                </UFormField>
+                <UFormField
+                  label="Description"
+                  hint="Optional"
+                  :error="metaError ?? undefined"
+                  :help="metaSaved && !metaError ? 'Updated.' : undefined"
+                >
+                  <UTextarea
+                    v-model="editDescription"
+                    placeholder="What does this plugin do?"
+                    :rows="3"
+                    autoresize
+                    class="w-full"
+                  />
+                </UFormField>
+                <UButton
+                  type="submit"
+                  color="primary"
+                  :loading="savingMeta"
+                  :disabled="!editTitle.trim()"
+                >
+                  Save details
+                </UButton>
+              </form>
+
+              <USeparator />
+
+              <form
+                class="space-y-3"
+                @submit.prevent="submitNewVersion"
+              >
+                <UFormField :label="`Publish v${data.latestVersion + 1}`">
+                  <UFileUpload
+                    :model-value="versionFile"
+                    accept=".zip,application/zip"
+                    icon="i-lucide-file-archive"
+                    label="Drop the new ZIP here"
+                    description="or click to browse"
+                    layout="list"
+                    class="w-full"
+                    @update:model-value="onVersionFileChange"
+                  />
+                </UFormField>
+                <UInput
+                  v-model="versionNotes"
+                  placeholder="What changed? (optional)"
+                  class="w-full"
+                />
+                <DuplicateNotice
+                  v-if="versionDuplicateHit"
+                  :to="`/plugins/${versionDuplicateHit.id}`"
+                  :label="`plugin ${versionDuplicateHit.id}${versionDuplicateHit.version ? ` (v${versionDuplicateHit.version})` : ''}`"
+                  lead="This file already exists as"
+                />
+                <UAlert
+                  v-if="versionError"
+                  color="error"
+                  variant="subtle"
+                  icon="i-lucide-circle-alert"
+                  :title="versionError"
+                />
+                <UButton
+                  type="submit"
+                  color="primary"
+                  variant="soft"
+                  icon="i-lucide-upload"
+                  :loading="uploadingVersion"
+                  :disabled="!versionFile || uploadingVersion"
+                >
+                  Upload v{{ data.latestVersion + 1 }}
+                </UButton>
+              </form>
+
+              <DangerZone
+                subject="this plugin"
+                :busy="deleting"
+                :error="deleteError"
+                @confirm="handleDelete"
+              />
+            </div>
+          </SectionCard>
         </div>
-        <p
-          v-if="active?.notes"
-          class="ed-body-md text-[var(--ed-on-surface-variant)]"
-        >
-          {{ active.notes }}
-        </p>
-        <p class="ed-label-md text-[var(--ed-on-surface-variant)]">
-          {{ active?.createdAt }}
-        </p>
-      </section>
 
-      <EdSurface
-        v-if="isAuthor"
-        :elev="2"
-        class="space-y-6 p-5"
-      >
-        <div class="space-y-1">
-          <EdLabel>Author controls</EdLabel>
-          <h2 class="ed-title-md text-[var(--ed-on-surface)]">
-            Manage plugin
-          </h2>
-        </div>
-
-        <form
-          class="space-y-3"
-          @submit.prevent="saveMetadata"
-        >
-          <label class="ed-label-md block text-[var(--ed-on-surface-variant)]">
-            Title & description
-          </label>
-          <UInput
-            v-model="editTitle"
-            placeholder="Plugin title"
-          />
-          <UTextarea
-            v-model="editDescription"
-            placeholder="Description (optional)"
-            :rows="3"
-          />
-          <UButton
-            type="submit"
-            size="sm"
-            color="primary"
-            :loading="savingMeta"
-            :disabled="!editTitle.trim()"
-          >
-            Save metadata
-          </UButton>
-          <p
-            v-if="metaError"
-            class="ed-body-md text-[var(--ed-error)]"
-          >
-            {{ metaError }}
-          </p>
-          <p
-            v-else-if="metaSaved"
-            class="ed-label-md text-[var(--ed-secondary)]"
-          >
-            Updated.
-          </p>
-        </form>
-
-        <form
-          class="space-y-3 border-t border-[var(--ed-outline-variant)] pt-4"
-          @submit.prevent="submitNewVersion"
-        >
-          <label class="ed-label-md block text-[var(--ed-on-surface-variant)]">
-            Upload new version (ZIP)
-          </label>
-          <input
-            type="file"
-            accept=".zip,application/zip"
-            required
-            class="block w-full rounded-[var(--radius-md)] border border-[var(--ed-outline-variant)] bg-[var(--ed-surface-container)] px-3 py-2 text-sm text-[var(--ed-on-surface)] file:mr-3 file:rounded-[var(--radius-md)] file:border-0 file:bg-[var(--ed-primary-container)] file:px-3 file:py-1 file:text-xs file:font-medium file:text-[var(--ed-on-primary-container)]"
-            @change="onVersionFileChange"
-          >
-          <UInput
-            v-model="versionNotes"
-            placeholder="Version notes (optional)"
-          />
-          <div
-            v-if="versionDuplicateHit"
-            class="rounded-[var(--radius-md)] border border-[var(--ed-secondary)] bg-[color-mix(in_oklab,var(--ed-secondary-container)_40%,transparent)] p-3 text-sm text-[var(--ed-on-secondary-container)]"
-          >
-            This file already exists as
-            <NuxtLink
-              :to="`/plugins/${versionDuplicateHit.id}`"
-              class="font-semibold underline"
-            >
-              plugin {{ versionDuplicateHit.id }}<template v-if="versionDuplicateHit.version"> (v{{ versionDuplicateHit.version }})</template>
-            </NuxtLink>.
-          </div>
-          <p
-            v-if="versionError"
-            class="ed-body-md text-[var(--ed-error)]"
-          >
-            {{ versionError }}
-          </p>
-          <UButton
-            type="submit"
-            size="sm"
-            color="primary"
-            variant="soft"
-            icon="i-lucide-upload"
-            :loading="uploadingVersion"
-            :disabled="!versionFile || uploadingVersion"
-          >
-            Upload v{{ data.latestVersion + 1 }}
-          </UButton>
-        </form>
-
-        <div class="space-y-2 border-t border-[var(--ed-outline-variant)] pt-4">
-          <div
-            v-if="!confirmingDelete"
-            class="flex items-center justify-between gap-4"
-          >
-            <span class="ed-label-md text-[var(--ed-on-surface-variant)]">
-              Delete this plugin and all versions permanently
-            </span>
+        <aside class="space-y-4 self-start lg:sticky lg:top-24">
+          <div class="ed-card space-y-4 p-5">
             <UButton
-              size="sm"
-              color="error"
-              variant="ghost"
-              icon="i-lucide-trash-2"
-              @click="confirmingDelete = true"
+              :href="activeDownloadHref"
+              external
+              download
+              color="primary"
+              size="lg"
+              icon="i-lucide-download"
+              block
             >
-              Delete
+              Download v{{ active?.version ?? data.latestVersion }}
             </UButton>
+            <div class="space-y-2">
+              <CardVoteControls
+                :likes="data.likes"
+                :dislikes="data.dislikes"
+                :my-vote="data.myVote"
+                :interactive="canVote"
+                :busy="voteBusy"
+                size="sm"
+                @vote="submitVote"
+              />
+              <p
+                v-if="!user"
+                class="text-sm text-muted"
+              >
+                <button
+                  type="button"
+                  class="font-medium text-primary underline-offset-2 hover:underline"
+                  @click="login"
+                >
+                  Sign in
+                </button>
+                to like or dislike.
+              </p>
+              <p
+                v-if="voteError"
+                class="text-sm text-error"
+              >
+                {{ voteError }}
+              </p>
+            </div>
           </div>
-          <div
-            v-else
-            class="flex flex-wrap items-center gap-3"
-          >
-            <span class="ed-label-md text-[var(--ed-error)]">
-              Confirm permanent deletion?
-            </span>
-            <UButton
-              size="sm"
-              color="error"
-              variant="solid"
-              :loading="deleting"
-              @click="handleDelete"
-            >
-              Confirm delete
-            </UButton>
-            <UButton
-              size="sm"
-              color="neutral"
-              variant="ghost"
-              @click="confirmingDelete = false"
-            >
-              Cancel
-            </UButton>
+
+          <div class="ed-card space-y-3 p-5">
+            <p class="ed-eyebrow text-dimmed">
+              Uploaded by
+            </p>
+            <UUser
+              :to="`/u/${data.uploader.id}`"
+              :name="data.uploader.username"
+              :avatar="{ icon: 'i-lucide-user', alt: data.uploader.username }"
+            />
           </div>
-          <p
-            v-if="deleteError"
-            class="ed-body-md text-[var(--ed-error)]"
-          >
-            {{ deleteError }}
-          </p>
-        </div>
-      </EdSurface>
+        </aside>
+      </div>
     </div>
   </main>
 </template>

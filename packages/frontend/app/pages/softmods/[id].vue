@@ -141,9 +141,8 @@ const uploadingVersion = ref(false)
 const versionError = ref<string | null>(null)
 const versionDuplicateHit = ref<UploadDuplicateHit | null>(null)
 
-function onVersionFileChange(event: Event) {
-  const input = event.target as HTMLInputElement
-  versionFile.value = input.files?.[0] ?? null
+function onVersionFileChange(file: File | null | undefined) {
+  versionFile.value = file ?? null
   versionError.value = null
   versionDuplicateHit.value = null
 }
@@ -192,7 +191,6 @@ async function submitNewVersion() {
   }
 }
 
-const confirmingDelete = ref(false)
 const deleting = ref(false)
 const deleteError = ref<string | null>(null)
 
@@ -223,293 +221,249 @@ async function handleDelete() {
 </script>
 
 <template>
-  <main class="mx-auto w-full max-w-5xl px-5 py-7 sm:px-6 sm:py-8">
-    <div class="mb-6">
-      <UButton
-        to="/softmods"
-        variant="ghost"
-        color="neutral"
-        size="sm"
-        icon="i-lucide-arrow-left"
-      >
-        Softmods
-      </UButton>
-    </div>
+  <main class="mx-auto w-full max-w-6xl px-4 py-6 sm:px-6 sm:py-10">
+    <UButton
+      to="/softmods"
+      variant="link"
+      color="neutral"
+      icon="i-lucide-arrow-left"
+      class="mb-6 px-0"
+    >
+      Softmods
+    </UButton>
 
-    <div
+    <DetailSkeleton
       v-if="status === 'pending'"
-      class="ed-body-md text-[var(--ed-on-surface-variant)]"
-    >
-      Loading softmod…
-    </div>
+      media="none"
+    />
 
-    <EdSurface
+    <LoadError
       v-else-if="error || !data"
-      :elev="2"
-      class="space-y-3 p-6"
-    >
-      <p class="ed-title-md text-[var(--ed-error)]">
-        Softmod unavailable
-      </p>
-      <p class="ed-body-md text-[var(--ed-on-surface-variant)]">
-        {{ error?.message || 'Not found' }}
-      </p>
-    </EdSurface>
+      title="Softmod unavailable"
+      :message="error?.message || 'Not found'"
+      @retry="refresh()"
+    />
 
     <div
       v-else
-      class="space-y-6"
+      class="space-y-8"
     >
-      <header class="space-y-3">
-        <div class="flex flex-wrap items-center gap-2">
-          <UBadge color="neutral">
-            softmod
-          </UBadge>
-          <UBadge
-            v-if="active?.packageVersion"
-            color="neutral"
-            variant="subtle"
-          >
-            pkg {{ active.packageVersion }}
-          </UBadge>
-          <UBadge
-            v-if="data.versionCount > 1"
-            color="primary"
-          >
-            {{ data.versionCount }} versions
-          </UBadge>
-          <UBadge
-            v-if="isAuthor"
-            color="secondary"
-            variant="soft"
-          >
-            Author
-          </UBadge>
-        </div>
-        <h1 class="font-[family-name:var(--font-display)] text-3xl font-bold tracking-tight text-[var(--ed-on-surface)]">
-          {{ data.title }}
-        </h1>
-        <p class="ed-label-md text-[var(--ed-on-surface-variant)]">
-          {{ data.id }}
-        </p>
-        <div class="flex flex-wrap gap-x-4 gap-y-1 ed-label-md text-[var(--ed-on-surface-variant)]">
-          <span>
-            Uploader:
-            <NuxtLink
-              :to="`/u/${data.uploader.id}`"
-              class="text-[var(--ed-primary)] underline-offset-2 hover:underline"
+      <header class="flex flex-col gap-5 sm:flex-row sm:items-start">
+        <span class="grid size-16 shrink-0 place-items-center rounded-[var(--radius-xl)] bg-gradient-to-br from-[color-mix(in_oklab,var(--ed-primary)_28%,transparent)] to-[color-mix(in_oklab,var(--ed-primary)_6%,transparent)] text-primary shadow-[var(--ed-shadow-card)]">
+          <UIcon
+            name="i-lucide-package"
+            class="size-7"
+          />
+        </span>
+        <div class="min-w-0 flex-1 space-y-3">
+          <div class="flex flex-wrap items-center gap-2">
+            <UBadge
+              color="neutral"
+              variant="subtle"
             >
-              {{ data.uploader.username }}
-            </NuxtLink>
-          </span>
-          <span v-if="data.modAuthor">
-            Author: {{ data.modAuthor }}
-          </span>
+              Softmod
+            </UBadge>
+            <UBadge
+              v-if="active?.packageVersion"
+              color="neutral"
+              variant="outline"
+              class="font-mono"
+            >
+              pkg {{ active.packageVersion }}
+            </UBadge>
+            <UBadge
+              v-if="data.versionCount > 1"
+              color="primary"
+              variant="subtle"
+              icon="i-lucide-history"
+            >
+              {{ data.versionCount }} versions
+            </UBadge>
+            <UBadge
+              v-if="isAuthor"
+              color="secondary"
+              variant="subtle"
+              icon="i-lucide-badge-check"
+            >
+              You're the uploader
+            </UBadge>
+          </div>
+          <h1 class="ed-headline-md text-highlighted">
+            {{ data.title }}
+          </h1>
+          <CopyId :value="data.id" />
         </div>
-        <p
-          v-if="data.description"
-          class="ed-body-md text-[var(--ed-on-surface-variant)]"
-        >
-          {{ data.description }}
-        </p>
-        <p
-          v-if="data.website"
-          class="ed-label-md"
-        >
-          <a
-            :href="data.website"
-            target="_blank"
-            rel="noopener noreferrer"
-            class="text-[var(--ed-primary)] underline-offset-2 hover:underline"
-          >
-            Website
-          </a>
-        </p>
-        <UButton
-          :href="activeDownloadHref"
-          external
-          download
-          color="primary"
-          icon="i-lucide-download"
-        >
-          Download v{{ active?.version ?? data.latestVersion }}
-        </UButton>
       </header>
 
-      <section class="space-y-2">
-        <h2 class="ed-title-md text-[var(--ed-on-surface)]">
-          Rating
-        </h2>
-        <CardVoteControls
-          :likes="data.likes"
-          :dislikes="data.dislikes"
-          :my-vote="data.myVote"
-          :interactive="canVote"
-          :busy="voteBusy"
-          @vote="submitVote"
-        />
-        <p
-          v-if="!user"
-          class="ed-label-md text-[var(--ed-on-surface-variant)]"
-        >
-          <button
-            type="button"
-            class="text-[var(--ed-primary)] underline-offset-2 hover:underline"
-            @click="login"
+      <div class="grid gap-6 lg:grid-cols-[1fr_320px] lg:gap-8">
+        <div class="min-w-0 space-y-6">
+          <SectionCard
+            v-if="data.description"
+            title="About"
+            icon="i-lucide-align-left"
           >
-            Log in
-          </button>
-          to like or dislike.
-        </p>
-        <p
-          v-if="voteError"
-          class="ed-body-md text-[var(--ed-error)]"
-        >
-          {{ voteError }}
-        </p>
-      </section>
+            <p class="text-pretty whitespace-pre-line text-toned">
+              {{ data.description }}
+            </p>
+          </SectionCard>
 
-      <section class="space-y-3">
-        <h2 class="ed-title-md text-[var(--ed-on-surface)]">
-          Versions
-        </h2>
-        <div class="flex flex-wrap gap-2">
-          <UButton
-            v-for="ver in data.versions"
-            :key="ver.version"
-            size="sm"
-            :variant="selectedVersion === ver.version ? 'solid' : 'outline'"
-            @click="selectedVersion = ver.version"
+          <SectionCard
+            title="Versions"
+            icon="i-lucide-history"
+            :description="`${data.versionCount} published`"
           >
-            v{{ ver.version }}
-          </UButton>
+            <VersionList
+              v-model="selectedVersion"
+              :versions="data.versions"
+            />
+          </SectionCard>
+
+          <SectionCard
+            v-if="isAuthor"
+            eyebrow="Author controls"
+            title="Manage softmod"
+            description="Title and manifest metadata come from the package. Upload a new .zipmod to publish another version."
+            icon="i-lucide-settings-2"
+          >
+            <div class="space-y-6">
+              <form
+                class="space-y-3"
+                @submit.prevent="submitNewVersion"
+              >
+                <UFormField :label="`Publish v${data.latestVersion + 1}`">
+                  <UFileUpload
+                    :model-value="versionFile"
+                    accept=".zipmod"
+                    icon="i-lucide-file-archive"
+                    label="Drop the new .zipmod here"
+                    description="or click to browse"
+                    layout="list"
+                    class="w-full"
+                    @update:model-value="onVersionFileChange"
+                  />
+                </UFormField>
+                <UInput
+                  v-model="versionNotes"
+                  placeholder="What changed? (optional)"
+                  class="w-full"
+                />
+                <DuplicateNotice
+                  v-if="versionDuplicateHit"
+                  :to="`/softmods/${versionDuplicateHit.id}`"
+                  :label="`softmod ${versionDuplicateHit.id}${versionDuplicateHit.version ? ` (v${versionDuplicateHit.version})` : ''}`"
+                  lead="This file already exists as"
+                />
+                <UAlert
+                  v-if="versionError"
+                  color="error"
+                  variant="subtle"
+                  icon="i-lucide-circle-alert"
+                  :title="versionError"
+                />
+                <UButton
+                  type="submit"
+                  color="primary"
+                  variant="soft"
+                  icon="i-lucide-upload"
+                  :loading="uploadingVersion"
+                  :disabled="!versionFile || uploadingVersion"
+                >
+                  Upload v{{ data.latestVersion + 1 }}
+                </UButton>
+              </form>
+
+              <DangerZone
+                subject="this softmod"
+                :busy="deleting"
+                :error="deleteError"
+                @confirm="handleDelete"
+              />
+            </div>
+          </SectionCard>
         </div>
-        <p
-          v-if="active?.notes"
-          class="ed-body-md text-[var(--ed-on-surface-variant)]"
-        >
-          {{ active.notes }}
-        </p>
-        <p class="ed-label-md text-[var(--ed-on-surface-variant)]">
-          {{ active?.createdAt }}
-        </p>
-      </section>
 
-      <EdSurface
-        v-if="isAuthor"
-        :elev="2"
-        class="space-y-6 p-5"
-      >
-        <div class="space-y-1">
-          <EdLabel>Author controls</EdLabel>
-          <h2 class="ed-title-md text-[var(--ed-on-surface)]">
-            Manage softmod
-          </h2>
-          <p class="ed-body-md text-[var(--ed-on-surface-variant)]">
-            Title and manifest metadata come from the package. Upload a new .zipmod to publish another version.
-          </p>
-        </div>
-
-        <form
-          class="space-y-3"
-          @submit.prevent="submitNewVersion"
-        >
-          <label class="ed-label-md block text-[var(--ed-on-surface-variant)]">
-            Upload new version (.zipmod)
-          </label>
-          <input
-            type="file"
-            accept=".zipmod"
-            required
-            class="block w-full rounded-[var(--radius-md)] border border-[var(--ed-outline-variant)] bg-[var(--ed-surface-container)] px-3 py-2 text-sm text-[var(--ed-on-surface)] file:mr-3 file:rounded-[var(--radius-md)] file:border-0 file:bg-[var(--ed-primary-container)] file:px-3 file:py-1 file:text-xs file:font-medium file:text-[var(--ed-on-primary-container)]"
-            @change="onVersionFileChange"
-          >
-          <UInput
-            v-model="versionNotes"
-            placeholder="Version notes (optional)"
-          />
-          <div
-            v-if="versionDuplicateHit"
-            class="rounded-[var(--radius-md)] border border-[var(--ed-secondary)] bg-[color-mix(in_oklab,var(--ed-secondary-container)_40%,transparent)] p-3 text-sm text-[var(--ed-on-secondary-container)]"
-          >
-            This file already exists as
-            <NuxtLink
-              :to="`/softmods/${versionDuplicateHit.id}`"
-              class="font-semibold underline"
-            >
-              softmod {{ versionDuplicateHit.id }}<template v-if="versionDuplicateHit.version"> (v{{ versionDuplicateHit.version }})</template>
-            </NuxtLink>.
-          </div>
-          <p
-            v-if="versionError"
-            class="ed-body-md text-[var(--ed-error)]"
-          >
-            {{ versionError }}
-          </p>
-          <UButton
-            type="submit"
-            size="sm"
-            color="primary"
-            variant="soft"
-            icon="i-lucide-upload"
-            :loading="uploadingVersion"
-            :disabled="!versionFile || uploadingVersion"
-          >
-            Upload v{{ data.latestVersion + 1 }}
-          </UButton>
-        </form>
-
-        <div class="space-y-2 border-t border-[var(--ed-outline-variant)] pt-4">
-          <div
-            v-if="!confirmingDelete"
-            class="flex items-center justify-between gap-4"
-          >
-            <span class="ed-label-md text-[var(--ed-on-surface-variant)]">
-              Delete this softmod and all versions permanently
-            </span>
+        <aside class="space-y-4 self-start lg:sticky lg:top-24">
+          <div class="ed-card space-y-4 p-5">
             <UButton
-              size="sm"
-              color="error"
-              variant="ghost"
-              icon="i-lucide-trash-2"
-              @click="confirmingDelete = true"
+              :href="activeDownloadHref"
+              external
+              download
+              color="primary"
+              size="lg"
+              icon="i-lucide-download"
+              block
             >
-              Delete
+              Download v{{ active?.version ?? data.latestVersion }}
             </UButton>
+            <div class="space-y-2">
+              <CardVoteControls
+                :likes="data.likes"
+                :dislikes="data.dislikes"
+                :my-vote="data.myVote"
+                :interactive="canVote"
+                :busy="voteBusy"
+                size="sm"
+                @vote="submitVote"
+              />
+              <p
+                v-if="!user"
+                class="text-sm text-muted"
+              >
+                <button
+                  type="button"
+                  class="font-medium text-primary underline-offset-2 hover:underline"
+                  @click="login"
+                >
+                  Sign in
+                </button>
+                to like or dislike.
+              </p>
+              <p
+                v-if="voteError"
+                class="text-sm text-error"
+              >
+                {{ voteError }}
+              </p>
+            </div>
           </div>
+
+          <div class="ed-card space-y-3 p-5">
+            <p class="ed-eyebrow text-dimmed">
+              Uploaded by
+            </p>
+            <UUser
+              :to="`/u/${data.uploader.id}`"
+              :name="data.uploader.username"
+              :avatar="{ icon: 'i-lucide-user', alt: data.uploader.username }"
+            />
+          </div>
+
           <div
-            v-else
-            class="flex flex-wrap items-center gap-3"
+            v-if="data.modAuthor || data.website"
+            class="ed-card space-y-3 p-5 text-sm"
           >
-            <span class="ed-label-md text-[var(--ed-error)]">
-              Confirm permanent deletion?
-            </span>
-            <UButton
-              size="sm"
-              color="error"
-              variant="solid"
-              :loading="deleting"
-              @click="handleDelete"
+            <div
+              v-if="data.modAuthor"
+              class="flex items-center justify-between gap-3"
             >
-              Confirm delete
-            </UButton>
+              <span class="text-muted">Mod author</span>
+              <span class="truncate font-medium text-highlighted">{{ data.modAuthor }}</span>
+            </div>
             <UButton
-              size="sm"
+              v-if="data.website"
+              :href="data.website"
+              target="_blank"
+              rel="noopener noreferrer"
               color="neutral"
-              variant="ghost"
-              @click="confirmingDelete = false"
+              variant="outline"
+              icon="i-lucide-external-link"
+              block
             >
-              Cancel
+              Website
             </UButton>
           </div>
-          <p
-            v-if="deleteError"
-            class="ed-body-md text-[var(--ed-error)]"
-          >
-            {{ deleteError }}
-          </p>
-        </div>
-      </EdSurface>
+        </aside>
+      </div>
     </div>
   </main>
 </template>

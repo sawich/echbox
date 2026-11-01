@@ -1,5 +1,6 @@
 <script setup lang="ts">
 import type { SceneListItem } from '@echbox/shared'
+import { type CatalogSort, filterCatalog } from '~/utils/catalog'
 
 const api = useApi()
 const config = useRuntimeConfig()
@@ -20,6 +21,12 @@ const { data, error, status, refresh } = await useAsyncData(
 
 const scenes = computed(() => data.value ?? [])
 
+const query = ref('')
+const sort = ref<CatalogSort>('recent')
+const visibleScenes = computed(() =>
+  filterCatalog(scenes.value, query.value, sort.value, scene => [scene.title, scene.slug]),
+)
+
 const showUpload = ref(false)
 const uploadFile = ref<File | null>(null)
 const uploadTitle = ref('')
@@ -27,7 +34,6 @@ const uploadNotes = ref('')
 const uploadBusy = ref(false)
 const uploadError = ref<string | null>(null)
 const duplicateHit = ref<{ sceneId: string, version: number } | null>(null)
-const fileInputKey = ref(0)
 
 function resetUploadForm() {
   uploadFile.value = null
@@ -35,7 +41,6 @@ function resetUploadForm() {
   uploadNotes.value = ''
   uploadError.value = null
   duplicateHit.value = null
-  fileInputKey.value += 1
 }
 
 watch(showUpload, (open) => {
@@ -50,10 +55,8 @@ async function computeSha256Hex(file: File): Promise<string> {
     .join('')
 }
 
-async function onFileSelected(event: Event) {
-  const input = event.target as HTMLInputElement
-  const file = input.files?.[0] ?? null
-  uploadFile.value = file
+async function onFileSelected(file: File | null | undefined) {
+  uploadFile.value = file ?? null
   uploadError.value = null
   duplicateHit.value = null
 
@@ -120,159 +123,159 @@ async function submitUpload() {
 </script>
 
 <template>
-  <main class="mx-auto w-full max-w-6xl px-5 py-7 sm:px-6 sm:py-8">
-    <header class="mb-6 flex flex-wrap items-end justify-between gap-4">
-      <div class="space-y-1.5">
-        <EdLabel>Library</EdLabel>
-        <h1 class="font-[family-name:var(--font-display)] text-3xl tracking-tight text-[var(--ed-on-surface)] sm:text-4xl">
-          Scenes
-        </h1>
-        <p class="ed-body-md max-w-xl text-[var(--ed-on-surface-variant)]">
-          Studio scene cards (320×180). Open a scene to browse versions.
-        </p>
-      </div>
-
-      <UModal
-        v-if="user"
-        v-model:open="showUpload"
-        title="Upload scene"
-        description="Select a Koikatsu studio scene PNG to add to the library."
-        :ui="{ content: 'sm:max-w-lg' }"
-      >
-        <UButton
-          icon="i-lucide-upload"
-          color="primary"
+  <main class="mx-auto w-full max-w-7xl space-y-8 px-4 py-8 sm:px-6 sm:py-12">
+    <PageHeader
+      eyebrow="Library"
+      icon="i-lucide-clapperboard"
+      title="Scenes"
+      description="Studio scene cards (320×180). Open a scene to browse its versions."
+      :count="status === 'success' ? scenes.length : null"
+    >
+      <template #actions>
+        <UModal
+          v-if="user"
+          v-model:open="showUpload"
+          title="Upload scene"
+          description="Drop a Koikatsu studio scene PNG to add it to the library."
+          :ui="{ content: 'sm:max-w-lg' }"
         >
-          Upload scene
-        </UButton>
-
-        <template #body>
-          <form
-            id="scene-upload-form"
-            class="grid gap-4"
-            @submit.prevent="submitUpload"
+          <UButton
+            icon="i-lucide-plus"
+            color="primary"
+            size="lg"
           >
-            <div class="space-y-1.5">
-              <label class="ed-label-md block text-[var(--ed-on-surface-variant)]">
-                Scene PNG file
-              </label>
-              <input
-                :key="fileInputKey"
-                type="file"
+            Upload scene
+          </UButton>
+
+          <template #body>
+            <form
+              id="scene-upload-form"
+              class="grid gap-5"
+              @submit.prevent="submitUpload"
+            >
+              <UFileUpload
+                :model-value="uploadFile"
                 accept="image/png"
-                required
-                class="block w-full rounded-[var(--radius-md)] border border-[var(--ed-outline-variant)] bg-[var(--ed-surface-container)] px-3 py-2 text-sm text-[var(--ed-on-surface)] file:mr-3 file:rounded-[var(--radius-sm)] file:border-0 file:bg-[var(--ed-primary-container)] file:px-3 file:py-1 file:text-xs file:font-medium file:text-[var(--ed-on-primary-container)]"
-                @change="onFileSelected"
+                icon="i-lucide-image-up"
+                label="Drop scene PNG here"
+                description="or click to browse · PNG only"
+                layout="list"
+                class="min-h-40"
+                @update:model-value="onFileSelected"
+              />
+
+              <UFormField
+                label="Title"
+                hint="Optional"
+                help="Defaults to the scene name."
               >
-            </div>
+                <UInput
+                  v-model="uploadTitle"
+                  placeholder="Scene title"
+                  class="w-full"
+                />
+              </UFormField>
 
-            <div class="space-y-1.5">
-              <label class="ed-label-md block text-[var(--ed-on-surface-variant)]">
-                Title (optional, defaults to scene name)
-              </label>
-              <UInput
-                v-model="uploadTitle"
-                placeholder="Scene title"
-              />
-            </div>
+              <UFormField
+                label="Version notes"
+                hint="Optional"
+              >
+                <UInput
+                  v-model="uploadNotes"
+                  placeholder="Initial release notes"
+                  class="w-full"
+                />
+              </UFormField>
 
-            <div class="space-y-1.5">
-              <label class="ed-label-md block text-[var(--ed-on-surface-variant)]">
-                Version notes (optional)
-              </label>
-              <UInput
-                v-model="uploadNotes"
-                placeholder="Initial release notes"
-              />
-            </div>
-
-            <div
-              v-if="duplicateHit"
-              class="rounded-[var(--radius-md)] border border-[var(--ed-secondary)] bg-[color-mix(in_oklab,var(--ed-secondary-container)_40%,transparent)] p-3 text-sm text-[var(--ed-on-secondary-container)]"
-            >
-              This exact scene file already exists in
-              <NuxtLink
+              <DuplicateNotice
+                v-if="duplicateHit"
                 :to="`/scenes/${duplicateHit.sceneId}`"
-                class="font-semibold underline"
-                @click="showUpload = false"
+                :label="`scene ${duplicateHit.sceneId} (v${duplicateHit.version})`"
+                lead="This exact scene file already exists in"
+                @navigate="showUpload = false"
+              />
+
+              <UAlert
+                v-if="uploadError"
+                color="error"
+                variant="subtle"
+                icon="i-lucide-circle-alert"
+                :title="uploadError"
+              />
+            </form>
+          </template>
+
+          <template #footer="{ close }">
+            <div class="flex w-full justify-end gap-2">
+              <UButton
+                type="button"
+                variant="ghost"
+                color="neutral"
+                @click="close()"
               >
-                scene {{ duplicateHit.sceneId }} (v{{ duplicateHit.version }})
-              </NuxtLink>.
+                Cancel
+              </UButton>
+              <UButton
+                type="submit"
+                form="scene-upload-form"
+                color="primary"
+                icon="i-lucide-check"
+                :loading="uploadBusy"
+                :disabled="!uploadFile || uploadBusy || Boolean(duplicateHit)"
+              >
+                Publish scene
+              </UButton>
             </div>
+          </template>
+        </UModal>
+      </template>
+    </PageHeader>
 
-            <p
-              v-if="uploadError"
-              class="ed-body-md text-[var(--ed-error)]"
-            >
-              {{ uploadError }}
-            </p>
-          </form>
-        </template>
+    <CatalogToolbar
+      v-if="status === 'success' && scenes.length > 0"
+      v-model:query="query"
+      v-model:sort="sort"
+      placeholder="Search scenes…"
+    />
 
-        <template #footer="{ close }">
-          <div class="flex w-full justify-end gap-3">
-            <UButton
-              type="button"
-              variant="ghost"
-              color="neutral"
-              @click="close()"
-            >
-              Cancel
-            </UButton>
-            <UButton
-              type="submit"
-              form="scene-upload-form"
-              color="primary"
-              icon="i-lucide-check"
-              :loading="uploadBusy"
-              :disabled="!uploadFile || uploadBusy || Boolean(duplicateHit)"
-            >
-              Publish scene
-            </UButton>
-          </div>
-        </template>
-      </UModal>
-    </header>
-
-    <div
+    <GallerySkeleton
       v-if="status === 'pending'"
-      class="ed-body-md text-[var(--ed-on-surface-variant)]"
-    >
-      Loading scenes…
-    </div>
+      variant="landscape"
+      :count="6"
+    />
 
-    <EdSurface
+    <LoadError
       v-else-if="error"
-      :elev="2"
-      class="space-y-3 p-5"
-    >
-      <p class="ed-title-md text-[var(--ed-error)]">
-        Could not load gallery
-      </p>
-      <p class="ed-body-md text-[var(--ed-on-surface-variant)]">
-        {{ error.message || 'Is the backend running on the API URL?' }}
-      </p>
-      <UButton
-        size="sm"
-        @click="refresh()"
-      >
-        Retry
-      </UButton>
-    </EdSurface>
+      title="Could not load gallery"
+      :message="error.message"
+      @retry="refresh()"
+    />
 
-    <p
+    <UEmpty
       v-else-if="scenes.length === 0"
-      class="ed-body-md text-[var(--ed-on-surface-variant)]"
-    >
-      No scenes yet.
-    </p>
+      icon="i-lucide-clapperboard"
+      title="No scenes yet"
+      :description="user ? 'Be the first to share one.' : 'Sign in to share the first one.'"
+      variant="soft"
+      class="py-16"
+    />
+
+    <UEmpty
+      v-else-if="visibleScenes.length === 0"
+      icon="i-lucide-search-x"
+      title="Nothing matches"
+      :description="`No scenes match “${query}”.`"
+      variant="naked"
+      :actions="[{ label: 'Clear search', color: 'neutral', variant: 'outline', onClick: () => { query = '' } }]"
+      class="py-16"
+    />
 
     <div
       v-else
-      class="grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-3"
+      class="ed-stagger grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3"
     >
       <SceneTile
-        v-for="scene in scenes"
+        v-for="scene in visibleScenes"
         :key="scene.id"
         :scene="scene"
         :api-url="apiUrl"

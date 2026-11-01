@@ -1,13 +1,14 @@
 /*
-  Editorial · Dark Ink
-  Accent: muted vermillion on charcoal ink.
+  echbox · Graphite
+  Neutral graphite surfaces, ember (coral) accent, iris (violet) secondary.
+  Light values live on :root, dark values on .dark (set by @nuxtjs/color-mode).
 */
 
 @theme static {
   /* —— Type —— */
-  --font-sans: "Figtree", ui-sans-serif, system-ui, sans-serif;
-  --font-display: "Instrument Serif", ui-serif, Georgia, serif;
-  --font-mono: "IBM Plex Mono", ui-monospace, monospace;
+  --font-sans: "Geist", ui-sans-serif, system-ui, sans-serif;
+  --font-display: "Geist", ui-sans-serif, system-ui, sans-serif;
+  --font-mono: "Geist Mono", ui-monospace, monospace;
 
   /* Motion */
   --ease-out: cubic-bezier(0.05, 0.7, 0.1, 1);
@@ -15,109 +16,141 @@
   --ed-ease-emphasized: cubic-bezier(0.2, 0, 0, 1);
   --ease-in-out: cubic-bezier(0.37, 0, 0.63, 1);
 
-  /* Shape — modest editorial radii */
+  /* Shape — soft, generous radii */
   --radius-none: 0;
-  --radius-xs: 0.125rem;
-  --radius-sm: 0.25rem;
-  --radius-md: 0.375rem;
-  --radius-lg: 0.5rem;
-  --radius-xl: 0.625rem;
-  --radius-2xl: 0.75rem;
-  --radius-3xl: 1rem;
+  --radius-xs: 0.375rem;
+  --radius-sm: 0.5rem;
+  --radius-md: 0.625rem;
+  --radius-lg: 0.875rem;
+  --radius-xl: 1.125rem;
+  --radius-2xl: 1.375rem;
+  --radius-3xl: 1.75rem;
 
-  /* —— Primary · Vermillion —— */
-  --color-vermilion-50: #fdf3f1;
-  --color-vermilion-100: #fbe4df;
-  --color-vermilion-200: #f6c5bb;
-  --color-vermilion-300: #ee9a89;
-  --color-vermilion-400: #e25a45;
-  --color-vermilion-500: #c94430;
-  --color-vermilion-600: #a83424;
-  --color-vermilion-700: #8a2c20;
-  --color-vermilion-800: #72271e;
-  --color-vermilion-900: #61241d;
-  --color-vermilion-950: #34100c;
+  /* —— Primary · Ember —— */
+  --color-ember-50: #fff4f1;
+  --color-ember-100: #ffe6df;
+  --color-ember-200: #ffcabd;
+  --color-ember-300: #ffa18c;
+  --color-ember-400: #ff6f52;
+  --color-ember-500: #f8502f;
+  --color-ember-600: #e0381a;
+  --color-ember-700: #bc2b12;
+  --color-ember-800: #9b2714;
+  --color-ember-900: #802617;
+  --color-ember-950: #460f06;
 
-  /* —— Error · Oxblood (distinct from vermillion) —— */
-  --color-oxblood-50: #faf0f0;
-  --color-oxblood-100: #f5dede;
-  --color-oxblood-200: #e8b4b4;
-  --color-oxblood-300: #d47f7f;
-  --color-oxblood-400: #b84a4a;
-  --color-oxblood-500: #9a3030;
-  --color-oxblood-600: #7d2424;
-  --color-oxblood-700: #651f1f;
-  --color-oxblood-800: #541c1c;
-  --color-oxblood-900: #481a1a;
-  --color-oxblood-950: #280c0c;
+  /* —— Secondary · Iris —— */
+  --color-iris-50: #f4f3ff;
+  --color-iris-100: #ebe9fe;
+  --color-iris-200: #d9d6fe;
+  --color-iris-300: #bcb4fd;
+  --color-iris-400: #9b8afa;
+  --color-iris-500: #7f5ef5;
+  --color-iris-600: #6f3ceb;
+  --color-iris-700: #602ad7;
+  --color-iris-800: #5023b4;
+  --color-iris-900: #431f93;
+  --color-iris-950: #281164;
 
-  /* —— Secondary · Parchment (muted warm) —— */
-  --color-parchment-50: #f7f3ec;
-  --color-parchment-100: #ece4d6;
-  --color-parchment-200: #d9cbb3;
-  --color-parchment-300: #c2ad8c;
-  --color-parchment-400: #ae9470;
-  --color-parchment-500: #9a7f5a;
-  --color-parchment-600: #83684a;
-  --color-parchment-700: #6b5440;
-  --color-parchment-800: #5a4738;
-  --color-parchment-900: #4c3d32;
-  --color-parchment-950: #2a211a;
+  /* —— Success · Jade —— */
+  --color-jade-50: #effef7;
+  --color-jade-100: #d9fdec;
+  --color-jade-200: #b5f9da;
+  --color-jade-300: #7bf2be;
+  --color-jade-400: #3ae29b;
+  --color-jade-500: #11c97f;
+  --color-jade-600: #07a666;
+  --color-jade-700: #0a8254;
+  --color-jade-800: #0e6745;
+  --color-jade-900: #0e553b;
+  --color-jade-950: #01301f;
 
-  /* —— Neutral · Ink charcoal —— */
-  --color-ink-50: #f4f2ef;
-  --color-ink-100: #e5e1db;
-  --color-ink-200: #ccc5bb;
-  --color-ink-300: #a39e97;
-  --color-ink-400: #7a746c;
-  --color-ink-500: #5c574f;
-  --color-ink-600: #48433d;
-  --color-ink-700: #3a3631;
-  --color-ink-800: #2a2724;
-  --color-ink-900: #1a1816;
-  --color-ink-950: #0c0b0a;
+  /* —— Warning · Amber —— */
+  --color-amber-50: #fffbeb;
+  --color-amber-100: #fef3c7;
+  --color-amber-200: #fde68a;
+  --color-amber-300: #fcd34d;
+  --color-amber-400: #fbbf24;
+  --color-amber-500: #f59e0b;
+  --color-amber-600: #d97706;
+  --color-amber-700: #b45309;
+  --color-amber-800: #92400e;
+  --color-amber-900: #78350f;
+  --color-amber-950: #451a03;
+
+  /* —— Error · Crimson (distinct from ember) —— */
+  --color-crimson-50: #fff1f3;
+  --color-crimson-100: #ffe4e8;
+  --color-crimson-200: #fecdd6;
+  --color-crimson-300: #fda4b4;
+  --color-crimson-400: #fb7189;
+  --color-crimson-500: #f43f62;
+  --color-crimson-600: #e11d4b;
+  --color-crimson-700: #be123e;
+  --color-crimson-800: #9f123a;
+  --color-crimson-900: #881337;
+  --color-crimson-950: #4c0519;
+
+  /* —— Neutral · Graphite —— */
+  --color-graphite-50: #f7f7f8;
+  --color-graphite-100: #ededf0;
+  --color-graphite-200: #d9d9de;
+  --color-graphite-300: #b8b8c1;
+  --color-graphite-400: #8e8e9a;
+  --color-graphite-500: #6e6e7a;
+  --color-graphite-600: #555560;
+  --color-graphite-700: #3c3c45;
+  --color-graphite-800: #26262c;
+  --color-graphite-900: #17171b;
+  --color-graphite-950: #0b0b0d;
 }
 
 :root {
-  color-scheme: dark;
+  color-scheme: light;
 
-  --ed-primary: #e25a45;
-  --ed-on-primary: #1a0a08;
-  --ed-primary-container: #72271e;
-  --ed-on-primary-container: #fbe4df;
+  --ed-primary: #e0381a;
+  --ed-on-primary: #ffffff;
+  --ed-primary-container: #ffe6df;
+  --ed-on-primary-container: #802617;
 
-  --ed-secondary: #ae9470;
-  --ed-on-secondary: #1a1510;
-  --ed-secondary-container: #5a4738;
-  --ed-on-secondary-container: #ece4d6;
+  --ed-secondary: #6f3ceb;
+  --ed-on-secondary: #ffffff;
+  --ed-secondary-container: #ebe9fe;
+  --ed-on-secondary-container: #431f93;
 
-  --ed-tertiary: #c2ad8c;
-  --ed-on-tertiary: #1a1510;
-  --ed-tertiary-container: #4c3d32;
-  --ed-on-tertiary-container: #f7f3ec;
+  --ed-tertiary: #07a666;
+  --ed-on-tertiary: #ffffff;
+  --ed-tertiary-container: #d9fdec;
+  --ed-on-tertiary-container: #0e553b;
 
-  --ed-error: #b84a4a;
-  --ed-on-error: #1a0808;
-  --ed-error-container: #541c1c;
-  --ed-on-error-container: #f5dede;
+  --ed-error: #e11d4b;
+  --ed-on-error: #ffffff;
+  --ed-error-container: #ffe4e8;
+  --ed-on-error-container: #881337;
 
-  --ed-surface: #0c0b0a;
-  --ed-surface-dim: #0c0b0a;
-  --ed-surface-bright: #2a2724;
-  --ed-on-surface: #ece7e1;
-  --ed-on-surface-variant: #a39e97;
+  --ed-surface: #f7f7f8;
+  --ed-surface-dim: #ededf0;
+  --ed-surface-bright: #ffffff;
+  --ed-on-surface: #17171b;
+  --ed-on-surface-variant: #555560;
 
-  --ed-surface-container-lowest: #070605;
-  --ed-surface-container-low: #121110;
-  --ed-surface-container: #1a1816;
-  --ed-surface-container-high: #221f1c;
-  --ed-surface-container-highest: #2a2724;
+  --ed-surface-container-lowest: #ffffff;
+  --ed-surface-container-low: #ffffff;
+  --ed-surface-container: #ffffff;
+  --ed-surface-container-high: #f3f3f5;
+  --ed-surface-container-highest: #ededf0;
 
-  --ed-outline: #7a746c;
-  --ed-outline-variant: #2a2724;
-  --ed-inverse-surface: #ece7e1;
-  --ed-inverse-on-surface: #1a1816;
-  --ed-inverse-primary: #a83424;
+  --ed-outline: #b8b8c1;
+  --ed-outline-variant: #e4e4e9;
+  --ed-inverse-surface: #17171b;
+  --ed-inverse-on-surface: #f7f7f8;
+  --ed-inverse-primary: #ff6f52;
+
+  --ed-glow: color-mix(in oklab, var(--ed-primary) 10%, transparent);
+  --ed-glow-secondary: color-mix(in oklab, var(--ed-secondary) 8%, transparent);
+  --ed-grid-dot: color-mix(in oklab, var(--ed-on-surface) 9%, transparent);
+  --ed-shadow-card: 0 1px 2px rgb(23 23 27 / 0.04), 0 4px 16px -4px rgb(23 23 27 / 0.08);
+  --ed-shadow-lift: 0 2px 4px rgb(23 23 27 / 0.04), 0 18px 40px -12px rgb(23 23 27 / 0.22);
 
   --ed-state-hover: 0.08;
   --ed-state-focus: 0.12;
@@ -126,16 +159,16 @@
 
   /* Nuxt UI semantic surfaces */
   --ui-bg: var(--ed-surface);
-  --ui-bg-muted: var(--ed-surface-container-low);
+  --ui-bg-muted: var(--ed-surface-container-high);
   --ui-bg-elevated: var(--ed-surface-container);
-  --ui-bg-accented: var(--ed-surface-container-high);
+  --ui-bg-accented: var(--ed-surface-container-highest);
   --ui-bg-inverted: var(--ed-inverse-surface);
 
   --ui-text-dimmed: color-mix(in oklab, var(--ed-on-surface-variant) 70%, transparent);
   --ui-text-muted: var(--ed-on-surface-variant);
   --ui-text-toned: color-mix(in oklab, var(--ed-on-surface) 85%, var(--ed-on-surface-variant));
   --ui-text: var(--ed-on-surface);
-  --ui-text-highlighted: #f7f3ec;
+  --ui-text-highlighted: var(--ed-on-surface);
   --ui-text-inverted: var(--ed-inverse-on-surface);
 
   --ui-border: var(--ed-outline-variant);
@@ -143,5 +176,58 @@
   --ui-border-accented: var(--ed-outline);
   --ui-border-inverted: var(--ed-inverse-on-surface);
 
-  --ui-radius: var(--radius-md);
+  --ui-radius: var(--radius-sm);
+}
+
+.dark {
+  color-scheme: dark;
+
+  --ed-primary: #ff6f52;
+  --ed-on-primary: #1d0703;
+  --ed-primary-container: #4a160b;
+  --ed-on-primary-container: #ffe6df;
+
+  --ed-secondary: #9b8afa;
+  --ed-on-secondary: #120a33;
+  --ed-secondary-container: #2c1a6b;
+  --ed-on-secondary-container: #ebe9fe;
+
+  --ed-tertiary: #3ae29b;
+  --ed-on-tertiary: #01301f;
+  --ed-tertiary-container: #0e553b;
+  --ed-on-tertiary-container: #d9fdec;
+
+  --ed-error: #fb7189;
+  --ed-on-error: #2a020b;
+  --ed-error-container: #4c0519;
+  --ed-on-error-container: #ffe4e8;
+
+  --ed-surface: #0b0b0d;
+  --ed-surface-dim: #0b0b0d;
+  --ed-surface-bright: #26262c;
+  --ed-on-surface: #f2f2f4;
+  --ed-on-surface-variant: #9d9da8;
+
+  --ed-surface-container-lowest: #070708;
+  --ed-surface-container-low: #111114;
+  --ed-surface-container: #17171b;
+  --ed-surface-container-high: #1e1e23;
+  --ed-surface-container-highest: #26262c;
+
+  --ed-outline: #555560;
+  --ed-outline-variant: #24242a;
+  --ed-inverse-surface: #f2f2f4;
+  --ed-inverse-on-surface: #17171b;
+  --ed-inverse-primary: #e0381a;
+
+  --ed-glow: color-mix(in oklab, var(--ed-primary) 14%, transparent);
+  --ed-glow-secondary: color-mix(in oklab, var(--ed-secondary) 12%, transparent);
+  --ed-grid-dot: color-mix(in oklab, var(--ed-on-surface) 7%, transparent);
+  --ed-shadow-card: 0 1px 0 rgb(255 255 255 / 0.03) inset, 0 4px 16px -6px rgb(0 0 0 / 0.5);
+  --ed-shadow-lift: 0 1px 0 rgb(255 255 255 / 0.05) inset, 0 24px 48px -16px rgb(0 0 0 / 0.7);
+
+  --ui-bg-muted: var(--ed-surface-container-low);
+  --ui-bg-elevated: var(--ed-surface-container);
+  --ui-bg-accented: var(--ed-surface-container-high);
+  --ui-text-highlighted: #ffffff;
 }

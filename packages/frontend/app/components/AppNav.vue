@@ -1,4 +1,6 @@
 <script setup lang="ts">
+import type { DropdownMenuItem } from '#ui/types'
+
 const route = useRoute()
 const { user, initialized, refresh, login, logout } = useAuth()
 
@@ -8,99 +10,128 @@ onMounted(() => {
   }
 })
 
-const linkClass = (active: boolean) =>
-  [
-    'ed-label-md px-1 py-0.5 transition-colors',
-    active
-      ? 'text-[var(--ed-primary)]'
-      : 'text-[var(--ed-on-surface-variant)] hover:text-[var(--ed-on-surface)]',
+const links = [
+  { label: 'Characters', to: '/', icon: 'i-lucide-user-round', match: (p: string) => p === '/' || p.startsWith('/cards') },
+  { label: 'Scenes', to: '/scenes', icon: 'i-lucide-clapperboard', match: (p: string) => p.startsWith('/scenes') },
+  { label: 'Plugins', to: '/plugins', icon: 'i-lucide-puzzle', match: (p: string) => p.startsWith('/plugins') },
+  { label: 'Softmods', to: '/softmods', icon: 'i-lucide-package', match: (p: string) => p.startsWith('/softmods') },
+]
+
+const userMenu = computed<DropdownMenuItem[][]>(() => {
+  if (!user.value) return []
+  return [
+    [{ label: user.value.username, type: 'label', avatar: user.value.avatar ? { src: user.value.avatar } : undefined }],
+    [
+      { label: 'Profile', icon: 'i-lucide-user', to: `/u/${user.value.id}` },
+      { label: 'UI kit', icon: 'i-lucide-swatch-book', to: '/uikit' },
+    ],
+    [{ label: 'Log out', icon: 'i-lucide-log-out', color: 'error', onSelect: () => logout() }],
   ]
+})
 </script>
 
 <template>
-  <nav
-    class="sticky top-0 z-20 border-b border-[var(--ed-outline-variant)] bg-[color-mix(in_oklab,var(--ed-surface)_92%,transparent)] backdrop-blur-md transition-[border-color,background-color] duration-300 ease-[var(--ed-ease-emphasized)]"
-  >
-    <div class="mx-auto flex h-14 w-full max-w-6xl items-center justify-between gap-6 px-5 sm:px-6">
-      <div class="flex items-baseline gap-8">
-        <NuxtLink
-          to="/"
-          class="font-[family-name:var(--font-display)] text-2xl leading-none tracking-tight text-[var(--ed-on-surface)]"
-        >
-          echbox
-        </NuxtLink>
-        <div class="flex items-center gap-5">
-          <NuxtLink
-            to="/"
-            :class="linkClass(route.path === '/')"
-          >
-            Characters
-          </NuxtLink>
-          <NuxtLink
-            to="/scenes"
-            :class="linkClass(route.path.startsWith('/scenes'))"
-          >
-            Scenes
-          </NuxtLink>
-          <NuxtLink
-            to="/plugins"
-            :class="linkClass(route.path.startsWith('/plugins'))"
-          >
-            Plugins
-          </NuxtLink>
-          <NuxtLink
-            to="/softmods"
-            :class="linkClass(route.path.startsWith('/softmods'))"
-          >
-            Softmods
-          </NuxtLink>
-          <NuxtLink
-            to="/uikit"
-            :class="linkClass(route.path.startsWith('/uikit'))"
-          >
-            UI kit
-          </NuxtLink>
-        </div>
-      </div>
+  <header class="ed-glass sticky top-0 z-30 border-b border-[color-mix(in_oklab,var(--ed-outline-variant)_70%,transparent)]">
+    <div class="mx-auto flex h-16 w-full max-w-7xl items-center gap-4 px-4 sm:px-6">
+      <NuxtLink
+        to="/"
+        class="group flex shrink-0 items-center gap-2.5 rounded-full"
+        aria-label="echbox home"
+      >
+        <span class="grid size-8 place-items-center rounded-[var(--radius-sm)] bg-gradient-to-br from-[var(--ed-primary)] to-[var(--ed-secondary)] text-white shadow-[0_4px_14px_-4px_var(--ed-primary)] transition-transform duration-300 group-hover:rotate-[-6deg] group-hover:scale-105">
+          <UIcon
+            name="i-lucide-box"
+            class="size-4.5"
+          />
+        </span>
+        <span class="text-lg font-semibold tracking-tight text-highlighted">echbox</span>
+      </NuxtLink>
 
-      <div class="flex items-center gap-3">
-        <template v-if="user">
-          <NuxtLink
-            :to="`/u/${user.id}`"
-            class="flex items-center gap-2 px-1 py-1 transition-colors hover:text-[var(--ed-primary)] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--ed-primary)]"
-            :class="route.path === `/u/${user.id}` ? 'text-[var(--ed-primary)]' : 'text-[var(--ed-on-surface)]'"
-          >
-            <img
-              v-if="user.avatar"
-              :src="user.avatar"
-              :alt="user.username"
-              class="size-7 rounded-[var(--radius-sm)] object-cover ring-1 ring-[var(--ed-outline-variant)]"
-            >
-            <span class="ed-label-md">
-              {{ user.username }}
-            </span>
-          </NuxtLink>
+      <nav
+        class="hidden items-center gap-1 rounded-full border border-default bg-elevated/60 p-1 md:flex"
+        aria-label="Primary"
+      >
+        <NuxtLink
+          v-for="link in links"
+          :key="link.to"
+          :to="link.to"
+          class="relative flex items-center gap-1.5 rounded-full px-3.5 py-1.5 text-sm font-medium transition-colors"
+          :class="link.match(route.path)
+            ? 'bg-[var(--ed-surface-container-highest)] text-highlighted shadow-sm'
+            : 'text-muted hover:text-highlighted'"
+          :aria-current="link.match(route.path) ? 'page' : undefined"
+        >
+          <UIcon
+            :name="link.icon"
+            class="size-4"
+            :class="link.match(route.path) ? 'text-primary' : ''"
+          />
+          {{ link.label }}
+        </NuxtLink>
+      </nav>
+
+      <div class="ml-auto flex items-center gap-2">
+        <UColorModeButton
+          color="neutral"
+          variant="ghost"
+        />
+
+        <UDropdownMenu
+          v-if="user"
+          :items="userMenu"
+          :content="{ align: 'end' }"
+        >
           <UButton
-            variant="ghost"
             color="neutral"
-            size="sm"
-            icon="i-lucide-log-out"
-            @click="logout"
+            variant="ghost"
+            class="gap-2 p-1 pr-3"
+            :aria-label="`Account menu for ${user.username}`"
           >
-            Logout
+            <UAvatar
+              :src="user.avatar ?? undefined"
+              :alt="user.username"
+              size="sm"
+            />
+            <span class="hidden max-w-32 truncate text-sm sm:inline">{{ user.username }}</span>
+            <UIcon
+              name="i-lucide-chevron-down"
+              class="size-4 text-dimmed"
+            />
           </UButton>
-        </template>
+        </UDropdownMenu>
+
         <UButton
-          v-else
-          variant="solid"
+          v-else-if="initialized"
           color="primary"
-          size="sm"
           icon="i-lucide-log-in"
           @click="login"
         >
-          Login with Discord
+          <span class="hidden sm:inline">Sign in with Discord</span>
+          <span class="sm:hidden">Sign in</span>
         </UButton>
       </div>
     </div>
-  </nav>
+
+    <nav
+      class="flex gap-1 overflow-x-auto px-3 pb-2 [scrollbar-width:none] md:hidden"
+      aria-label="Primary"
+    >
+      <NuxtLink
+        v-for="link in links"
+        :key="link.to"
+        :to="link.to"
+        class="flex shrink-0 items-center gap-1.5 rounded-full px-3 py-1.5 text-sm font-medium transition-colors"
+        :class="link.match(route.path)
+          ? 'bg-[var(--ed-surface-container-highest)] text-highlighted'
+          : 'text-muted hover:text-highlighted'"
+        :aria-current="link.match(route.path) ? 'page' : undefined"
+      >
+        <UIcon
+          :name="link.icon"
+          class="size-4"
+        />
+        {{ link.label }}
+      </NuxtLink>
+    </nav>
+  </header>
 </template>

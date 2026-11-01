@@ -34,15 +34,24 @@ const description = computed(() => {
 </script>
 
 <template>
-  <EdSurface
-    :elev="1"
-    class="flex flex-col gap-3 p-4 ring-1 ring-[var(--ed-outline-variant)] transition-[ring-color] duration-200 hover:ring-[color-mix(in_oklab,var(--ed-primary)_35%,var(--ed-outline-variant))] sm:flex-row sm:items-center sm:justify-between"
-  >
+  <article class="ed-card ed-card-interactive group relative flex flex-col gap-4 p-4 sm:flex-row sm:items-center sm:p-5">
+    <span
+      class="grid size-12 shrink-0 place-items-center rounded-[var(--radius-lg)] bg-gradient-to-br"
+      :class="modKind === 'plugin'
+        ? 'from-[color-mix(in_oklab,var(--ed-secondary)_22%,transparent)] to-[color-mix(in_oklab,var(--ed-secondary)_6%,transparent)] text-secondary'
+        : 'from-[color-mix(in_oklab,var(--ed-primary)_22%,transparent)] to-[color-mix(in_oklab,var(--ed-primary)_6%,transparent)] text-primary'"
+    >
+      <UIcon
+        :name="modKind === 'plugin' ? 'i-lucide-puzzle' : 'i-lucide-package'"
+        class="size-5.5"
+      />
+    </span>
+
     <div class="min-w-0 flex-1 space-y-1.5">
       <div class="flex flex-wrap items-center gap-2">
         <NuxtLink
           :to="detailTo"
-          class="ed-title-md truncate text-[var(--ed-on-surface)] underline-offset-2 hover:text-[var(--ed-primary)] hover:underline focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--ed-primary)]"
+          class="truncate text-base font-semibold text-highlighted after:absolute after:inset-0 after:rounded-[var(--radius-xl)] after:content-[''] focus-visible:outline-none group-hover:text-primary"
         >
           {{ item.title }}
         </NuxtLink>
@@ -51,6 +60,7 @@ const description = computed(() => {
           color="primary"
           variant="subtle"
           size="sm"
+          class="font-mono"
         >
           v{{ item.latestVersion }}
         </UBadge>
@@ -59,70 +69,69 @@ const description = computed(() => {
           color="neutral"
           variant="subtle"
           size="sm"
+          class="font-mono"
         >
           pkg {{ packageVersion }}
         </UBadge>
       </div>
-      <p class="ed-label-md truncate text-[var(--ed-on-surface-variant)]">
-        {{ item.id }}
-      </p>
+
       <p
         v-if="description"
-        class="ed-body-md line-clamp-2 text-[var(--ed-on-surface-variant)]"
+        class="line-clamp-2 text-sm text-pretty text-muted"
       >
         {{ description }}
       </p>
-      <div class="flex flex-wrap gap-x-4 gap-y-1 ed-label-md text-[var(--ed-on-surface-variant)]">
-        <span>
-          Uploader:
-          <NuxtLink
-            :to="`/u/${item.uploader.id}`"
-            class="text-[var(--ed-primary)] underline-offset-2 hover:underline"
-          >
-            {{ item.uploader.username }}
-          </NuxtLink>
-        </span>
-        <span v-if="modAuthor">
-          Author: {{ modAuthor }}
-        </span>
-      </div>
-      <div class="flex items-center gap-3 ed-label-md text-[var(--ed-on-surface-variant)]">
-        <span class="inline-flex items-center gap-1">
+
+      <div class="flex flex-wrap items-center gap-x-4 gap-y-1 text-xs text-dimmed">
+        <NuxtLink
+          :to="`/u/${item.uploader.id}`"
+          class="relative z-10 inline-flex items-center gap-1 transition-colors hover:text-highlighted"
+        >
           <UIcon
-            name="i-lucide-thumbs-up"
+            name="i-lucide-upload"
             class="size-3.5"
           />
-          {{ item.likes }}
-        </span>
-        <span class="inline-flex items-center gap-1">
+          {{ item.uploader.username }}
+        </NuxtLink>
+        <span
+          v-if="modAuthor"
+          class="inline-flex items-center gap-1"
+        >
           <UIcon
-            name="i-lucide-thumbs-down"
+            name="i-lucide-pen-tool"
             class="size-3.5"
           />
-          {{ item.dislikes }}
+          {{ modAuthor }}
+        </span>
+        <span class="inline-flex items-center gap-2.5 tabular-nums">
+          <span class="inline-flex items-center gap-1">
+            <UIcon
+              name="i-lucide-thumbs-up"
+              class="size-3.5"
+            />
+            {{ item.likes }}
+          </span>
+          <span class="inline-flex items-center gap-1">
+            <UIcon
+              name="i-lucide-thumbs-down"
+              class="size-3.5"
+            />
+            {{ item.dislikes }}
+          </span>
         </span>
       </div>
     </div>
-    <div class="flex shrink-0 flex-wrap items-center gap-2">
-      <UButton
-        :to="detailTo"
-        variant="soft"
-        color="neutral"
-        size="sm"
-      >
-        Details
-      </UButton>
-      <UButton
-        :href="downloadHref"
-        external
-        download
-        variant="solid"
-        color="primary"
-        size="sm"
-        icon="i-lucide-download"
-      >
-        Download
-      </UButton>
-    </div>
-  </EdSurface>
+
+    <UButton
+      :href="downloadHref"
+      external
+      download
+      variant="soft"
+      color="neutral"
+      icon="i-lucide-download"
+      class="relative z-10 shrink-0 self-start sm:self-center"
+    >
+      Download
+    </UButton>
+  </article>
 </template>

@@ -1,37 +1,75 @@
 <script setup lang="ts">
+import type { CardVoteValue } from '@echbox/shared'
+
 const toast = useToast()
 
 function ping() {
   toast.add({
-    title: 'Ink mark',
-    description: 'Editorial state feedback',
+    title: 'Saved',
+    description: 'Toast feedback in the graphite theme',
     color: 'primary',
-    icon: 'i-lucide-pen-line',
+    icon: 'i-lucide-sparkles',
   })
 }
+
+const swatches = [
+  { name: 'Primary', token: '--ed-primary', label: 'Ember' },
+  { name: 'Secondary', token: '--ed-secondary', label: 'Iris' },
+  { name: 'Tertiary', token: '--ed-tertiary', label: 'Jade' },
+  { name: 'Error', token: '--ed-error', label: 'Crimson' },
+  { name: 'Surface', token: '--ed-surface-container', label: 'Graphite' },
+  { name: 'Outline', token: '--ed-outline', label: 'Graphite 400' },
+]
+
+const demoVote = ref<CardVoteValue | null>('like')
+const demoLikes = computed(() => 41 + (demoVote.value === 'like' ? 1 : 0))
+const demoDislikes = computed(() => 6 + (demoVote.value === 'dislike' ? 1 : 0))
+const demoVersion = ref<number | null>(2)
+const demoQuery = ref('')
+const demoSort = ref<'recent' | 'top' | 'title'>('recent')
 </script>
 
 <template>
-  <main class="mx-auto flex w-full max-w-3xl flex-col justify-center gap-8 px-5 py-8 sm:px-6">
-    <header class="space-y-2">
+  <main class="mx-auto w-full max-w-5xl space-y-10 px-4 py-8 sm:px-6 sm:py-12">
+    <header class="space-y-4">
       <EdLabel>echbox · uikit</EdLabel>
-      <h1 class="ed-display-lg text-[var(--ed-on-surface)]">
-        Ink catalog
-        <span class="text-[var(--ed-primary)]">tokens</span>
+      <h1 class="ed-display-lg text-highlighted">
+        Graphite <span class="ed-text-gradient">system</span>
       </h1>
-      <p class="ed-body-md max-w-md text-[var(--ed-on-surface-variant)]">
-        Dense editorial surfaces, vermillion accent, and caption typography
-        for a dark card library.
+      <p class="max-w-xl text-muted">
+        Neutral graphite surfaces, an ember accent and Geist type. Light and dark themes
+        follow the system preference and can be toggled from the header.
       </p>
     </header>
 
-    <EdSurface
-      :elev="2"
-      class="space-y-6 p-5 ring-1 ring-[var(--ed-outline-variant)] sm:p-6"
+    <section class="grid grid-cols-2 gap-3 sm:grid-cols-3 lg:grid-cols-6">
+      <div
+        v-for="swatch in swatches"
+        :key="swatch.token"
+        class="ed-card overflow-hidden"
+      >
+        <div
+          class="h-16 border-b border-default"
+          :style="{ background: `var(${swatch.token})` }"
+        />
+        <div class="space-y-0.5 p-3">
+          <p class="text-sm font-medium text-highlighted">
+            {{ swatch.label }}
+          </p>
+          <p class="font-mono text-[11px] text-dimmed">
+            {{ swatch.token }}
+          </p>
+        </div>
+      </div>
+    </section>
+
+    <SectionCard
+      title="Actions"
+      icon="i-lucide-mouse-pointer-click"
     >
       <div class="flex flex-wrap gap-3">
         <UButton
-          icon="i-lucide-pen-line"
+          icon="i-lucide-sparkles"
           @click="ping"
         >
           Primary
@@ -43,10 +81,17 @@ function ping() {
           Secondary
         </UButton>
         <UButton
-          color="tertiary"
+          color="primary"
           variant="outline"
         >
-          Tertiary
+          Outline
+        </UButton>
+        <UButton
+          color="neutral"
+          variant="soft"
+          icon="i-lucide-download"
+        >
+          Neutral
         </UButton>
         <UButton
           color="neutral"
@@ -54,49 +99,117 @@ function ping() {
         >
           Ghost
         </UButton>
+        <UButton
+          color="error"
+          variant="soft"
+          icon="i-lucide-trash-2"
+        >
+          Danger
+        </UButton>
       </div>
-
-      <div class="grid gap-3 sm:grid-cols-3">
-        <EdSurface
-          :elev="3"
-          class="p-4"
+      <div class="mt-4 flex flex-wrap gap-2">
+        <UBadge
+          color="neutral"
+          variant="subtle"
         >
-          <p class="ed-label-md mb-2 text-[var(--ed-primary)]">
-            Primary
-          </p>
-          <p class="ed-title-md text-[var(--ed-on-surface)]">
-            Vermillion
-          </p>
-        </EdSurface>
-        <EdSurface
-          :elev="3"
-          class="p-4"
+          character
+        </UBadge>
+        <UBadge
+          color="primary"
+          variant="subtle"
+          icon="i-lucide-history"
         >
-          <p class="ed-label-md mb-2 text-[var(--ed-secondary)]">
-            Secondary
-          </p>
-          <p class="ed-title-md text-[var(--ed-on-surface)]">
-            Parchment
-          </p>
-        </EdSurface>
-        <EdSurface
-          :elev="3"
-          class="p-4"
+          3 versions
+        </UBadge>
+        <UBadge
+          color="secondary"
+          variant="subtle"
+          icon="i-lucide-badge-check"
         >
-          <p class="ed-label-md mb-2 text-[var(--ed-on-surface-variant)]">
-            Neutral
-          </p>
-          <p class="ed-title-md text-[var(--ed-on-surface)]">
-            Charcoal ink
-          </p>
-        </EdSurface>
+          Author
+        </UBadge>
+        <UBadge color="primary">
+          v4
+        </UBadge>
       </div>
+    </SectionCard>
 
-      <UInput
-        placeholder="Editorial field"
-        icon="i-lucide-search"
-        size="lg"
+    <div class="grid gap-6 lg:grid-cols-2">
+      <SectionCard
+        title="Rating"
+        icon="i-lucide-thumbs-up"
+      >
+        <CardVoteControls
+          :likes="demoLikes"
+          :dislikes="demoDislikes"
+          :my-vote="demoVote"
+          interactive
+          @vote="demoVote = $event"
+        />
+      </SectionCard>
+
+      <SectionCard
+        title="Versions"
+        icon="i-lucide-history"
+      >
+        <VersionList
+          v-model="demoVersion"
+          :versions="[
+            { version: 1, createdAt: '2026-03-02T10:00:00.000Z', notes: 'Initial release' },
+            { version: 2, createdAt: '2026-09-14T18:30:00.000Z', notes: 'New outfit and hair' },
+          ]"
+        />
+      </SectionCard>
+    </div>
+
+    <SectionCard
+      title="Forms"
+      icon="i-lucide-text-cursor-input"
+    >
+      <div class="space-y-5">
+        <CatalogToolbar
+          v-model:query="demoQuery"
+          v-model:sort="demoSort"
+        />
+        <div class="grid gap-5 sm:grid-cols-2">
+          <UFormField
+            label="Title"
+            hint="Optional"
+          >
+            <UInput
+              placeholder="Character title"
+              class="w-full"
+            />
+          </UFormField>
+          <UFormField
+            label="With error"
+            error="That title is taken"
+          >
+            <UInput
+              model-value="Sakura"
+              class="w-full"
+            />
+          </UFormField>
+        </div>
+        <UFileUpload
+          accept="image/png"
+          icon="i-lucide-image-up"
+          label="Drop PNG here"
+          description="or click to browse"
+          layout="list"
+          class="min-h-32"
+        />
+      </div>
+    </SectionCard>
+
+    <div class="grid gap-6 lg:grid-cols-2">
+      <UEmpty
+        icon="i-lucide-images"
+        title="No cards yet"
+        description="Empty state for galleries."
+        variant="soft"
       />
-    </EdSurface>
+      <DangerZone subject="this demo item" />
+    </div>
   </main>
 </template>

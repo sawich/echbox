@@ -10,15 +10,14 @@ export default defineNuxtConfig({
   modules: ['@nuxt/ui'],
   css: [join(currentDir, './app/assets/css/main.css')],
   colorMode: {
-    preference: 'dark',
+    preference: 'system',
     fallback: 'dark',
     classSuffix: '',
   },
   fonts: {
     families: [
-      { name: 'Instrument Serif', provider: 'google', weights: [400] },
-      { name: 'Figtree', provider: 'google', weights: [400, 500, 600, 700] },
-      { name: 'IBM Plex Mono', provider: 'google', weights: [400, 500, 600] },
+      { name: 'Geist', provider: 'google', weights: [400, 500, 600, 700] },
+      { name: 'Geist Mono', provider: 'google', weights: [400, 500] },
     ],
   },
   ui: {
@@ -31,7 +30,6 @@ export default defineNuxtConfig({
         'success',
         'warning',
         'error',
-        'oxblood',
       ],
       defaultVariants: {
         color: 'primary',

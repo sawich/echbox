@@ -172,9 +172,8 @@ const versionNotes = ref('')
 const uploadingVersion = ref(false)
 const versionError = ref<string | null>(null)
 
-function onVersionFileChange(event: Event) {
-  const input = event.target as HTMLInputElement
-  versionFile.value = input.files?.[0] ?? null
+function onVersionFileChange(file: File | null | undefined) {
+  versionFile.value = file ?? null
   versionError.value = null
 }
 
@@ -218,7 +217,6 @@ async function submitNewVersion() {
 }
 
 // Author state: delete card
-const confirmingDelete = ref(false)
 const deletingCard = ref(false)
 const deleteError = ref<string | null>(null)
 
@@ -249,313 +247,238 @@ async function handleDeleteCard() {
 </script>
 
 <template>
-  <main class="mx-auto w-full max-w-5xl px-5 py-7 sm:px-6 sm:py-8">
-    <div class="mb-6">
-      <UButton
-        to="/"
-        variant="ghost"
-        color="neutral"
-        size="sm"
-        icon="i-lucide-arrow-left"
-      >
-        Gallery
-      </UButton>
-    </div>
+  <main class="mx-auto w-full max-w-6xl px-4 py-6 sm:px-6 sm:py-10">
+    <UButton
+      to="/"
+      variant="link"
+      color="neutral"
+      icon="i-lucide-arrow-left"
+      class="mb-6 px-0"
+    >
+      Characters
+    </UButton>
 
-    <div
+    <DetailSkeleton
       v-if="status === 'pending'"
-      class="ed-body-md text-[var(--ed-on-surface-variant)]"
-    >
-      Loading card…
-    </div>
+      :media="previewAspect === 'aspect-[320/180]' ? 'landscape' : 'portrait'"
+    />
 
-    <EdSurface
+    <LoadError
       v-else-if="error || !data"
-      :elev="2"
-      class="space-y-3 p-6"
-    >
-      <p class="ed-title-md text-[var(--ed-error)]">
-        Card unavailable
-      </p>
-      <p class="ed-body-md text-[var(--ed-on-surface-variant)]">
-        {{ error?.message || 'Not found' }}
-      </p>
-    </EdSurface>
+      title="Card unavailable"
+      :message="error?.message || 'Not found'"
+      @retry="refresh()"
+    />
 
     <div
       v-else
-      class="grid gap-6 lg:grid-cols-[minmax(0,280px)_1fr]"
+      class="grid gap-8 lg:gap-12"
+      :class="data.type === 'scene'
+        ? 'lg:grid-cols-[minmax(0,480px)_1fr]'
+        : 'lg:grid-cols-[minmax(0,320px)_1fr]'"
     >
-      <EdSurface
-        :elev="2"
-        class="overflow-hidden"
-      >
-        <img
-          :src="imageSrc"
-          :alt="data.title"
-          class="w-full object-cover"
-          :class="previewAspect"
-        >
-      </EdSurface>
+      <aside class="self-start lg:sticky lg:top-24">
+        <div class="relative">
+          <img
+            :src="imageSrc"
+            alt=""
+            aria-hidden="true"
+            class="absolute inset-0 size-full scale-95 rounded-[var(--radius-2xl)] object-cover opacity-60 blur-3xl saturate-150"
+          >
+          <div class="relative overflow-hidden rounded-[var(--radius-2xl)] border border-default bg-[var(--ed-surface-container-highest)] shadow-[var(--ed-shadow-lift)]">
+            <img
+              :key="imageSrc"
+              :src="imageSrc"
+              :alt="data.title"
+              class="ed-page-enter w-full object-cover"
+              :class="previewAspect"
+            >
+          </div>
+        </div>
+      </aside>
 
-      <div class="space-y-6">
-        <header class="space-y-2">
+      <div class="min-w-0 space-y-6">
+        <header class="space-y-4">
           <div class="flex flex-wrap items-center gap-2">
             <UBadge
               color="neutral"
               variant="subtle"
+              class="capitalize"
             >
               {{ data.type }}
             </UBadge>
             <UBadge
               v-if="data.versions.length > 1"
               color="primary"
+              variant="subtle"
+              icon="i-lucide-history"
             >
               {{ data.versions.length }} versions
             </UBadge>
             <UBadge
               v-if="isAuthor"
               color="secondary"
-              variant="soft"
+              variant="subtle"
+              icon="i-lucide-badge-check"
             >
-              Author
+              You're the author
             </UBadge>
           </div>
-          <h1 class="font-[family-name:var(--font-display)] text-3xl font-bold tracking-tight text-[var(--ed-on-surface)]">
+
+          <h1 class="ed-headline-md text-highlighted">
             {{ data.title }}
           </h1>
-          <p class="ed-label-md text-[var(--ed-on-surface-variant)]">
-            {{ data.slug }} · {{ data.id }}
-          </p>
-          <p
-            v-if="data.authorId"
-            class="ed-label-md text-[var(--ed-on-surface-variant)]"
-          >
-            Author:
-            <NuxtLink
+
+          <div class="flex flex-wrap items-center gap-x-4 gap-y-2">
+            <UUser
+              v-if="data.authorId"
               :to="`/u/${data.authorId}`"
-              class="inline-flex items-center gap-1.5 text-[var(--ed-primary)] underline-offset-2 hover:underline"
+              :name="data.authorUsername || 'View profile'"
+              description="Author"
+              :avatar="{ src: data.authorAvatar ?? undefined, alt: data.authorUsername || 'author', icon: 'i-lucide-user' }"
+              size="md"
+            />
+            <div class="flex min-w-0 flex-wrap items-center gap-1 text-xs text-dimmed">
+              <span class="font-mono">{{ data.slug }}</span>
+              <span aria-hidden="true">·</span>
+              <CopyId :value="data.id" />
+            </div>
+          </div>
+
+          <div
+            v-if="data.type === 'character'"
+            class="space-y-2 border-t border-default pt-4"
+          >
+            <CardVoteControls
+              :likes="data.likes ?? 0"
+              :dislikes="data.dislikes ?? 0"
+              :my-vote="data.myVote ?? null"
+              :interactive="canVote"
+              :busy="voteBusy"
+              @vote="submitVote"
+            />
+            <p
+              v-if="!user"
+              class="text-sm text-muted"
             >
-              <img
-                v-if="data.authorAvatar"
-                :src="data.authorAvatar"
-                :alt="data.authorUsername || 'author'"
-                class="size-5 rounded-full object-cover"
+              <button
+                type="button"
+                class="font-medium text-primary underline-offset-2 hover:underline"
+                @click="login"
               >
-              {{ data.authorUsername || 'view profile' }}
-            </NuxtLink>
-          </p>
+                Sign in
+              </button>
+              to like or dislike.
+            </p>
+            <p
+              v-if="voteError"
+              class="text-sm text-error"
+            >
+              {{ voteError }}
+            </p>
+          </div>
         </header>
 
-        <section
-          v-if="data.type === 'character'"
-          class="space-y-2"
+        <SectionCard
+          title="Versions"
+          icon="i-lucide-history"
+          :description="`${data.versions.length} published`"
         >
-          <h2 class="ed-title-md text-[var(--ed-on-surface)]">
-            Rating
-          </h2>
-          <CardVoteControls
-            :likes="data.likes ?? 0"
-            :dislikes="data.dislikes ?? 0"
-            :my-vote="data.myVote ?? null"
-            :interactive="canVote"
-            :busy="voteBusy"
-            @vote="submitVote"
+          <VersionList
+            v-model="selectedVersion"
+            :versions="data.versions"
           />
-          <p
-            v-if="!user && data.type === 'character'"
-            class="ed-label-md text-[var(--ed-on-surface-variant)]"
-          >
-            <button
-              type="button"
-              class="text-[var(--ed-primary)] underline-offset-2 hover:underline"
-              @click="login"
-            >
-              Log in
-            </button>
-            to like or dislike.
-          </p>
-          <p
-            v-if="voteError"
-            class="ed-body-md text-[var(--ed-error)]"
-          >
-            {{ voteError }}
-          </p>
-        </section>
+        </SectionCard>
 
-        <section class="space-y-3">
-          <h2 class="ed-title-md text-[var(--ed-on-surface)]">
-            Versions
-          </h2>
-          <div class="flex flex-wrap gap-2">
-            <UButton
-              v-for="ver in data.versions"
-              :key="ver.version"
-              size="sm"
-              :variant="selectedVersion === ver.version ? 'solid' : 'outline'"
-              @click="selectedVersion = ver.version"
-            >
-              v{{ ver.version }}
-            </UButton>
-          </div>
-          <p
-            v-if="active?.notes"
-            class="ed-body-md text-[var(--ed-on-surface-variant)]"
-          >
-            {{ active.notes }}
-          </p>
-          <p class="ed-label-md text-[var(--ed-on-surface-variant)]">
-            {{ active?.createdAt }}
-          </p>
-        </section>
-
-        <EdSurface
+        <SectionCard
           v-if="isAuthor"
-          :elev="2"
-          class="space-y-6 p-5"
+          eyebrow="Author controls"
+          title="Manage character card"
+          icon="i-lucide-settings-2"
         >
-          <div class="space-y-1">
-            <EdLabel>Author controls</EdLabel>
-            <h2 class="ed-title-md text-[var(--ed-on-surface)]">
-              Manage character card
-            </h2>
-          </div>
+          <div class="space-y-6">
+            <form
+              class="space-y-2"
+              @submit.prevent="saveTitle"
+            >
+              <UFormField
+                label="Title"
+                :error="titleError ?? undefined"
+                :help="titleSaved && !titleError ? 'Title updated.' : undefined"
+              >
+                <div class="flex flex-wrap items-center gap-2">
+                  <UInput
+                    v-model="editTitle"
+                    class="min-w-60 flex-1"
+                    placeholder="Character title"
+                  />
+                  <UButton
+                    type="submit"
+                    color="primary"
+                    :loading="savingTitle"
+                    :disabled="!editTitle.trim() || editTitle.trim() === data.title"
+                  >
+                    Save
+                  </UButton>
+                </div>
+              </UFormField>
+            </form>
 
-          <form
-            class="space-y-2"
-            @submit.prevent="saveTitle"
-          >
-            <label class="ed-label-md block text-[var(--ed-on-surface-variant)]">
-              Edit title
-            </label>
-            <div class="flex flex-wrap items-center gap-2">
+            <USeparator />
+
+            <form
+              class="space-y-3"
+              @submit.prevent="submitNewVersion"
+            >
+              <UFormField :label="`Publish v${data.latestVersion + 1}`">
+                <UFileUpload
+                  :model-value="versionFile"
+                  accept="image/png"
+                  icon="i-lucide-image-up"
+                  label="Drop the new PNG here"
+                  description="or click to browse"
+                  layout="list"
+                  class="w-full"
+                  @update:model-value="onVersionFileChange"
+                />
+              </UFormField>
               <UInput
-                v-model="editTitle"
-                class="min-w-60 flex-1"
-                placeholder="Character title"
+                v-model="versionNotes"
+                placeholder="What changed? (optional)"
+                class="w-full"
+              />
+              <UAlert
+                v-if="versionError"
+                color="error"
+                variant="subtle"
+                icon="i-lucide-circle-alert"
+                :title="versionError"
               />
               <UButton
                 type="submit"
-                size="sm"
                 color="primary"
-                :loading="savingTitle"
-                :disabled="!editTitle.trim() || editTitle.trim() === data.title"
+                variant="soft"
+                icon="i-lucide-upload"
+                :loading="uploadingVersion"
+                :disabled="!versionFile || uploadingVersion"
               >
-                Save title
+                Upload v{{ data.latestVersion + 1 }}
               </UButton>
-            </div>
-            <p
-              v-if="titleError"
-              class="ed-body-md text-[var(--ed-error)]"
-            >
-              {{ titleError }}
-            </p>
-            <p
-              v-else-if="titleSaved"
-              class="ed-label-md text-[var(--ed-secondary)]"
-            >
-              Title updated.
-            </p>
-          </form>
+            </form>
 
-          <form
-            class="space-y-3 border-t border-[var(--ed-outline-variant)] pt-4"
-            @submit.prevent="submitNewVersion"
-          >
-            <label class="ed-label-md block text-[var(--ed-on-surface-variant)]">
-              Upload new version (PNG)
-            </label>
-            <input
-              type="file"
-              accept="image/png"
-              required
-              class="block w-full rounded-[var(--radius-md)] border border-[var(--ed-outline-variant)] bg-[var(--ed-surface-container)] px-3 py-2 text-sm text-[var(--ed-on-surface)] file:mr-3 file:rounded-[var(--radius-md)] file:border-0 file:bg-[var(--ed-primary-container)] file:px-3 file:py-1 file:text-xs file:font-medium file:text-[var(--ed-on-primary-container)]"
-              @change="onVersionFileChange"
-            >
-            <UInput
-              v-model="versionNotes"
-              placeholder="Version notes (optional)"
+            <DangerZone
+              subject="this character card"
+              :busy="deletingCard"
+              :error="deleteError"
+              @confirm="handleDeleteCard"
             />
-            <p
-              v-if="versionError"
-              class="ed-body-md text-[var(--ed-error)]"
-            >
-              {{ versionError }}
-            </p>
-            <UButton
-              type="submit"
-              size="sm"
-              color="primary"
-              variant="soft"
-              icon="i-lucide-upload"
-              :loading="uploadingVersion"
-              :disabled="!versionFile || uploadingVersion"
-            >
-              Upload v{{ data.latestVersion + 1 }}
-            </UButton>
-          </form>
-
-          <div class="space-y-2 border-t border-[var(--ed-outline-variant)] pt-4">
-            <div
-              v-if="!confirmingDelete"
-              class="flex items-center justify-between gap-4"
-            >
-              <span class="ed-label-md text-[var(--ed-on-surface-variant)]">
-                Delete this character card and all versions permanently
-              </span>
-              <UButton
-                size="sm"
-                color="error"
-                variant="ghost"
-                icon="i-lucide-trash-2"
-                @click="confirmingDelete = true"
-              >
-                Delete card
-              </UButton>
-            </div>
-            <div
-              v-else
-              class="flex flex-wrap items-center gap-3"
-            >
-              <span class="ed-label-md text-[var(--ed-error)]">
-                Confirm permanent deletion?
-              </span>
-              <UButton
-                size="sm"
-                color="error"
-                variant="solid"
-                :loading="deletingCard"
-                @click="handleDeleteCard"
-              >
-                Confirm delete
-              </UButton>
-              <UButton
-                size="sm"
-                color="neutral"
-                variant="ghost"
-                @click="confirmingDelete = false"
-              >
-                Cancel
-              </UButton>
-            </div>
-            <p
-              v-if="deleteError"
-              class="ed-body-md text-[var(--ed-error)]"
-            >
-              {{ deleteError }}
-            </p>
           </div>
-        </EdSurface>
+        </SectionCard>
 
-        <EdSurface
-          :elev="1"
-          class="space-y-2 overflow-x-auto p-4"
-        >
-          <h2 class="ed-title-md text-[var(--ed-on-surface)]">
-            Summary
-          </h2>
-          <pre class="ed-body-md max-h-80 overflow-auto font-mono text-xs text-[var(--ed-on-surface-variant)]">{{ JSON.stringify(active?.summary ?? {}, null, 2) }}</pre>
-        </EdSurface>
+        <JsonPanel
+          :title="`Card data · v${active?.version ?? data.latestVersion}`"
+          :value="active?.summary ?? {}"
+        />
       </div>
     </div>
   </main>

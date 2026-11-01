@@ -1,0 +1,15 @@
+{
+  "name": "echbox",
+  "version": "1.0.0",
+  "private": true,
+  "workspaces": ["packages/*"],
+  "scripts": {
+    "dev:frontend": "bun run --filter frontend dev",
+    "dev:backend": "bun run --filter backend dev",
+    "dev:tauri": "bun run --filter frontend tauri:dev",
+    "build:frontend": "bun run --filter frontend generate",
+    "build:tauri": "bun run --filter frontend tauri:build",
+    "test": "bun run --filter backend test",
+    "typecheck": "bun run --filter '@echbox/shared' typecheck && bun run --filter backend typecheck"
+  }
+}
