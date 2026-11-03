@@ -129,6 +129,7 @@ describe("Games HTTP routes", () => {
       iconUrls: Record<string, string>;
     };
     expect(body.slug).toBe("koikatsu");
+    expect((body as { contentKinds?: unknown }).contentKinds).toEqual([]);
     expect(body.iconUrls["128"]).toBe(`/api/games/${body.id}/icons/128`);
     expect(existsSync(iconSourcePath(body.id, dataDir))).toBe(true);
     expect(existsSync(iconWebpPath(body.id, 128, dataDir))).toBe(true);
@@ -223,6 +224,7 @@ describe("Games HTTP routes", () => {
       title: "Honey Select 2",
       createdByUserId: adminId,
       dbPath,
+      contentKinds: [{ kind: "plugins", relPath: null }],
     });
 
     await createPlugin({
@@ -242,5 +244,110 @@ describe("Games HTTP routes", () => {
       }),
     );
     expect(res.status).toBe(409);
+  });
+
+  test("create game with contentKinds JSON field", async () => {
+    const form = new FormData();
+    form.set("title", "With Kinds");
+    form.set("icon", await pngFile());
+    form.set(
+      "contentKinds",
+      JSON.stringify([{ kind: "cards", relPath: "UserData/cards" }]),
+    );
+
+    const created = await app.handle(
+      new Request("http://localhost/api/games", {
+        method: "POST",
+        headers: { cookie: adminCookie },
+        body: form,
+      }),
+    );
+    expect(created.status).toBe(201);
+    const body = (await created.json()) as {
+      contentKinds: { kind: string; relPath: string | null }[];
+    };
+    expect(body.contentKinds).toEqual([
+      { kind: "cards", relPath: "UserData/cards" },
+    ]);
+  });
+
+  test("create rejects bad relPath", async () => {
+    const form = new FormData();
+    form.set("title", "Bad Path Game");
+    form.set("icon", await pngFile());
+    form.set(
+      "contentKinds",
+      JSON.stringify([{ kind: "cards", relPath: "a/../b" }]),
+    );
+
+    const res = await app.handle(
+      new Request("http://localhost/api/games", {
+        method: "POST",
+        headers: { cookie: adminCookie },
+        body: form,
+      }),
+    );
+    expect(res.status).toBe(400);
+    const body = (await res.json()) as { code?: string };
+    expect(body.code).toBe("bad_content_kinds");
+  });
+
+  test("patch clears contentKinds with []", async () => {
+    const createForm = new FormData();
+    createForm.set("title", "Clearable");
+    createForm.set("icon", await pngFile());
+    createForm.set(
+      "contentKinds",
+      JSON.stringify([{ kind: "cards", relPath: null }]),
+    );
+    const created = await app.handle(
+      new Request("http://localhost/api/games", {
+        method: "POST",
+        headers: { cookie: adminCookie },
+        body: createForm,
+      }),
+    );
+    expect(created.status).toBe(201);
+    const game = (await created.json()) as { id: string };
+
+    const patchForm = new FormData();
+    patchForm.set("contentKinds", JSON.stringify([]));
+    const patched = await app.handle(
+      new Request(`http://localhost/api/games/${game.id}`, {
+        method: "PATCH",
+        headers: { cookie: adminCookie },
+        body: patchForm,
+      }),
+    );
+    expect(patched.status).toBe(200);
+    const body = (await patched.json()) as {
+      contentKinds: unknown[];
+    };
+    expect(body.contentKinds).toEqual([]);
+
+    const got = await app.handle(
+      new Request(`http://localhost/api/games/${game.id}`),
+    );
+    const detail = (await got.json()) as { contentKinds: unknown[] };
+    expect(detail.contentKinds).toEqual([]);
+  });
+
+  test("createPlugin rejected when kind not enabled", async () => {
+    const game = createGame({
+      title: "No Plugins",
+      createdByUserId: adminId,
+      dbPath,
+    });
+    await expect(
+      createPlugin({
+        authorId: userId,
+        gameId: game.id,
+        title: "Nope",
+        semver: "1.0.0",
+        fileBytes: zipSync({ "data.txt": strToU8("x") }),
+        dbPath,
+        dataDir,
+      }),
+    ).rejects.toMatchObject({ code: "kind_not_supported" });
   });
 });

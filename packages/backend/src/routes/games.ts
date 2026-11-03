@@ -1,6 +1,12 @@
+import {
+  BadContentPathError,
+  parseContentKindsInput,
+  type GameContentKind,
+} from "@echbox/shared";
 import { Elysia, t } from "elysia";
 import { isAdmin } from "../auth/admin";
 import {
+  BadGameError,
   GameServiceError,
   createGame,
   deleteGame,
@@ -18,6 +24,50 @@ import { authDerive } from "./auth";
 async function readUpload(file: File): Promise<Uint8Array> {
   return new Uint8Array(await file.arrayBuffer());
 }
+
+/**
+ * Parse multipart `contentKinds`. Elysia may leave a JSON string or already
+ * parse it into an array. Missing on create → []; on patch → undefined (leave).
+ */
+function parseContentKindsField(
+  raw: unknown,
+  mode: "create" | "patch",
+): GameContentKind[] | undefined {
+  if (raw === undefined || raw === null || raw === "") {
+    return mode === "create" ? [] : undefined;
+  }
+  let parsed: unknown = raw;
+  if (typeof raw === "string") {
+    try {
+      parsed = JSON.parse(raw);
+    } catch {
+      throw new BadGameError("Invalid contentKinds JSON", "bad_content_kinds");
+    }
+  }
+  try {
+    return parseContentKindsInput(parsed);
+  } catch (err) {
+    const message =
+      err instanceof BadContentPathError
+        ? err.message
+        : err instanceof Error
+          ? err.message
+          : "Invalid contentKinds";
+    throw new BadGameError(message, "bad_content_kinds");
+  }
+}
+
+const ContentKindsField = t.Optional(
+  t.Union([
+    t.String(),
+    t.Array(
+      t.Object({
+        kind: t.String(),
+        relPath: t.Optional(t.Union([t.String(), t.Null()])),
+      }),
+    ),
+  ]),
+);
 
 function handleServiceError(
   err: unknown,
@@ -110,11 +160,13 @@ export const gameRoutes = new Elysia({ prefix: "/api/games" })
 
       let created;
       try {
+        const contentKinds = parseContentKindsField(body.contentKinds, "create");
         created = createGame({
           title: body.title,
           slug: body.slug,
           description: body.description,
           createdByUserId: user.id,
+          contentKinds,
         });
       } catch (err) {
         return handleServiceError(err, set);
@@ -142,6 +194,7 @@ export const gameRoutes = new Elysia({ prefix: "/api/games" })
         title: t.String(),
         slug: t.Optional(t.String()),
         description: t.Optional(t.Union([t.String(), t.Null()])),
+        contentKinds: ContentKindsField,
         icon: t.File(),
       }),
     },
@@ -160,11 +213,13 @@ export const gameRoutes = new Elysia({ prefix: "/api/games" })
 
       let updated;
       try {
+        const contentKinds = parseContentKindsField(body.contentKinds, "patch");
         updated = patchGame({
           id: params.id,
           title: body.title,
           slug: body.slug,
           description: body.description,
+          contentKinds,
         });
       } catch (err) {
         return handleServiceError(err, set);
@@ -195,6 +250,7 @@ export const gameRoutes = new Elysia({ prefix: "/api/games" })
         title: t.Optional(t.String()),
         slug: t.Optional(t.String()),
         description: t.Optional(t.Union([t.String(), t.Null()])),
+        contentKinds: ContentKindsField,
         icon: t.Optional(t.File()),
       }),
     },

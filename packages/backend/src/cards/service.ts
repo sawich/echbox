@@ -30,7 +30,7 @@ import {
   removeVersionFiles,
   writeOriginalPng,
 } from "./storage";
-import { assertGameExists } from "../games/service";
+import { assertGameSupportsKind } from "../games/service";
 import {
   getVoteCounts,
   getVoteCountsForCards,
@@ -351,7 +351,7 @@ export async function createCard(
     input;
 
   const semver = normalizeSemver(input.semver);
-  assertGameExists(gameId, { dbPath });
+  assertGameSupportsKind(gameId, "cards", { dbPath });
 
   const contentHash = sha256Hex(fileBytes);
   const existing = findByHash(contentHash, { dbPath });

@@ -28,8 +28,7 @@ import {
   removeSoftmodVersionFiles,
   softmodVersionPaths,
 } from "./storage";
-import { assertGameExists } from "../games/service";
-import {
+import { assertGameSupportsKind } from "../games/service";import {
   getSoftmodVoteCounts,
   getSoftmodVoteCountsForSoftmods,
   type SoftmodVoteCounts,
@@ -345,7 +344,7 @@ export async function createSoftmod(
   const { authorId, gameId, fileBytes, notes, dbPath, dataDir } = input;
   const semver = normalizeSemver(input.semver);
 
-  assertGameExists(gameId, { dbPath });
+  assertGameSupportsKind(gameId, "softmods", { dbPath });
 
   validateArchive(fileBytes);
 

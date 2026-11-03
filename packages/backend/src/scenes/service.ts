@@ -25,7 +25,7 @@ import {
   removeVersionFiles,
   writeOriginalPng,
 } from "./storage";
-import { assertGameExists } from "../games/service";
+import { assertGameSupportsKind } from "../games/service";
 import {
   getVoteCounts,
   getVoteCountsForScenes,
@@ -353,7 +353,7 @@ export async function createScene(
     input;
 
   const semver = normalizeSemver(input.semver);
-  assertGameExists(gameId, { dbPath });
+  assertGameSupportsKind(gameId, "scenes", { dbPath });
 
   const contentHash = sha256Hex(fileBytes);
   const existing = findSceneByHash(contentHash, { dbPath });

@@ -25,7 +25,7 @@ import {
   removeVersionFiles,
   writeOriginalPng,
 } from "./storage";
-import { assertGameExists } from "../games/service";
+import { assertGameSupportsKind } from "../games/service";
 import {
   getVoteCounts,
   getVoteCountsForClothes,
@@ -343,7 +343,7 @@ export async function createClothes(
     input;
 
   const semver = normalizeSemver(input.semver);
-  assertGameExists(gameId, { dbPath });
+  assertGameSupportsKind(gameId, "clothes", { dbPath });
 
   const contentHash = sha256Hex(fileBytes);
   const existing = findClothesByHash(contentHash, { dbPath });

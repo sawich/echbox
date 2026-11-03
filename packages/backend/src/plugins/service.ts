@@ -25,7 +25,7 @@ import {
   removePluginFiles,
   removePluginVersionFiles,
 } from "./storage";
-import { assertGameExists } from "../games/service";
+import { assertGameSupportsKind } from "../games/service";
 import {
   getPluginVoteCounts,
   getPluginVoteCountsForPlugins,
@@ -347,7 +347,7 @@ export async function createPlugin(
   } = input;
   const semver = normalizeSemver(input.semver);
 
-  assertGameExists(gameId, { dbPath });
+  assertGameSupportsKind(gameId, "plugins", { dbPath });
 
   const normalizedTitle = normalizeTitle(title);
   validateArchive(fileBytes);
