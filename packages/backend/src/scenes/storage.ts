@@ -58,3 +58,12 @@ export async function removeSceneFiles(
   const dir = getSceneDir(sceneId, dataDir);
   await rm(dir, { recursive: true, force: true });
 }
+
+export async function removeVersionFiles(
+  sceneId: string,
+  versionId: string,
+  dataDir?: string,
+): Promise<void> {
+  const dir = getVersionDir(sceneId, versionId, dataDir);
+  await rm(dir, { recursive: true, force: true });
+}

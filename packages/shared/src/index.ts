@@ -82,16 +82,29 @@ export {
 } from "./schemas/scenes";
 
 export {
+  ClothesVersionDetailSchema,
+  ClothesListItemSchema,
+  ClothesDetailSchema,
+  ClothesListResponseSchema,
+  type ClothesVersionDetail,
+  type ClothesListItem,
+  type ClothesDetail,
+  type ClothesListResponse,
+} from "./schemas/clothes";
+
+export {
   UserProfileStatsSchema,
   UserProfileCardSchema,
   UserProfilePluginSchema,
   UserProfileSoftmodSchema,
   UserProfileSceneSchema,
+  UserProfileClothesSchema,
   UserProfileSchema,
   type UserProfileStats,
   type UserProfileCard,
   type UserProfilePlugin,
   type UserProfileSoftmod,
   type UserProfileScene,
+  type UserProfileClothes,
   type UserProfile,
 } from "./schemas/users";

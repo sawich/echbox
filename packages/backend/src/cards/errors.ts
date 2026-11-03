@@ -23,7 +23,7 @@ export class DuplicateCardHashError extends CardServiceError {
     super(
       409,
       "CONFLICT",
-      `Duplicate card content hash (already exists in card ${cardId} v${semver})`,
+      `This file was already uploaded as version ${semver}.`,
     );
     this.name = "DuplicateCardHashError";
     this.cardId = cardId;
@@ -43,7 +43,7 @@ export class DuplicateCardSemverError extends CardServiceError {
     super(
       409,
       "DUPLICATE_SEMVER",
-      `Card ${cardId} already has version ${semver}`,
+      `Version ${semver} already exists for this card.`,
     );
     this.name = "DuplicateCardSemverError";
     this.cardId = cardId;
@@ -53,7 +53,7 @@ export class DuplicateCardSemverError extends CardServiceError {
 }
 
 export class ForbiddenCardError extends CardServiceError {
-  constructor(message = "Forbidden: only the card author may modify this card") {
+  constructor(message = "Only the author can change this card.") {
     super(403, "FORBIDDEN", message);
     this.name = "ForbiddenCardError";
   }

@@ -1,6 +1,6 @@
 import { invoke } from '@tauri-apps/api/core'
 
-export type ContentKind = 'cards' | 'plugins' | 'scenes' | 'softmods'
+export type ContentKind = 'cards' | 'plugins' | 'scenes' | 'clothes' | 'softmods'
 
 export type ContentInstallRow = {
   id: string

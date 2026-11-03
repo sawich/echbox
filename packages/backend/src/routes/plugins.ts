@@ -7,6 +7,7 @@ import {
   addPluginVersion,
   createPlugin,
   deletePlugin,
+  deletePluginVersion,
   findPluginByHash,
   getPlugin,
   getPluginVersionBytes,
@@ -262,6 +263,31 @@ export const pluginRoutes = new Elysia({ prefix: "/api/plugins" })
     {
       params: t.Object({
         id: t.String(),
+      }),
+    },
+  )
+  .delete(
+    "/:id/versions/:versionId",
+    async ({ params, user, set }) => {
+      if (!user) {
+        set.status = 401;
+        return { error: "Unauthorized" };
+      }
+      try {
+        const detail = await deletePluginVersion({
+          pluginId: params.id,
+          versionId: params.versionId,
+          authorId: user.id,
+        });
+        return stripPluginPaths(detail);
+      } catch (err) {
+        return handleServiceError(err, set);
+      }
+    },
+    {
+      params: t.Object({
+        id: t.String(),
+        versionId: t.String(),
       }),
     },
   )

@@ -21,7 +21,7 @@ const showVotes = computed(
 <template>
   <MediaTile
     :to="`/cards/${card.id}`"
-    :image-src="`${apiUrl}${card.imageUrl}`"
+    :image-src="card.imageUrl ? `${apiUrl}${card.imageUrl}` : ''"
     :title="card.title"
     :subtitle="card.slug"
     :aspect-class="galleryAspect(card.type)"

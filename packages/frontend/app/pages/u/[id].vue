@@ -32,6 +32,7 @@ const tabs = computed(() => {
   return [
     { label: 'Characters', icon: 'i-lucide-user-round', slot: 'cards' as const, value: 'cards', badge: profile.cards.length },
     { label: 'Scenes', icon: 'i-lucide-clapperboard', slot: 'scenes' as const, value: 'scenes', badge: profile.scenes.length },
+    { label: 'Clothes', icon: 'i-lucide-shirt', slot: 'clothes' as const, value: 'clothes', badge: profile.clothes.length },
     { label: 'Plugins', icon: 'i-lucide-puzzle', slot: 'plugins' as const, value: 'plugins', badge: profile.plugins.length },
     { label: 'Softmods', icon: 'i-lucide-package', slot: 'softmods' as const, value: 'softmods', badge: profile.softmods.length },
   ]
@@ -191,6 +192,27 @@ const stats = computed(() => {
               v-for="scene in data.scenes"
               :key="scene.id"
               :scene="scene"
+              :api-url="apiUrl"
+            />
+          </div>
+        </template>
+
+        <template #clothes>
+          <UEmpty
+            v-if="data.clothes.length === 0"
+            icon="i-lucide-shirt"
+            title="No clothes yet"
+            :description="isOwnProfile ? 'Outfit cards you upload will show up here.' : 'This user has not uploaded any clothes.'"
+            variant="soft"
+          />
+          <div
+            v-else
+            class="ed-stagger grid grid-cols-2 gap-4 sm:grid-cols-3 lg:grid-cols-4 xl:grid-cols-5"
+          >
+            <ClothesTile
+              v-for="item in data.clothes"
+              :key="item.id"
+              :clothes="item"
               :api-url="apiUrl"
             />
           </div>

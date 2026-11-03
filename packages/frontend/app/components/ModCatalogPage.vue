@@ -72,6 +72,10 @@ async function toggleInstall(item: PluginListItem | SoftmodListItem) {
     installError.value = 'Install is only available in the desktop app'
     return
   }
+  if (!installedIds.value.has(item.id) && (!item.latestVersionId || !item.latestSemver)) {
+    installError.value = 'This item has no versions to install'
+    return
+  }
   installBusy.value = item.id
   installError.value = null
   try {
@@ -81,8 +85,8 @@ async function toggleInstall(item: PluginListItem | SoftmodListItem) {
     else {
       await installContent(props.gameId, contentKind.value, {
         id: item.id,
-        versionId: item.latestVersionId,
-        semver: item.latestSemver,
+        versionId: item.latestVersionId!,
+        semver: item.latestSemver!,
         title: item.title,
         contentHash: null,
         installedAt: new Date().toISOString(),
@@ -192,6 +196,9 @@ async function onFileSelected(file: File | null | undefined) {
 }
 
 async function submitUpload() {
+  semver.markTried()
+  if (!semver.valid.value) return
+
   if (!uploadFile.value || uploadBusy.value || !semver.canonical.value) return
   if (props.modKind === 'plugin' && !uploadTitle.value.trim()) return
 
@@ -257,7 +264,7 @@ async function submitUpload() {
 }
 
 const canSubmitUpload = computed(() => {
-  if (!uploadFile.value || !semver.valid.value || uploadBusy.value || duplicateHit.value) return false
+  if (!uploadFile.value || uploadBusy.value || duplicateHit.value) return false
   if (props.modKind === 'plugin') return Boolean(uploadTitle.value.trim())
   return true
 })
@@ -334,12 +341,13 @@ const canSubmitUpload = computed(() => {
               <UFormField
                 label="Version"
                 required
-                :error="semver.raw.value.trim() ? semver.error.value ?? undefined : undefined"
+                :error="semver.fieldError.value"
                 help="Semantic version, e.g. 1.0.0"
               >
                 <UInput
                   v-model="semver.raw.value"
                   placeholder="1.0.0"
+                  @blur="semver.markTried()"
                   class="w-full font-mono"
                 />
               </UFormField>
@@ -358,7 +366,7 @@ const canSubmitUpload = computed(() => {
               <DuplicateNotice
                 v-if="duplicateHit"
                 :to="duplicateLinkTo"
-                :label="`${modKind} ${duplicateHit.id}${duplicateHit.semver ? ` (v${duplicateHit.semver})` : ''}`"
+                :label="duplicateHit.semver ? `version ${duplicateHit.semver}` : 'existing upload'"
                 lead="This file already exists as"
                 @navigate="showUpload = false"
               />

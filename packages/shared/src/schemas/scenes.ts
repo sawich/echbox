@@ -28,7 +28,7 @@ export const SceneDetailSchema = CardDetailSchema.omit({ versions: true })
     authorAvatar: z.string().nullable().optional(),
     createdAt: z.iso.datetime(),
     updatedAt: z.iso.datetime(),
-    versions: z.array(SceneVersionDetailSchema).min(1),
+    versions: z.array(SceneVersionDetailSchema),
   });
 export type SceneDetail = z.infer<typeof SceneDetailSchema>;
 

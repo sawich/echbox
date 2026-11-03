@@ -25,6 +25,7 @@ import {
   placeStagedZipmod,
   removePlacedFile,
   removeSoftmodFiles,
+  removeSoftmodVersionFiles,
   softmodVersionPaths,
 } from "./storage";
 import { assertGameExists } from "../games/service";
@@ -74,8 +75,8 @@ export type SoftmodDetail = SoftmodVoteCounts & {
   modAuthor: string | null;
   description: string;
   website: string | null;
-  latestSemver: string;
-  latestVersionId: string;
+  latestSemver: string | null;
+  latestVersionId: string | null;
   createdAt: string;
   updatedAt: string;
   uploader: SoftmodUploader;
@@ -91,8 +92,8 @@ export type SoftmodListItem = SoftmodVoteCounts & {
   title: string;
   modAuthor: string | null;
   description: string;
-  latestSemver: string;
-  latestVersionId: string;
+  latestSemver: string | null;
+  latestVersionId: string | null;
   versionCount: number;
   downloadUrl: string;
   uploader: SoftmodUploader;
@@ -128,18 +129,27 @@ export type DeleteSoftmodInput = SoftmodServiceOptions & {
   authorId: string;
 };
 
-function downloadUrl(softmodId: string, versionId: string): string {
+export type DeleteSoftmodVersionInput = SoftmodServiceOptions & {
+  softmodId: string;
+  versionId: string;
+  authorId: string;
+};
+
+function downloadUrl(softmodId: string, versionId: string | null): string {
+  if (!versionId) return "";
   return `/api/softmods/${softmodId}/versions/${versionId}/download`;
 }
 
 function normalizeSemver(input: unknown): string {
   if (typeof input !== "string" || !input.trim()) {
-    throw new BadSoftmodError("Softmod semver is required");
+    throw new BadSoftmodError("Version is required (for example 1.0.0).");
   }
   try {
     return parseSemver(input);
   } catch {
-    throw new BadSoftmodError(`Invalid semver: ${input}`);
+    throw new BadSoftmodError(
+      "Enter a valid version number (for example 1.0.0).",
+    );
   }
 }
 
@@ -262,7 +272,7 @@ export async function getSoftmod(
     updatedAt: softmod.updatedAt,
     uploader: loadUploader(db, softmod.authorId),
     downloadUrl: downloadUrl(softmod.id, softmod.latestVersionId),
-    versionCount: versions.length || 1,
+    versionCount: versions.length,
     ...votes,
     versions,
   };
@@ -319,7 +329,7 @@ export async function listSoftmods(
       description: softmod.description,
       latestSemver: softmod.latestSemver,
       latestVersionId: softmod.latestVersionId,
-      versionCount: versions.length || 1,
+      versionCount: versions.length,
       downloadUrl: downloadUrl(softmod.id, softmod.latestVersionId),
       uploader: loadUploader(db, softmod.authorId),
       ...votes,
@@ -574,6 +584,70 @@ export async function addSoftmodVersion(
     }
     throw err;
   }
+
+  const detail = await getSoftmod(softmodId, { dbPath, dataDir });
+  return detail!;
+}
+
+export async function deleteSoftmodVersion(
+  input: DeleteSoftmodVersionInput,
+): Promise<SoftmodDetail> {
+  const { softmodId, versionId, authorId, dbPath, dataDir } = input;
+  const db = getDb(dbPath);
+
+  const softmod = db
+    .select()
+    .from(softmods)
+    .where(eq(softmods.id, softmodId))
+    .get();
+
+  if (!softmod) {
+    throw new SoftmodNotFoundError();
+  }
+
+  if (softmod.authorId !== authorId) {
+    throw new ForbiddenSoftmodError();
+  }
+
+  const version = db
+    .select()
+    .from(softmodVersions)
+    .where(
+      and(
+        eq(softmodVersions.softmodId, softmodId),
+        eq(softmodVersions.id, versionId),
+      ),
+    )
+    .get();
+
+  if (!version) {
+    throw new SoftmodNotFoundError("Version not found");
+  }
+
+  const now = new Date().toISOString();
+
+  db.transaction((tx) => {
+    tx.delete(softmodVersions).where(eq(softmodVersions.id, versionId)).run();
+
+    const remaining = tx
+      .select({ id: softmodVersions.id, semver: softmodVersions.semver })
+      .from(softmodVersions)
+      .where(eq(softmodVersions.softmodId, softmodId))
+      .all();
+
+    const latest = pickLatestBySemver(remaining);
+
+    tx.update(softmods)
+      .set({
+        latestSemver: latest?.semver ?? null,
+        latestVersionId: latest?.id ?? null,
+        updatedAt: now,
+      })
+      .where(eq(softmods.id, softmodId))
+      .run();
+  });
+
+  await removeSoftmodVersionFiles(softmodId, versionId, dataDir);
 
   const detail = await getSoftmod(softmodId, { dbPath, dataDir });
   return detail!;

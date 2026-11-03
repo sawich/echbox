@@ -23,7 +23,7 @@ export class DuplicatePluginHashError extends PluginServiceError {
     super(
       409,
       "CONFLICT",
-      `Duplicate plugin content hash (already exists in plugin ${pluginId} v${semver})`,
+      `This file was already uploaded as version ${semver}.`,
     );
     this.name = "DuplicatePluginHashError";
     this.pluginId = pluginId;
@@ -44,8 +44,8 @@ export class DuplicatePluginSemverError extends PluginServiceError {
   constructor(pluginId: string, versionId: string, semver: string) {
     super(
       409,
-      "CONFLICT",
-      `Plugin ${pluginId} already has version ${semver}`,
+      "DUPLICATE_SEMVER",
+      `Version ${semver} already exists for this plugin.`,
     );
     this.name = "DuplicatePluginSemverError";
     this.pluginId = pluginId;
@@ -57,7 +57,7 @@ export class DuplicatePluginSemverError extends PluginServiceError {
 }
 
 export class ForbiddenPluginError extends PluginServiceError {
-  constructor(message = "Forbidden: only the plugin author may modify this plugin") {
+  constructor(message = "Only the author can change this plugin.") {
     super(403, "FORBIDDEN", message);
     this.name = "ForbiddenPluginError";
   }

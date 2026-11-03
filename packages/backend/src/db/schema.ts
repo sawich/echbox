@@ -50,8 +50,8 @@ export const characterCards = sqliteTable(
       .references(() => users.id),
     slug: text("slug").notNull(),
     title: text("title").notNull(),
-    latestSemver: text("latest_semver").notNull(),
-    latestVersionId: text("latest_version_id").notNull(),
+    latestSemver: text("latest_semver"),
+    latestVersionId: text("latest_version_id"),
     createdAt: text("created_at").notNull(),
     updatedAt: text("updated_at").notNull(),
   },
@@ -120,8 +120,8 @@ export const scenes = sqliteTable(
       .references(() => users.id),
     slug: text("slug").notNull(),
     title: text("title").notNull(),
-    latestSemver: text("latest_semver").notNull(),
-    latestVersionId: text("latest_version_id").notNull(),
+    latestSemver: text("latest_semver"),
+    latestVersionId: text("latest_version_id"),
     createdAt: text("created_at").notNull(),
     updatedAt: text("updated_at").notNull(),
   },
@@ -181,6 +181,79 @@ export const sceneVotes = sqliteTable(
 
 export type SceneVoteValue = "like" | "dislike";
 
+export const clothes = sqliteTable(
+  "clothes",
+  {
+    id: text("id").primaryKey(),
+    gameId: text("game_id")
+      .notNull()
+      .references(() => games.id),
+    authorId: text("author_id")
+      .notNull()
+      .references(() => users.id),
+    slug: text("slug").notNull(),
+    title: text("title").notNull(),
+    latestSemver: text("latest_semver"),
+    latestVersionId: text("latest_version_id"),
+    createdAt: text("created_at").notNull(),
+    updatedAt: text("updated_at").notNull(),
+  },
+  (table) => [
+    index("clothes_author_id_idx").on(table.authorId),
+    index("clothes_game_id_idx").on(table.gameId),
+  ],
+);
+
+export const clothesVersions = sqliteTable(
+  "clothes_versions",
+  {
+    id: text("id").primaryKey(),
+    clothesId: text("clothes_id")
+      .notNull()
+      .references(() => clothes.id),
+    semver: text("semver").notNull(),
+    notes: text("notes"),
+    contentHash: text("content_hash").notNull().unique(),
+    originalPath: text("original_path").notNull(),
+    previewPath: text("preview_path").notNull(),
+    summaryJson: text("summary_json").notNull(),
+    createdAt: text("created_at").notNull(),
+  },
+  (table) => [
+    uniqueIndex("clothes_versions_clothes_id_semver_idx").on(
+      table.clothesId,
+      table.semver,
+    ),
+  ],
+);
+
+/** "like" | "dislike" stored as text */
+export const clothesVotes = sqliteTable(
+  "clothes_votes",
+  {
+    id: text("id").primaryKey(),
+    clothesId: text("clothes_id")
+      .notNull()
+      .references(() => clothes.id),
+    userId: text("user_id")
+      .notNull()
+      .references(() => users.id),
+    vote: text("vote").notNull(),
+    createdAt: text("created_at").notNull(),
+    updatedAt: text("updated_at").notNull(),
+  },
+  (table) => [
+    uniqueIndex("clothes_votes_clothes_id_user_id_idx").on(
+      table.clothesId,
+      table.userId,
+    ),
+    index("clothes_votes_clothes_id_idx").on(table.clothesId),
+    index("clothes_votes_user_id_idx").on(table.userId),
+  ],
+);
+
+export type ClothesVoteValue = "like" | "dislike";
+
 export const softmods = sqliteTable(
   "softmods",
   {
@@ -195,8 +268,8 @@ export const softmods = sqliteTable(
     modAuthor: text("mod_author"),
     description: text("description").notNull(),
     website: text("website"),
-    latestSemver: text("latest_semver").notNull(),
-    latestVersionId: text("latest_version_id").notNull(),
+    latestSemver: text("latest_semver"),
+    latestVersionId: text("latest_version_id"),
     createdAt: text("created_at").notNull(),
     updatedAt: text("updated_at").notNull(),
   },
@@ -267,8 +340,8 @@ export const plugins = sqliteTable(
       .references(() => users.id),
     title: text("title").notNull(),
     description: text("description"),
-    latestSemver: text("latest_semver").notNull(),
-    latestVersionId: text("latest_version_id").notNull(),
+    latestSemver: text("latest_semver"),
+    latestVersionId: text("latest_version_id"),
     createdAt: text("created_at").notNull(),
     updatedAt: text("updated_at").notNull(),
   },

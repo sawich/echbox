@@ -42,6 +42,15 @@ describe("BinaryReader", () => {
     expect(reader.remaining).toBeGreaterThan(0);
   });
 
+  test("primitive reads past EOF throw Unexpected EOF (not DataView OOB)", () => {
+    const reader = new BinaryReader(new Uint8Array([1, 2]));
+    expect(() => reader.readI32()).toThrow(/Unexpected EOF/);
+    const shortPng = new BinaryReader(
+      new Uint8Array([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a]),
+    );
+    expect(() => shortPng.getPng()).toThrow(/Unexpected EOF/);
+  });
+
   test("msgUnpack + lstinfo round-trip shape", () => {
     const blocks = encode({
       lstInfo: [

@@ -346,6 +346,58 @@ describe("Character CRUD + hash lookup + gallery split HTTP routes", () => {
     expect(updatedCard.latestVersionId).toBe(updatedCard.versions[1]!.id);
     expect(updatedCard.versions).toHaveLength(2);
 
+    const v1Id = updatedCard.versions.find((v) => v.semver === "1.0.0")!.id;
+    const v2Id = updatedCard.versions.find((v) => v.semver === "2.0.0")!.id;
+
+    // Non-author delete version -> 403
+    const forbidDelVerRes = await app.handle(
+      new Request(
+        `http://localhost/api/kk/cards/${created.id}/versions/${v2Id}`,
+        { method: "DELETE", headers: { cookie: otherCookie } },
+      ),
+    );
+    expect(forbidDelVerRes.status).toBe(403);
+
+    // Author delete higher version -> latest falls back to 1.0.0
+    const delV2Res = await app.handle(
+      new Request(
+        `http://localhost/api/kk/cards/${created.id}/versions/${v2Id}`,
+        { method: "DELETE", headers: { cookie: authorCookie } },
+      ),
+    );
+    expect(delV2Res.status).toBe(200);
+    const afterDelV2 = (await delV2Res.json()) as {
+      latestSemver: string | null;
+      latestVersionId: string | null;
+      versions: { semver: string }[];
+    };
+    expect(afterDelV2.latestSemver).toBe("1.0.0");
+    expect(afterDelV2.latestVersionId).toBe(v1Id);
+    expect(afterDelV2.versions).toHaveLength(1);
+
+    // Re-add 2.0.0 for remaining PATCH / notes assertions
+    const readdV2Form = new FormData();
+    readdV2Form.append("semver", "2.0.0");
+    readdV2Form.append(
+      "file",
+      new File([v2Bytes], "kk_mod_chara.png", { type: "image/png" }),
+    );
+    const readdV2Res = await app.handle(
+      new Request(`http://localhost/api/kk/cards/${created.id}/versions`, {
+        method: "POST",
+        headers: { cookie: authorCookie },
+        body: readdV2Form,
+      }),
+    );
+    expect(readdV2Res.status).toBe(200);
+    const withV2Again = (await readdV2Res.json()) as {
+      latestSemver: string;
+      versions: { id: string; semver: string }[];
+    };
+    expect(withV2Again.latestSemver).toBe("2.0.0");
+    expect(withV2Again.versions).toHaveLength(2);
+    const restoredV2Id = withV2Again.versions.find((v) => v.semver === "2.0.0")!.id;
+
     // Duplicate version upload -> 409
     const dupVerForm = new FormData();
     dupVerForm.append("semver", "3.0.0");
@@ -389,7 +441,34 @@ describe("Character CRUD + hash lookup + gallery split HTTP routes", () => {
       versions: { id: string; semver: string; notes?: string }[];
     };
     expect(patched.title).toBe("Renamed Title");
-    expect(patched.versions[1]!.notes).toBe("Edited v2 note");
+    expect(patched.versions.find((v) => v.id === restoredV2Id)?.notes).toBe(
+      "Edited v2 note",
+    );
+
+    // Delete last remaining versions → empty parent stays
+    for (const versionId of [restoredV2Id, v1Id]) {
+      const delVerRes = await app.handle(
+        new Request(
+          `http://localhost/api/kk/cards/${created.id}/versions/${versionId}`,
+          { method: "DELETE", headers: { cookie: authorCookie } },
+        ),
+      );
+      expect(delVerRes.status).toBe(200);
+    }
+    const emptyGet = await app.handle(
+      new Request(`http://localhost/api/kk/cards/${created.id}`, {
+        headers: { cookie: authorCookie },
+      }),
+    );
+    expect(emptyGet.status).toBe(200);
+    const emptyCard = (await emptyGet.json()) as {
+      latestSemver: string | null;
+      latestVersionId: string | null;
+      versions: unknown[];
+    };
+    expect(emptyCard.latestSemver).toBeNull();
+    expect(emptyCard.latestVersionId).toBeNull();
+    expect(emptyCard.versions).toEqual([]);
 
     // Non-author DELETE -> 403
     const forbidDelRes = await app.handle(

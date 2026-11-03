@@ -42,6 +42,10 @@ async function toggleInstall(scene: SceneListItem) {
     installError.value = 'Install is only available in the desktop app'
     return
   }
+  if (!installedIds.value.has(scene.id) && (!scene.latestVersionId || !scene.latestSemver)) {
+    installError.value = 'This scene has no versions to install'
+    return
+  }
   installBusy.value = scene.id
   installError.value = null
   try {
@@ -50,8 +54,8 @@ async function toggleInstall(scene: SceneListItem) {
     } else {
       await installContent(props.gameId, 'scenes', {
         id: scene.id,
-        versionId: scene.latestVersionId,
-        semver: scene.latestSemver,
+        versionId: scene.latestVersionId!,
+        semver: scene.latestSemver!,
         title: scene.title,
         contentHash: null,
         installedAt: new Date().toISOString(),
@@ -136,6 +140,9 @@ async function onFileSelected(file: File | null | undefined) {
 }
 
 async function submitUpload() {
+  semver.markTried()
+  if (!semver.valid.value) return
+
   if (!uploadFile.value || uploadBusy.value || !semver.canonical.value) return
   uploadBusy.value = true
   uploadError.value = null
@@ -247,12 +254,13 @@ async function submitUpload() {
               <UFormField
                 label="Version"
                 required
-                :error="semver.raw.value.trim() ? semver.error.value ?? undefined : undefined"
+                :error="semver.fieldError.value"
                 help="Semantic version, e.g. 1.0.0"
               >
                 <UInput
                   v-model="semver.raw.value"
                   placeholder="1.0.0"
+                  @blur="semver.markTried()"
                   class="w-full font-mono"
                 />
               </UFormField>
@@ -271,7 +279,7 @@ async function submitUpload() {
               <DuplicateNotice
                 v-if="duplicateHit"
                 :to="`/scenes/${duplicateHit.sceneId}`"
-                :label="`scene ${duplicateHit.sceneId} (v${duplicateHit.semver})`"
+                :label="`version ${duplicateHit.semver}`"
                 lead="This exact scene file already exists in"
                 @navigate="showUpload = false"
               />
@@ -302,7 +310,7 @@ async function submitUpload() {
                 color="primary"
                 icon="i-lucide-check"
                 :loading="uploadBusy"
-                :disabled="!uploadFile || !semver.valid.value || uploadBusy || Boolean(duplicateHit)"
+                :disabled="!uploadFile || uploadBusy || Boolean(duplicateHit)"
               >
                 Publish scene
               </UButton>

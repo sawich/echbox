@@ -70,6 +70,15 @@ export async function removePluginFiles(
   await rm(dir, { recursive: true, force: true });
 }
 
+export async function removePluginVersionFiles(
+  pluginId: string,
+  versionId: string,
+  dataDir?: string,
+): Promise<void> {
+  const { dir } = pluginVersionPaths(dataDir, pluginId, versionId);
+  await rm(dir, { recursive: true, force: true });
+}
+
 export async function removePlacedFile(
   path: string,
   dataDir?: string,

@@ -26,12 +26,23 @@ const showVotes = computed(() => typeof props.likes === 'number')
         :class="aspectClass"
       >
         <img
+          v-if="imageSrc"
           :src="imageSrc"
           :alt="title"
           class="size-full object-cover transition-transform duration-500 ease-[var(--ed-ease-emphasized)] group-hover:scale-[1.04]"
           loading="lazy"
           decoding="async"
         >
+        <div
+          v-else
+          class="grid size-full place-items-center text-dimmed"
+          aria-hidden="true"
+        >
+          <UIcon
+            name="i-lucide-image-off"
+            class="size-8 opacity-40"
+          />
+        </div>
 
         <div class="pointer-events-none absolute inset-x-0 bottom-0 h-3/5 bg-gradient-to-t from-black/85 via-black/40 to-transparent" />
 

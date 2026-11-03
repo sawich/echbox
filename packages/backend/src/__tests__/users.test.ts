@@ -117,7 +117,12 @@ describe("user profile", () => {
       dislikesReceived: 0,
     });
     expect(empty.cards).toEqual([]);
-    expect(empty).toMatchObject({ plugins: [], softmods: [], scenes: [] });
+    expect(empty).toMatchObject({
+      plugins: [],
+      softmods: [],
+      scenes: [],
+      clothes: [],
+    });
 
     const fileBytes = await fixtureBytes("chara", "kk_chara.png");
     const form = new FormData();
@@ -321,5 +326,53 @@ describe("user profile", () => {
     expect(parsed.scenes[0]!.title).toBe("Profile Scene");
     expect(parsed.scenes[0]!.type).toBe("scene");
     expect(parsed.scenes[0]!.likes).toBe(1);
+  });
+
+  test("profile includes author clothes in clothes list and aggregated stats", async () => {
+    const fileBytes = await fixtureBytes("clothes", "kk_clothes.png");
+    const form = new FormData();
+    form.append("gameId", gameId);
+    form.append("semver", "1.0.0");
+    form.append(
+      "file",
+      new File([fileBytes], "kk_clothes.png", { type: "image/png" }),
+    );
+    form.append("title", "Profile Outfit");
+    const createRes = await app.handle(
+      new Request("http://localhost/api/clothes", {
+        method: "POST",
+        headers: { cookie: authorCookie },
+        body: form,
+      }),
+    );
+    expect(createRes.status).toBe(201);
+    const created = (await createRes.json()) as { id: string };
+
+    await app.handle(
+      new Request(`http://localhost/api/clothes/${created.id}/vote`, {
+        method: "PUT",
+        headers: {
+          cookie: voterCookie,
+          "content-type": "application/json",
+        },
+        body: JSON.stringify({ vote: "like" }),
+      }),
+    );
+
+    const profileRes = await app.handle(
+      new Request(`http://localhost/api/users/${authorId}`),
+    );
+    expect(profileRes.status).toBe(200);
+    const body = await profileRes.json();
+    const parsed = UserProfileSchema.parse(body);
+
+    expect(parsed.stats.uploadCount).toBe(1);
+    expect(parsed.stats.likesReceived).toBe(1);
+    expect(parsed.stats.dislikesReceived).toBe(0);
+    expect(parsed.clothes).toHaveLength(1);
+    expect(parsed.clothes[0]!.id).toBe(created.id);
+    expect(parsed.clothes[0]!.title).toBe("Profile Outfit");
+    expect(parsed.clothes[0]!.type).toBe("clothes");
+    expect(parsed.clothes[0]!.likes).toBe(1);
   });
 });

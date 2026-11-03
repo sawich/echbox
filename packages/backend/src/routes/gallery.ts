@@ -7,6 +7,7 @@ import {
   addVersion,
   createCard,
   deleteCard,
+  deleteVersion,
   findByHash,
   getCard as getCharacterCard,
   getVersionImage as getCharacterVersionImage,
@@ -282,6 +283,31 @@ export const galleryRoutes = new Elysia({ prefix: "/api/kk" })
     {
       params: t.Object({
         id: t.String(),
+      }),
+    },
+  )
+  .delete(
+    "/cards/:id/versions/:versionId",
+    async ({ params, user, set }) => {
+      if (!user) {
+        set.status = 401;
+        return { error: "Unauthorized" };
+      }
+      try {
+        const detail = await deleteVersion({
+          cardId: params.id,
+          versionId: params.versionId,
+          authorId: user.id,
+        });
+        return stripCardPaths(detail);
+      } catch (err) {
+        return handleServiceError(err, set);
+      }
+    },
+    {
+      params: t.Object({
+        id: t.String(),
+        versionId: t.String(),
       }),
     },
   )

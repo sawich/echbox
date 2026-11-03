@@ -11,6 +11,7 @@ import {
   addVersion,
   createCard,
   deleteCard,
+  deleteVersion,
   findByHash,
   getCard,
   listCharacters,
@@ -344,6 +345,83 @@ describe("character card service", () => {
     expect(updated.versions.map((v) => v.semver)).toEqual(["1.5.0", "2.0.0"]);
   });
 
+  test("deleteVersion recomputes latest and deleting last leaves empty parent", async () => {
+    const card = await createCard({
+      gameId,
+      authorId,
+      semver: "1.0.0",
+      fileBytes: await fixtureBytes("chara", "kk_chara.png"),
+    });
+    const v1Id = card.latestVersionId!;
+    const v1Paths = getVersionPaths(card.id, v1Id, dataDir);
+
+    const withV2 = await addVersion({
+      cardId: card.id,
+      authorId,
+      semver: "2.0.0",
+      fileBytes: await fixtureBytes("chara", "kk_mod_chara.png"),
+    });
+    const v2Id = withV2.versions.find((v) => v.semver === "2.0.0")!.id;
+    const v2Paths = getVersionPaths(card.id, v2Id, dataDir);
+    expect(existsSync(v2Paths.versionDir)).toBe(true);
+
+    const afterDeleteHigher = await deleteVersion({
+      cardId: card.id,
+      versionId: v2Id,
+      authorId,
+    });
+    expect(afterDeleteHigher.latestSemver).toBe("1.0.0");
+    expect(afterDeleteHigher.latestVersionId).toBe(v1Id);
+    expect(afterDeleteHigher.versions.map((v) => v.semver)).toEqual(["1.0.0"]);
+    expect(existsSync(v2Paths.versionDir)).toBe(false);
+    expect(existsSync(v1Paths.versionDir)).toBe(true);
+
+    let forbidden: unknown;
+    try {
+      await deleteVersion({
+        cardId: card.id,
+        versionId: v1Id,
+        authorId: otherUserId,
+      });
+    } catch (err) {
+      forbidden = err;
+    }
+    expect((forbidden as { status: number }).status).toBe(403);
+
+    let missing: unknown;
+    try {
+      await deleteVersion({
+        cardId: card.id,
+        versionId: crypto.randomUUID(),
+        authorId,
+      });
+    } catch (err) {
+      missing = err;
+    }
+    expect((missing as { status: number }).status).toBe(404);
+
+    const empty = await deleteVersion({
+      cardId: card.id,
+      versionId: v1Id,
+      authorId,
+    });
+    expect(empty.latestSemver).toBeNull();
+    expect(empty.latestVersionId).toBeNull();
+    expect(empty.versions).toEqual([]);
+    expect(existsSync(v1Paths.versionDir)).toBe(false);
+
+    const listed = await listCharacters();
+    const item = listed.find((c) => c.id === card.id);
+    expect(item).toBeDefined();
+    expect(item!.versionCount).toBe(0);
+    expect(item!.latestSemver).toBeNull();
+    expect(item!.imageUrl).toBe("");
+
+    const stillThere = await getCard(card.id);
+    expect(stillThere).not.toBeNull();
+    expect(stillThere!.versions).toEqual([]);
+  });
+
   test("findByHash returns cardId, versionId and semver when present, null otherwise", async () => {
     const v1Bytes = await fixtureBytes("chara", "kk_chara.png");
     const hash = sha256Hex(v1Bytes);
@@ -399,6 +477,39 @@ describe("character card service", () => {
     expect(coordCaught).toBeDefined();
     expect((coordCaught as { status: number }).status).toBe(400);
     expect(await listCharacters()).toHaveLength(0);
+  });
+
+  test("plain PNG (no card payload) rejects with human message, not Out of bounds", async () => {
+    const card = await createCard({
+      gameId,
+      semver: "1.0.0",
+      authorId,
+      fileBytes: await fixtureBytes("chara", "kk_chara.png"),
+    });
+
+    // Valid PNG signature only — previously surfaced as DataView "Out of bounds access"
+    const pngOnly = new Uint8Array([
+      0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a,
+    ]);
+
+    let caught: unknown;
+    try {
+      await addVersion({
+        cardId: card.id,
+        authorId,
+        semver: "1.2.0",
+        fileBytes: pngOnly,
+      });
+    } catch (err) {
+      caught = err;
+    }
+
+    expect(caught).toBeDefined();
+    expect((caught as { status: number }).status).toBe(400);
+    expect((caught as Error).message).toBe(
+      "Uploaded file is not a valid Koikatsu character card",
+    );
+    expect((caught as Error).message).not.toMatch(/out of bounds/i);
   });
 
   test("patchCard updates metadata for author and throws 403 for other user", async () => {

@@ -23,7 +23,7 @@ export class DuplicateSceneHashError extends SceneServiceError {
     super(
       409,
       "CONFLICT",
-      `Duplicate scene content hash (already exists in scene ${sceneId} v${semver})`,
+      `This file was already uploaded as version ${semver}.`,
     );
     this.name = "DuplicateSceneHashError";
     this.sceneId = sceneId;
@@ -43,7 +43,7 @@ export class DuplicateSceneSemverError extends SceneServiceError {
     super(
       409,
       "DUPLICATE_SEMVER",
-      `Scene ${sceneId} already has version ${semver}`,
+      `Version ${semver} already exists for this scene.`,
     );
     this.name = "DuplicateSceneSemverError";
     this.sceneId = sceneId;
@@ -53,7 +53,7 @@ export class DuplicateSceneSemverError extends SceneServiceError {
 }
 
 export class ForbiddenSceneError extends SceneServiceError {
-  constructor(message = "Forbidden: only the scene author may modify this scene") {
+  constructor(message = "Only the author can change this scene.") {
     super(403, "FORBIDDEN", message);
     this.name = "ForbiddenSceneError";
   }

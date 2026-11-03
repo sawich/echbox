@@ -10,7 +10,15 @@ export async function writeWebpPreview(
 ): Promise<void> {
   await mkdir(dirname(destPath), { recursive: true });
 
-  const img = new Bun.Image(sourcePngOrImageBytes);
+  // Copy out of parent ArrayBuffer views (card/scene payloads) so Bun.Image
+  // never sees a subarray into a multi-megabyte containing buffer.
+  const bytes =
+    sourcePngOrImageBytes.byteOffset === 0 &&
+    sourcePngOrImageBytes.byteLength === sourcePngOrImageBytes.buffer.byteLength
+      ? sourcePngOrImageBytes
+      : new Uint8Array(sourcePngOrImageBytes);
+
+  const img = new Bun.Image(bytes);
   await img.metadata();
 
   const scale = Math.min(1, MAX_EDGE / Math.max(img.width, img.height));

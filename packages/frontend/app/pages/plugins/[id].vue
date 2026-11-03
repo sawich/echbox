@@ -182,6 +182,7 @@ const semver = useSemverInput()
 const uploadingVersion = ref(false)
 const versionError = ref<string | null>(null)
 const versionDuplicateHit = ref<UploadDuplicateHit | null>(null)
+const deletingVersionId = ref<string | null>(null)
 
 function onVersionFileChange(file: File | null | undefined) {
   versionFile.value = file ?? null
@@ -189,7 +190,35 @@ function onVersionFileChange(file: File | null | undefined) {
   versionDuplicateHit.value = null
 }
 
+async function handleDeleteVersion(versionId: string) {
+  if (deletingVersionId.value) return
+  deletingVersionId.value = versionId
+  versionError.value = null
+  try {
+    const res = await fetch(
+      `${apiUrl.value}/api/plugins/${id.value}/versions/${versionId}`,
+      { method: 'DELETE', credentials: 'include' },
+    )
+    const payload = await res.json().catch(() => null)
+    if (!res.ok) {
+      versionError.value = payload?.error || `Failed to delete version (${res.status})`
+      return
+    }
+    await refresh()
+    selectedVersion.value = payload?.latestVersionId ?? null
+  }
+  catch (e) {
+    versionError.value = e instanceof Error ? e.message : 'Failed to delete version'
+  }
+  finally {
+    deletingVersionId.value = null
+  }
+}
+
 async function submitNewVersion() {
+  semver.markTried()
+  if (!semver.valid.value) return
+
   if (!versionFile.value || uploadingVersion.value || !semver.canonical.value) return
   uploadingVersion.value = true
   versionError.value = null
@@ -352,6 +381,17 @@ async function handleDelete() {
               v-model="selectedVersion"
               :versions="data.versions"
               :latest-version-id="data.latestVersionId"
+              :deletable="isAuthor"
+              :deleting-id="deletingVersionId"
+              @delete="handleDeleteVersion"
+            />
+            <UAlert
+              v-if="isAuthor && versionError"
+              class="mt-3"
+              color="error"
+              variant="subtle"
+              icon="i-lucide-circle-alert"
+              :title="versionError"
             />
           </SectionCard>
 
@@ -418,12 +458,13 @@ async function handleDelete() {
                 <UFormField
                   label="Version"
                   required
-                  :error="semver.raw.value.trim() ? semver.error.value ?? undefined : undefined"
+                  :error="semver.fieldError.value"
                   help="Semantic version, e.g. 1.0.0"
                 >
                   <UInput
                     v-model="semver.raw.value"
                     placeholder="1.0.0"
+                    @blur="semver.markTried()"
                     class="w-full font-mono"
                   />
                 </UFormField>
@@ -435,7 +476,7 @@ async function handleDelete() {
                 <DuplicateNotice
                   v-if="versionDuplicateHit"
                   :to="`/plugins/${versionDuplicateHit.id}`"
-                  :label="`plugin ${versionDuplicateHit.id}${versionDuplicateHit.semver ? ` (v${versionDuplicateHit.semver})` : ''}`"
+                  :label="versionDuplicateHit.semver ? `version ${versionDuplicateHit.semver}` : 'existing upload'"
                   lead="This file already exists as"
                 />
                 <UAlert
@@ -451,7 +492,7 @@ async function handleDelete() {
                   variant="soft"
                   icon="i-lucide-upload"
                   :loading="uploadingVersion"
-                  :disabled="!versionFile || !semver.valid.value || uploadingVersion"
+                  :disabled="!versionFile || uploadingVersion"
                 >
                   Publish new version
                 </UButton>
@@ -470,6 +511,7 @@ async function handleDelete() {
         <aside class="space-y-4 self-start lg:sticky lg:top-24">
           <div class="ed-card space-y-4 p-5">
             <UButton
+              v-if="active"
               :href="activeDownloadHref"
               external
               download
@@ -478,8 +520,14 @@ async function handleDelete() {
               icon="i-lucide-download"
               block
             >
-              Download v{{ active?.semver ?? data.latestSemver }}
+              Download v{{ active.semver }}
             </UButton>
+            <p
+              v-else
+              class="text-sm text-muted"
+            >
+              No versions available to download.
+            </p>
             <div class="space-y-2">
               <CardVoteControls
                 :likes="data.likes"

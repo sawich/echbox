@@ -24,7 +24,12 @@ import {
 } from "./errors";
 import { sha256Hex } from "./hash";
 import { writeWebpPreview } from "./preview";
-import { getVersionPaths, removeCardFiles, writeOriginalPng } from "./storage";
+import {
+  getVersionPaths,
+  removeCardFiles,
+  removeVersionFiles,
+  writeOriginalPng,
+} from "./storage";
 import { assertGameExists } from "../games/service";
 import {
   getVoteCounts,
@@ -111,18 +116,25 @@ export type DeleteCardInput = CardServiceOptions & {
   authorId: string;
 };
 
-function imageUrl(cardId: string, versionId: string): string {
+export type DeleteVersionInput = CardServiceOptions & {
+  cardId: string;
+  versionId: string;
+  authorId: string;
+};
+
+function imageUrl(cardId: string, versionId: string | null): string {
+  if (!versionId) return "";
   return `/api/kk/cards/${cardId}/versions/${versionId}/image`;
 }
 
 function normalizeSemver(input: string | undefined): string {
   if (input === undefined || !input.trim()) {
-    throw new BadCardError("semver is required");
+    throw new BadCardError("Version is required (for example 1.0.0).");
   }
   try {
     return parseSemver(input);
   } catch {
-    throw new BadCardError(`Invalid semver: ${input}`);
+    throw new BadCardError("Enter a valid version number (for example 1.0.0).");
   }
 }
 
@@ -135,6 +147,20 @@ function slugify(input: string, fallbackId: string): string {
   return normalized || `card-${fallbackId.slice(0, 8)}`;
 }
 
+function humanizeCardParseError(err: unknown): string {
+  const message = err instanceof Error ? err.message : "";
+  if (
+    /out of bounds/i.test(message) ||
+    /unexpected eof/i.test(message) ||
+    /truncated msgpack/i.test(message) ||
+    /invalid png/i.test(message) ||
+    /negative length/i.test(message)
+  ) {
+    return "Uploaded file is not a valid Koikatsu character card";
+  }
+  return message || "Invalid Koikatsu character card";
+}
+
 async function parseCharacterCard(fileBytes: Uint8Array): Promise<KoikatuCharaData> {
   try {
     const kc = await KoikatuCharaData.load(fileBytes);
@@ -145,9 +171,7 @@ async function parseCharacterCard(fileBytes: Uint8Array): Promise<KoikatuCharaDa
     return kc;
   } catch (err) {
     if (err instanceof BadCardError) throw err;
-    throw new BadCardError(
-      err instanceof Error ? err.message : "Invalid Koikatsu character card",
-    );
+    throw new BadCardError(humanizeCardParseError(err));
   }
 }
 
@@ -301,7 +325,7 @@ export async function listCharacters(
       title: card.title,
       latestSemver: card.latestSemver,
       latestVersionId: card.latestVersionId,
-      versionCount: versions.length || 1,
+      versionCount: versions.length,
       imageUrl: imageUrl(card.id, card.latestVersionId),
       summary,
       ...votes,
@@ -578,7 +602,7 @@ export async function patchCard(
       .where(eq(characterCards.id, targetId))
       .run();
 
-    if (input.notes !== undefined) {
+    if (input.notes !== undefined && card.latestVersionId) {
       tx.update(characterCardVersions)
         .set({
           notes: input.notes,
@@ -598,6 +622,75 @@ export async function patchCard(
     dataDir: input.dataDir,
   });
   return updated!;
+}
+
+export async function deleteVersion(
+  input: DeleteVersionInput,
+): Promise<CharacterCardDetail> {
+  const { cardId, versionId, authorId, dbPath, dataDir } = input;
+  const db = getDb(dbPath);
+
+  const card = db
+    .select()
+    .from(characterCards)
+    .where(eq(characterCards.id, cardId))
+    .get();
+
+  if (!card) {
+    throw new CardNotFoundError();
+  }
+
+  if (card.authorId !== authorId) {
+    throw new ForbiddenCardError();
+  }
+
+  const version = db
+    .select()
+    .from(characterCardVersions)
+    .where(
+      and(
+        eq(characterCardVersions.cardId, cardId),
+        eq(characterCardVersions.id, versionId),
+      ),
+    )
+    .get();
+
+  if (!version) {
+    throw new CardNotFoundError("Version not found");
+  }
+
+  const now = new Date().toISOString();
+
+  db.transaction((tx) => {
+    tx.delete(characterCardVersions)
+      .where(eq(characterCardVersions.id, versionId))
+      .run();
+
+    const remaining = tx
+      .select({
+        id: characterCardVersions.id,
+        semver: characterCardVersions.semver,
+      })
+      .from(characterCardVersions)
+      .where(eq(characterCardVersions.cardId, cardId))
+      .all();
+
+    const latest = pickLatestBySemver(remaining);
+
+    tx.update(characterCards)
+      .set({
+        latestSemver: latest?.semver ?? null,
+        latestVersionId: latest?.id ?? null,
+        updatedAt: now,
+      })
+      .where(eq(characterCards.id, cardId))
+      .run();
+  });
+
+  await removeVersionFiles(cardId, versionId, dataDir);
+
+  const detail = await getCard(cardId, { dbPath, dataDir });
+  return detail!;
 }
 
 export async function deleteCard(
@@ -707,6 +800,8 @@ export function createCardService(options: CardServiceOptions = {}) {
       }
       return deleteCard({ ...options, ...cardIdOrInput });
     },
+    deleteVersion: (input: Omit<DeleteVersionInput, "dbPath" | "dataDir">) =>
+      deleteVersion({ ...options, ...input }),
     getVersionImage: (
       cardId: string,
       versionId: string,

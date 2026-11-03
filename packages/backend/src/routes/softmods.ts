@@ -8,6 +8,7 @@ import {
   addSoftmodVersion,
   createSoftmod,
   deleteSoftmod,
+  deleteSoftmodVersion,
   findSoftmodByHash,
   getSoftmod,
   getSoftmodVersionBytes,
@@ -238,6 +239,31 @@ export const softmodRoutes = new Elysia({ prefix: "/api/softmods" })
     {
       params: t.Object({
         id: t.String(),
+      }),
+    },
+  )
+  .delete(
+    "/:id/versions/:versionId",
+    async ({ params, user, set }) => {
+      if (!user) {
+        set.status = 401;
+        return { error: "Unauthorized" };
+      }
+      try {
+        const detail = await deleteSoftmodVersion({
+          softmodId: params.id,
+          versionId: params.versionId,
+          authorId: user.id,
+        });
+        return stripSoftmodPaths(detail);
+      } catch (err) {
+        return handleServiceError(err, set);
+      }
+    },
+    {
+      params: t.Object({
+        id: t.String(),
+        versionId: t.String(),
       }),
     },
   )

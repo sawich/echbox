@@ -23,6 +23,7 @@ import {
   pluginVersionPaths,
   removePlacedFile,
   removePluginFiles,
+  removePluginVersionFiles,
 } from "./storage";
 import { assertGameExists } from "../games/service";
 import {
@@ -68,8 +69,8 @@ export type PluginDetail = PluginVoteCounts & {
   authorId: string;
   title: string;
   description: string | null;
-  latestSemver: string;
-  latestVersionId: string;
+  latestSemver: string | null;
+  latestVersionId: string | null;
   createdAt: string;
   updatedAt: string;
   uploader: PluginUploader;
@@ -84,8 +85,8 @@ export type PluginListItem = PluginVoteCounts & {
   authorId: string;
   title: string;
   description: string | null;
-  latestSemver: string;
-  latestVersionId: string;
+  latestSemver: string | null;
+  latestVersionId: string | null;
   versionCount: number;
   downloadUrl: string;
   uploader: PluginUploader;
@@ -130,20 +131,27 @@ export type DeletePluginInput = PluginServiceOptions & {
   authorId: string;
 };
 
+export type DeletePluginVersionInput = PluginServiceOptions & {
+  pluginId: string;
+  versionId: string;
+  authorId: string;
+};
+
 const EMPTY_SUMMARY_JSON = "{}";
 
-function downloadUrl(pluginId: string, versionId: string): string {
+function downloadUrl(pluginId: string, versionId: string | null): string {
+  if (!versionId) return "";
   return `/api/plugins/${pluginId}/versions/${versionId}/download`;
 }
 
 function normalizeSemver(input: unknown): string {
   if (typeof input !== "string" || !input.trim()) {
-    throw new BadPluginError("Plugin semver is required");
+    throw new BadPluginError("Version is required (for example 1.0.0).");
   }
   try {
     return parseSemver(input);
   } catch {
-    throw new BadPluginError(`Invalid semver: ${input}`);
+    throw new BadPluginError("Enter a valid version number (for example 1.0.0).");
   }
 }
 
@@ -258,7 +266,7 @@ export async function getPlugin(
     updatedAt: plugin.updatedAt,
     uploader: loadUploader(db, plugin.authorId),
     downloadUrl: downloadUrl(plugin.id, plugin.latestVersionId),
-    versionCount: versions.length || 1,
+    versionCount: versions.length,
     ...votes,
     versions,
   };
@@ -314,7 +322,7 @@ export async function listPlugins(
       description: plugin.description,
       latestSemver: plugin.latestSemver,
       latestVersionId: plugin.latestVersionId,
-      versionCount: versions.length || 1,
+      versionCount: versions.length,
       downloadUrl: downloadUrl(plugin.id, plugin.latestVersionId),
       uploader: loadUploader(db, plugin.authorId),
       ...votes,
@@ -578,6 +586,66 @@ export async function patchPlugin(
   db.update(plugins).set(updates).where(eq(plugins.id, id)).run();
 
   const detail = await getPlugin(id, { dbPath, dataDir });
+  return detail!;
+}
+
+export async function deletePluginVersion(
+  input: DeletePluginVersionInput,
+): Promise<PluginDetail> {
+  const { pluginId, versionId, authorId, dbPath, dataDir } = input;
+  const db = getDb(dbPath);
+
+  const plugin = db.select().from(plugins).where(eq(plugins.id, pluginId)).get();
+
+  if (!plugin) {
+    throw new PluginNotFoundError();
+  }
+
+  if (plugin.authorId !== authorId) {
+    throw new ForbiddenPluginError();
+  }
+
+  const version = db
+    .select()
+    .from(pluginVersions)
+    .where(
+      and(
+        eq(pluginVersions.pluginId, pluginId),
+        eq(pluginVersions.id, versionId),
+      ),
+    )
+    .get();
+
+  if (!version) {
+    throw new PluginNotFoundError("Version not found");
+  }
+
+  const now = new Date().toISOString();
+
+  db.transaction((tx) => {
+    tx.delete(pluginVersions).where(eq(pluginVersions.id, versionId)).run();
+
+    const remaining = tx
+      .select({ id: pluginVersions.id, semver: pluginVersions.semver })
+      .from(pluginVersions)
+      .where(eq(pluginVersions.pluginId, pluginId))
+      .all();
+
+    const latest = pickLatestBySemver(remaining);
+
+    tx.update(plugins)
+      .set({
+        latestSemver: latest?.semver ?? null,
+        latestVersionId: latest?.id ?? null,
+        updatedAt: now,
+      })
+      .where(eq(plugins.id, pluginId))
+      .run();
+  });
+
+  await removePluginVersionFiles(pluginId, versionId, dataDir);
+
+  const detail = await getPlugin(pluginId, { dbPath, dataDir });
   return detail!;
 }
 

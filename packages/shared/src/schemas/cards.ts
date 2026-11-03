@@ -1,7 +1,7 @@
 import { z } from "zod";
 import { CardVoteCountsSchema } from "./votes";
 
-export const CardTypeSchema = z.enum(["character", "scene"]);
+export const CardTypeSchema = z.enum(["character", "scene", "clothes"]);
 export type CardType = z.infer<typeof CardTypeSchema>;
 
 export const CardVersionDetailSchema = z.object({
@@ -19,10 +19,10 @@ export const CardListItemSchema = z.object({
   type: CardTypeSchema,
   slug: z.string().min(1),
   title: z.string().min(1),
-  latestSemver: z.string().min(1),
-  latestVersionId: z.string().min(1),
-  versionCount: z.number().int().positive(),
-  imageUrl: z.string().min(1),
+  latestSemver: z.string().nullable(),
+  latestVersionId: z.string().nullable(),
+  versionCount: z.number().int().nonnegative(),
+  imageUrl: z.string(),
   summary: z.record(z.string(), z.unknown()),
 });
 export type CardListItem = z.infer<typeof CardListItemSchema>;
@@ -45,9 +45,9 @@ export const CardDetailSchema = z.object({
   type: CardTypeSchema,
   slug: z.string().min(1),
   title: z.string().min(1),
-  latestSemver: z.string().min(1),
-  latestVersionId: z.string().min(1),
-  versions: z.array(CardVersionDetailSchema).min(1),
+  latestSemver: z.string().nullable(),
+  latestVersionId: z.string().nullable(),
+  versions: z.array(CardVersionDetailSchema),
 });
 export type CardDetail = z.infer<typeof CardDetailSchema>;
 

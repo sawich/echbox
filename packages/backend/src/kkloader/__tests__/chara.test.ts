@@ -112,4 +112,14 @@ describe("KoikatuCoordinateEntry — ownCloud/Other", () => {
     expect(summary.hasAccessory).toBe(true);
     expect(coord.data?.makeup).toBeDefined();
   });
+
+  test("loads clothes fixture under fixtures/clothes", async () => {
+    const coord = await KoikatuCoordinateEntry.load(
+      fixture("clothes", "kk_clothes.png"),
+    );
+    const summary = coord.summary();
+    expect(summary.header).toContain("KoiKatuClothes");
+    expect(summary.coordinateName).toBe("Outfit");
+    expect(summary.hasClothes).toBe(true);
+  });
 });

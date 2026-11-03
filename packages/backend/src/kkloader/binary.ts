@@ -29,24 +29,30 @@ export class BinaryReader {
     this.offset = pos;
   }
 
-  readBytes(length: number): Uint8Array<ArrayBufferLike> {
+  private require(length: number): void {
     if (this.offset + length > this.buffer.byteLength) {
       throw new RangeError(
         `Unexpected EOF: need ${length} bytes at ${this.offset}, have ${this.remaining}`,
       );
     }
+  }
+
+  readBytes(length: number): Uint8Array<ArrayBufferLike> {
+    this.require(length);
     const slice = this.buffer.subarray(this.offset, this.offset + length);
     this.offset += length;
     return slice;
   }
 
   readI8(): number {
+    this.require(1);
     const v = this.view.getInt8(this.offset);
     this.offset += 1;
     return v;
   }
 
   readU8(): number {
+    this.require(1);
     const v = this.view.getUint8(this.offset);
     this.offset += 1;
     return v;
@@ -54,6 +60,7 @@ export class BinaryReader {
 
   /** Little-endian int32 (`struct "i"`). */
   readI32(): number {
+    this.require(4);
     const v = this.view.getInt32(this.offset, true);
     this.offset += 4;
     return v;
@@ -61,6 +68,7 @@ export class BinaryReader {
 
   /** Little-endian int64 as number (`struct "q"`). Safe for sizes used here. */
   readI64(): number {
+    this.require(8);
     const v = this.view.getBigInt64(this.offset, true);
     this.offset += 8;
     return Number(v);
@@ -68,6 +76,7 @@ export class BinaryReader {
 
   /** Little-endian float32 (`struct "f"`). */
   readF32(): number {
+    this.require(4);
     const v = this.view.getFloat32(this.offset, true);
     this.offset += 4;
     return v;
@@ -75,6 +84,7 @@ export class BinaryReader {
 
   /** Big-endian uint32 (`struct ">I"`). */
   readU32BE(): number {
+    this.require(4);
     const v = this.view.getUint32(this.offset, false);
     this.offset += 4;
     return v;
@@ -163,7 +173,15 @@ export class BinaryReader {
 
 export function msgUnpack(data: Uint8Array | null | undefined): unknown {
   if (data == null) return null;
-  return decode(data, { useBigInt64: false });
+  try {
+    return decode(data, { useBigInt64: false });
+  } catch (err) {
+    const message = err instanceof Error ? err.message : String(err);
+    if (/out of bounds/i.test(message) || /unexpected end/i.test(message)) {
+      throw new RangeError(`Truncated msgpack payload (${data.byteLength} bytes)`);
+    }
+    throw err;
+  }
 }
 
 export async function toReader(

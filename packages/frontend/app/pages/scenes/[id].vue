@@ -153,6 +153,7 @@ const semver = useSemverInput()
 const uploadingVersion = ref(false)
 const versionError = ref<string | null>(null)
 const versionDuplicateHit = ref<UploadDuplicateHit | null>(null)
+const deletingVersionId = ref<string | null>(null)
 
 function onVersionFileChange(file: File | null | undefined) {
   versionFile.value = file ?? null
@@ -160,7 +161,35 @@ function onVersionFileChange(file: File | null | undefined) {
   versionDuplicateHit.value = null
 }
 
+async function handleDeleteVersion(versionId: string) {
+  if (deletingVersionId.value) return
+  deletingVersionId.value = versionId
+  versionError.value = null
+  try {
+    const res = await fetch(
+      `${apiUrl.value}/api/scenes/${id.value}/versions/${versionId}`,
+      { method: 'DELETE', credentials: 'include' },
+    )
+    const payload = await res.json().catch(() => null)
+    if (!res.ok) {
+      versionError.value = payload?.error || `Failed to delete version (${res.status})`
+      return
+    }
+    await refresh()
+    selectedVersion.value = payload?.latestVersionId ?? null
+  }
+  catch (e) {
+    versionError.value = e instanceof Error ? e.message : 'Failed to delete version'
+  }
+  finally {
+    deletingVersionId.value = null
+  }
+}
+
 async function submitNewVersion() {
+  semver.markTried()
+  if (!semver.valid.value) return
+
   if (!versionFile.value || uploadingVersion.value || !semver.canonical.value) return
   uploadingVersion.value = true
   versionError.value = null
@@ -266,6 +295,7 @@ async function handleDeleteScene() {
       <aside class="self-start lg:sticky lg:top-24">
         <div class="relative">
           <img
+            v-if="imageSrc"
             :src="imageSrc"
             alt=""
             aria-hidden="true"
@@ -273,12 +303,28 @@ async function handleDeleteScene() {
           >
           <div class="relative overflow-hidden rounded-[var(--radius-2xl)] border border-default bg-[var(--ed-surface-container-highest)] shadow-[var(--ed-shadow-lift)]">
             <img
+              v-if="imageSrc"
               :key="imageSrc"
               :src="imageSrc"
               :alt="data.title"
               class="ed-page-enter w-full object-cover"
               :class="previewAspect"
             >
+            <div
+              v-else
+              class="ed-page-enter grid w-full place-items-center text-dimmed"
+              :class="previewAspect"
+            >
+              <div class="space-y-2 text-center">
+                <UIcon
+                  name="i-lucide-image-off"
+                  class="mx-auto size-10 opacity-40"
+                />
+                <p class="text-sm text-muted">
+                  No version preview
+                </p>
+              </div>
+            </div>
           </div>
         </div>
       </aside>
@@ -381,6 +427,17 @@ async function handleDeleteScene() {
             v-model="selectedVersion"
             :versions="data.versions"
             :latest-version-id="data.latestVersionId"
+            :deletable="isAuthor"
+            :deleting-id="deletingVersionId"
+            @delete="handleDeleteVersion"
+          />
+          <UAlert
+            v-if="isAuthor && versionError"
+            class="mt-3"
+            color="error"
+            variant="subtle"
+            icon="i-lucide-circle-alert"
+            :title="versionError"
           />
         </SectionCard>
 
@@ -439,12 +496,13 @@ async function handleDeleteScene() {
               <UFormField
                 label="Version"
                 required
-                :error="semver.raw.value.trim() ? semver.error.value ?? undefined : undefined"
+                :error="semver.fieldError.value"
                 help="Semantic version, e.g. 1.0.0"
               >
                 <UInput
                   v-model="semver.raw.value"
                   placeholder="1.0.0"
+                  @blur="semver.markTried()"
                   class="w-full font-mono"
                 />
               </UFormField>
@@ -456,7 +514,7 @@ async function handleDeleteScene() {
               <DuplicateNotice
                 v-if="versionDuplicateHit"
                 :to="`/scenes/${versionDuplicateHit.id}`"
-                :label="`scene ${versionDuplicateHit.id}${versionDuplicateHit.semver ? ` (v${versionDuplicateHit.semver})` : ''}`"
+                :label="versionDuplicateHit.semver ? `version ${versionDuplicateHit.semver}` : 'existing upload'"
                 lead="This file already exists as"
               />
               <UAlert
@@ -472,7 +530,7 @@ async function handleDeleteScene() {
                 variant="soft"
                 icon="i-lucide-upload"
                 :loading="uploadingVersion"
-                :disabled="!versionFile || !semver.valid.value || uploadingVersion"
+                :disabled="!versionFile || uploadingVersion"
               >
                 Publish new version
               </UButton>
@@ -488,8 +546,9 @@ async function handleDeleteScene() {
         </SectionCard>
 
         <JsonPanel
-          :title="`Scene data · v${active?.semver ?? data.latestSemver}`"
-          :value="active?.summary ?? {}"
+          v-if="active"
+          :title="`Scene data · v${active.semver}`"
+          :value="active.summary ?? {}"
         />
       </div>
     </div>

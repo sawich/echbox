@@ -72,6 +72,15 @@ export async function removeSoftmodFiles(
   await rm(dir, { recursive: true, force: true });
 }
 
+export async function removeSoftmodVersionFiles(
+  softmodId: string,
+  versionId: string,
+  dataDir?: string,
+): Promise<void> {
+  const { dir } = softmodVersionPaths(dataDir, softmodId, versionId);
+  await rm(dir, { recursive: true, force: true });
+}
+
 export async function removePlacedFile(
   path: string,
   dataDir?: string,

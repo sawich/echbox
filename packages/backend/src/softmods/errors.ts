@@ -23,7 +23,7 @@ export class DuplicateSoftmodHashError extends SoftmodServiceError {
     super(
       409,
       "CONFLICT",
-      `Duplicate softmod content hash (already exists in softmod ${softmodId} v${semver})`,
+      `This file was already uploaded as version ${semver}.`,
     );
     this.name = "DuplicateSoftmodHashError";
     this.softmodId = softmodId;
@@ -44,8 +44,8 @@ export class DuplicateSoftmodSemverError extends SoftmodServiceError {
   constructor(softmodId: string, versionId: string, semver: string) {
     super(
       409,
-      "CONFLICT",
-      `Softmod ${softmodId} already has version ${semver}`,
+      "DUPLICATE_SEMVER",
+      `Version ${semver} already exists for this softmod.`,
     );
     this.name = "DuplicateSoftmodSemverError";
     this.softmodId = softmodId;
@@ -64,7 +64,7 @@ export class SoftmodGuidConflictError extends SoftmodServiceError {
     super(
       409,
       "CONFLICT",
-      `Softmod GUID already exists (${softmodId})`,
+      "A softmod with this GUID is already in the library.",
     );
     this.name = "SoftmodGuidConflictError";
     this.softmodId = softmodId;
@@ -73,7 +73,7 @@ export class SoftmodGuidConflictError extends SoftmodServiceError {
 }
 
 export class ForbiddenSoftmodError extends SoftmodServiceError {
-  constructor(message = "Forbidden: only the softmod author may modify this softmod") {
+  constructor(message = "Only the author can change this softmod.") {
     super(403, "FORBIDDEN", message);
     this.name = "ForbiddenSoftmodError";
   }

@@ -7,6 +7,7 @@ import {
   addSceneVersion,
   createScene,
   deleteScene,
+  deleteSceneVersion,
   findSceneByHash,
   getScene,
   getSceneVersionImage,
@@ -286,6 +287,31 @@ export const sceneRoutes = new Elysia({ prefix: "/api/scenes" })
     {
       params: t.Object({
         id: t.String(),
+      }),
+    },
+  )
+  .delete(
+    "/:id/versions/:versionId",
+    async ({ params, user, set }) => {
+      if (!user) {
+        set.status = 401;
+        return { error: "Unauthorized" };
+      }
+      try {
+        const detail = await deleteSceneVersion({
+          sceneId: params.id,
+          versionId: params.versionId,
+          authorId: user.id,
+        });
+        return stripScenePaths(detail);
+      } catch (err) {
+        return handleServiceError(err, set);
+      }
+    },
+    {
+      params: t.Object({
+        id: t.String(),
+        versionId: t.String(),
       }),
     },
   )

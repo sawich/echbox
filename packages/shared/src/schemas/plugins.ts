@@ -13,10 +13,10 @@ export const PluginListItemSchema = CardVoteCountsSchema.extend({
   authorId: z.string().min(1),
   title: z.string().min(1),
   description: z.string().nullable().optional(),
-  latestSemver: z.string().min(1),
-  latestVersionId: z.string().min(1),
-  versionCount: z.number().int().positive(),
-  downloadUrl: z.string().min(1),
+  latestSemver: z.string().nullable(),
+  latestVersionId: z.string().nullable(),
+  versionCount: z.number().int().nonnegative(),
+  downloadUrl: z.string(),
   uploader: PluginUploaderSchema,
 });
 export type PluginListItem = z.infer<typeof PluginListItemSchema>;

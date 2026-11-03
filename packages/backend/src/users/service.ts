@@ -6,6 +6,8 @@ import { getDb } from "../db/client";
 import { users } from "../db/schema";
 import { listPlugins } from "../plugins/service";
 import { getPluginLikesReceivedForAuthor } from "../plugins/votes";
+import { listClothes } from "../clothes/service";
+import { getLikesReceivedForAuthor as getClothesLikesReceivedForAuthor } from "../clothes/votes";
 import { listScenes } from "../scenes/service";
 import { getLikesReceivedForAuthor as getSceneLikesReceivedForAuthor } from "../scenes/votes";
 import { listSoftmods } from "../softmods/service";
@@ -41,6 +43,9 @@ export async function getUserProfile(
   const scenes = (await listScenes(listOpts)).filter(
     (s) => s.authorId === userId,
   );
+  const clothesItems = (await listClothes(listOpts)).filter(
+    (c) => c.authorId === userId,
+  );
 
   const cardVotes = getLikesReceivedForAuthor(userId, options?.dbPath);
   const pluginVotes = getPluginLikesReceivedForAuthor(
@@ -55,6 +60,10 @@ export async function getUserProfile(
     userId,
     options?.dbPath,
   );
+  const clothesVotes = getClothesLikesReceivedForAuthor(
+    userId,
+    options?.dbPath,
+  );
 
   return {
     id: user.id,
@@ -66,21 +75,25 @@ export async function getUserProfile(
         cards.length +
         plugins.length +
         softmods.length +
-        scenes.length,
+        scenes.length +
+        clothesItems.length,
       likesReceived:
         cardVotes.likesReceived +
         pluginVotes.likesReceived +
         softmodVotes.likesReceived +
-        sceneVotes.likesReceived,
+        sceneVotes.likesReceived +
+        clothesVotes.likesReceived,
       dislikesReceived:
         cardVotes.dislikesReceived +
         pluginVotes.dislikesReceived +
         softmodVotes.dislikesReceived +
-        sceneVotes.dislikesReceived,
+        sceneVotes.dislikesReceived +
+        clothesVotes.dislikesReceived,
     },
     cards,
     plugins,
     softmods,
     scenes,
+    clothes: clothesItems,
   };
 }

@@ -8,7 +8,7 @@ const config = useRuntimeConfig()
 const apiUrl = computed(() => String(config.public.apiUrl).replace(/\/$/, ''))
 const { isDesktop, listInstalledGames } = useLocalInstalls()
 
-const tab = ref<'characters' | 'scenes' | 'plugins' | 'softmods'>('characters')
+const tab = ref<'characters' | 'scenes' | 'clothes' | 'plugins' | 'softmods'>('characters')
 const isInstalled = ref(false)
 
 const { data: game, error, status, refresh } = await useAsyncData(
@@ -42,6 +42,7 @@ watch(gameId, () => {
 const tabs = [
   { key: 'characters' as const, label: 'Characters', icon: 'i-lucide-user-round' },
   { key: 'scenes' as const, label: 'Scenes', icon: 'i-lucide-clapperboard' },
+  { key: 'clothes' as const, label: 'Clothes', icon: 'i-lucide-shirt' },
   { key: 'plugins' as const, label: 'Plugins', icon: 'i-lucide-puzzle' },
   { key: 'softmods' as const, label: 'Softmods', icon: 'i-lucide-package' },
 ]
@@ -105,6 +106,12 @@ function iconSrc(g: GameListItem) {
         v-else-if="tab === 'scenes' && game"
         title="Scenes"
         description="Studio scenes for this game."
+        :game-id="gameId"
+      />
+      <ClothesGalleryPage
+        v-else-if="tab === 'clothes' && game"
+        title="Clothes"
+        description="Outfit cards for this game."
         :game-id="gameId"
       />
       <ModCatalogPage

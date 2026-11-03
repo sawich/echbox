@@ -58,3 +58,12 @@ export async function removeCardFiles(
   const dir = getCardDir(cardId, dataDir);
   await rm(dir, { recursive: true, force: true });
 }
+
+export async function removeVersionFiles(
+  cardId: string,
+  versionId: string,
+  dataDir?: string,
+): Promise<void> {
+  const dir = getVersionDir(cardId, versionId, dataDir);
+  await rm(dir, { recursive: true, force: true });
+}

@@ -8,3 +8,7 @@ test("character aspect", () => {
 test("scene aspect", () => {
   expect(galleryAspect("scene")).toBe("aspect-[320/180]");
 });
+
+test("clothes aspect", () => {
+  expect(galleryAspect("clothes")).toBe("aspect-[252/352]");
+});

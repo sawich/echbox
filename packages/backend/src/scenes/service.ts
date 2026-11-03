@@ -22,6 +22,7 @@ import {
 import {
   getVersionPaths,
   removeSceneFiles,
+  removeVersionFiles,
   writeOriginalPng,
 } from "./storage";
 import { assertGameExists } from "../games/service";
@@ -110,18 +111,25 @@ export type DeleteSceneInput = SceneServiceOptions & {
   authorId: string;
 };
 
-function imageUrl(sceneId: string, versionId: string): string {
+export type DeleteSceneVersionInput = SceneServiceOptions & {
+  sceneId: string;
+  versionId: string;
+  authorId: string;
+};
+
+function imageUrl(sceneId: string, versionId: string | null): string {
+  if (!versionId) return "";
   return `/api/scenes/${sceneId}/versions/${versionId}/image`;
 }
 
 function normalizeSemver(input: string | undefined): string {
   if (input === undefined || !input.trim()) {
-    throw new BadSceneError("semver is required");
+    throw new BadSceneError("Version is required (for example 1.0.0).");
   }
   try {
     return parseSemver(input);
   } catch {
-    throw new BadSceneError(`Invalid semver: ${input}`);
+    throw new BadSceneError("Enter a valid version number (for example 1.0.0).");
   }
 }
 
@@ -132,6 +140,21 @@ function slugify(input: string, fallbackId: string): string {
     .replace(/[^a-z0-9]+/g, "-")
     .replace(/^-+|-+$/g, "");
   return normalized || `scene-${fallbackId.slice(0, 8)}`;
+}
+
+function humanizeSceneParseError(err: unknown): string {
+  const message = err instanceof Error ? err.message : "";
+  if (
+    /out of bounds/i.test(message) ||
+    /unexpected eof/i.test(message) ||
+    /truncated msgpack/i.test(message) ||
+    /invalid png/i.test(message) ||
+    /negative length/i.test(message) ||
+    /unexpected scene tail/i.test(message)
+  ) {
+    return "Uploaded file is not a valid Koikatsu scene";
+  }
+  return message || "Invalid Koikatsu scene";
 }
 
 async function parseScene(fileBytes: Uint8Array): Promise<KoikatuSceneData> {
@@ -153,9 +176,7 @@ async function parseScene(fileBytes: Uint8Array): Promise<KoikatuSceneData> {
     return ks;
   } catch (err) {
     if (err instanceof BadSceneError) throw err;
-    throw new BadSceneError(
-      err instanceof Error ? err.message : "Invalid Koikatsu scene",
-    );
+    throw new BadSceneError(humanizeSceneParseError(err));
   }
 }
 
@@ -306,7 +327,7 @@ export async function listScenes(
       title: scene.title,
       latestSemver: scene.latestSemver,
       latestVersionId: scene.latestVersionId,
-      versionCount: versions.length || 1,
+      versionCount: versions.length,
       imageUrl: imageUrl(scene.id, scene.latestVersionId),
       summary,
       ...votes,
@@ -580,7 +601,7 @@ export async function patchScene(
       .where(eq(scenes.id, targetId))
       .run();
 
-    if (input.notes !== undefined) {
+    if (input.notes !== undefined && scene.latestVersionId) {
       tx.update(sceneVersions)
         .set({
           notes: input.notes,
@@ -600,6 +621,70 @@ export async function patchScene(
     dataDir: input.dataDir,
   });
   return updated!;
+}
+
+export async function deleteSceneVersion(
+  input: DeleteSceneVersionInput,
+): Promise<SceneDetail> {
+  const { sceneId, versionId, authorId, dbPath, dataDir } = input;
+  const db = getDb(dbPath);
+
+  const scene = db
+    .select()
+    .from(scenes)
+    .where(eq(scenes.id, sceneId))
+    .get();
+
+  if (!scene) {
+    throw new SceneNotFoundError();
+  }
+
+  if (scene.authorId !== authorId) {
+    throw new ForbiddenSceneError();
+  }
+
+  const version = db
+    .select()
+    .from(sceneVersions)
+    .where(
+      and(
+        eq(sceneVersions.sceneId, sceneId),
+        eq(sceneVersions.id, versionId),
+      ),
+    )
+    .get();
+
+  if (!version) {
+    throw new SceneNotFoundError("Version not found");
+  }
+
+  const now = new Date().toISOString();
+
+  db.transaction((tx) => {
+    tx.delete(sceneVersions).where(eq(sceneVersions.id, versionId)).run();
+
+    const remaining = tx
+      .select({ id: sceneVersions.id, semver: sceneVersions.semver })
+      .from(sceneVersions)
+      .where(eq(sceneVersions.sceneId, sceneId))
+      .all();
+
+    const latest = pickLatestBySemver(remaining);
+
+    tx.update(scenes)
+      .set({
+        latestSemver: latest?.semver ?? null,
+        latestVersionId: latest?.id ?? null,
+        updatedAt: now,
+      })
+      .where(eq(scenes.id, sceneId))
+      .run();
+  });
+
+  await removeVersionFiles(sceneId, versionId, dataDir);
+
+  const detail = await getScene(sceneId, { dbPath, dataDir });
+  return detail!;
 }
 
 export async function deleteScene(
@@ -708,6 +793,9 @@ export function createSceneService(options: SceneServiceOptions = {}) {
       }
       return deleteScene({ ...options, ...sceneIdOrInput });
     },
+    deleteSceneVersion: (
+      input: Omit<DeleteSceneVersionInput, "dbPath" | "dataDir">,
+    ) => deleteSceneVersion({ ...options, ...input }),
     getSceneVersionImage: (
       sceneId: string,
       versionId: string,

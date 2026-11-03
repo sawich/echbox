@@ -2,7 +2,7 @@ use serde::{Deserialize, Serialize};
 use std::fs;
 use std::path::{Path, PathBuf};
 
-const CONTENT_KINDS: &[&str] = &["cards", "plugins", "scenes", "softmods"];
+const CONTENT_KINDS: &[&str] = &["cards", "plugins", "scenes", "clothes", "softmods"];
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
 #[serde(rename_all = "camelCase")]

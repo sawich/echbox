@@ -13,6 +13,7 @@ import {
   addSoftmodVersion,
   createSoftmod,
   deleteSoftmod,
+  deleteSoftmodVersion,
   findSoftmodByHash,
   getSoftmod,
   listSoftmods,
@@ -269,6 +270,58 @@ describe("softmod service", () => {
       await Bun.file(v2Paths.originalPath).arrayBuffer(),
     );
     expect(Buffer.from(savedV2).equals(Buffer.from(v2Bytes))).toBe(true);
+  });
+
+  test("deleteSoftmodVersion recomputes latest and allows empty softmod", async () => {
+    const fileBytes = await fixtureBytes("softmods", "testmod.zipmod");
+    const created = await createSoftmod({
+      gameId,
+      authorId,
+      semver: "1.0.0",
+      fileBytes,
+      dbPath,
+      dataDir,
+    });
+    const v1Id = created.latestVersionId!;
+    const v2Bytes = zipmodWithGuid(created.id, "2.0.0", "v2-payload");
+    const withV2 = await addSoftmodVersion({
+      softmodId: created.id,
+      authorId,
+      semver: "2.0.0",
+      fileBytes: v2Bytes,
+      dbPath,
+      dataDir,
+    });
+    const v2Id = withV2.versions.find((v) => v.semver === "2.0.0")!.id;
+    const v2Paths = softmodVersionPaths(dataDir, created.id, v2Id);
+
+    const afterDel = await deleteSoftmodVersion({
+      softmodId: created.id,
+      versionId: v2Id,
+      authorId,
+      dbPath,
+      dataDir,
+    });
+    expect(afterDel.latestSemver).toBe("1.0.0");
+    expect(afterDel.latestVersionId).toBe(v1Id);
+    expect(existsSync(v2Paths.dir)).toBe(false);
+
+    const empty = await deleteSoftmodVersion({
+      softmodId: created.id,
+      versionId: v1Id,
+      authorId,
+      dbPath,
+      dataDir,
+    });
+    expect(empty.latestSemver).toBeNull();
+    expect(empty.latestVersionId).toBeNull();
+    expect(empty.versions).toEqual([]);
+    expect(empty.versionCount).toBe(0);
+    expect(empty.downloadUrl).toBe("");
+
+    const listed = await listSoftmods({ dbPath, dataDir });
+    expect(listed.find((s) => s.id === created.id)?.versionCount).toBe(0);
+    expect(await getSoftmod(created.id, { dbPath, dataDir })).not.toBeNull();
   });
 
   test("addSoftmodVersion as non-author throws 403", async () => {
