@@ -9,8 +9,8 @@ fn extract_exe_icon(path: String) -> Result<Vec<u8>, String> {
 }
 
 #[tauri::command]
-fn list_installed_games() -> Result<Vec<String>, String> {
-    local_install::list_installed_games()
+fn list_installed_instances() -> Result<Vec<GameInstance>, String> {
+    local_install::list_installed_instances()
 }
 
 #[tauri::command]
@@ -19,34 +19,34 @@ fn install_game(game_id: String) -> Result<GameInstance, String> {
 }
 
 #[tauri::command]
-fn uninstall_game(game_id: String) -> Result<(), String> {
-    local_install::uninstall_game(&game_id)
+fn uninstall_instance(instance_id: String) -> Result<(), String> {
+    local_install::uninstall_instance(&instance_id)
 }
 
 #[tauri::command]
 fn list_installed_content(
-    game_id: String,
+    instance_id: String,
     kind: String,
 ) -> Result<Vec<ContentInstall>, String> {
-    local_install::list_installed_content(&game_id, &kind)
+    local_install::list_installed_content(&instance_id, &kind)
 }
 
 #[tauri::command]
 fn install_content(
-    game_id: String,
+    instance_id: String,
     kind: String,
     row: ContentInstall,
 ) -> Result<(), String> {
-    local_install::install_content(&game_id, &kind, row)
+    local_install::install_content(&instance_id, &kind, row)
 }
 
 #[tauri::command]
 fn uninstall_content(
-    game_id: String,
+    instance_id: String,
     kind: String,
     content_id: String,
 ) -> Result<(), String> {
-    local_install::uninstall_content(&game_id, &kind, &content_id)
+    local_install::uninstall_content(&instance_id, &kind, &content_id)
 }
 
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
@@ -69,9 +69,9 @@ pub fn run() {
         .plugin(tauri_plugin_dialog::init())
         .invoke_handler(tauri::generate_handler![
             extract_exe_icon,
-            list_installed_games,
+            list_installed_instances,
             install_game,
-            uninstall_game,
+            uninstall_instance,
             list_installed_content,
             install_content,
             uninstall_content,

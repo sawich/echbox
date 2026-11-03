@@ -225,17 +225,6 @@ pub fn uninstall_instance(instance_id: &str) -> Result<(), String> {
     Ok(())
 }
 
-pub fn uninstall_game(game_id: &str) -> Result<(), String> {
-    uninstall_instance(game_id)
-}
-
-pub fn list_installed_games() -> Result<Vec<String>, String> {
-    Ok(list_installed_instances()?
-        .into_iter()
-        .map(|i| i.instance_id)
-        .collect())
-}
-
 fn read_jsonl(path: &Path) -> Result<Vec<ContentInstall>, String> {
     if !path.exists() {
         return Ok(vec![]);

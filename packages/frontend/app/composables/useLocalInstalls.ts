@@ -2,6 +2,13 @@ import { invoke } from '@tauri-apps/api/core'
 
 export type ContentKind = 'cards' | 'plugins' | 'scenes' | 'clothes' | 'softmods'
 
+export type GameInstance = {
+  instanceId: string
+  gameId: string
+  label: string
+  createdAt: string
+}
+
 export type ContentInstallRow = {
   id: string
   versionId: string
@@ -19,63 +26,63 @@ function isTauriRuntime(): boolean {
 export function useLocalInstalls() {
   const isDesktop = computed(() => isTauriRuntime())
 
-  async function listInstalledGames(): Promise<string[]> {
+  async function listInstalledInstances(): Promise<GameInstance[]> {
     if (!isDesktop.value) return []
-    return await invoke<string[]>('list_installed_games')
+    return await invoke<GameInstance[]>('list_installed_instances')
   }
 
-  async function installGame(gameId: string): Promise<void> {
+  async function installGame(gameId: string): Promise<GameInstance> {
     if (!isDesktop.value) {
       throw new Error('Install is only available in the desktop app')
     }
-    await invoke('install_game', { gameId })
+    return await invoke<GameInstance>('install_game', { gameId })
   }
 
-  async function uninstallGame(gameId: string): Promise<void> {
+  async function uninstallInstance(instanceId: string): Promise<void> {
     if (!isDesktop.value) {
       throw new Error('Uninstall is only available in the desktop app')
     }
-    await invoke('uninstall_game', { gameId })
+    await invoke('uninstall_instance', { instanceId })
   }
 
   async function listInstalledContent(
-    gameId: string,
+    instanceId: string,
     kind: ContentKind,
   ): Promise<ContentInstallRow[]> {
     if (!isDesktop.value) return []
     return await invoke<ContentInstallRow[]>('list_installed_content', {
-      gameId,
+      instanceId,
       kind,
     })
   }
 
   async function installContent(
-    gameId: string,
+    instanceId: string,
     kind: ContentKind,
     row: ContentInstallRow,
   ): Promise<void> {
     if (!isDesktop.value) {
       throw new Error('Install is only available in the desktop app')
     }
-    await invoke('install_content', { gameId, kind, row })
+    await invoke('install_content', { instanceId, kind, row })
   }
 
   async function uninstallContent(
-    gameId: string,
+    instanceId: string,
     kind: ContentKind,
     contentId: string,
   ): Promise<void> {
     if (!isDesktop.value) {
       throw new Error('Uninstall is only available in the desktop app')
     }
-    await invoke('uninstall_content', { gameId, kind, contentId })
+    await invoke('uninstall_content', { instanceId, kind, contentId })
   }
 
   return {
     isDesktop,
-    listInstalledGames,
+    listInstalledInstances,
     installGame,
-    uninstallGame,
+    uninstallInstance,
     listInstalledContent,
     installContent,
     uninstallContent,
