@@ -2,9 +2,9 @@
 identifier = "allow-local-install"
 description = "Allow local ~/.echbox game and content install commands"
 commands.allow = [
-  "list_installed_games",
+  "list_installed_instances",
   "install_game",
-  "uninstall_game",
+  "uninstall_instance",
   "list_installed_content",
   "install_content",
   "uninstall_content",

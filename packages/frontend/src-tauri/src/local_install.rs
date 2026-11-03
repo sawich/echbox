@@ -71,10 +71,6 @@ pub fn instance_dir(instance_id: &str) -> Result<PathBuf, String> {
     Ok(games_root().join(instance_id))
 }
 
-pub fn game_dir(game_id: &str) -> Result<PathBuf, String> {
-    instance_dir(game_id)
-}
-
 fn instance_json_path(instance_id: &str) -> Result<PathBuf, String> {
     Ok(instance_dir(instance_id)?.join(INSTANCE_JSON))
 }
