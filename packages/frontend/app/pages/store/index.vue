@@ -1,6 +1,41 @@
 <script setup lang="ts">
-import type { GameListItem } from '@echbox/shared'
+import type { ContentKind, GameContentKind, GameListItem } from '@echbox/shared'
 import type { GameInstance } from '~/composables/useLocalInstalls'
+
+type KindFormRow = { kind: ContentKind, label: string, enabled: boolean, relPath: string }
+
+const KIND_OPTIONS: { kind: ContentKind, label: string }[] = [
+  { kind: 'cards', label: 'Character cards' },
+  { kind: 'clothes', label: 'Clothes' },
+  { kind: 'scenes', label: 'Scenes' },
+  { kind: 'plugins', label: 'Plugins' },
+  { kind: 'softmods', label: 'Softmods' },
+]
+
+function blankKindRows(): KindFormRow[] {
+  return KIND_OPTIONS.map(o => ({ ...o, enabled: false, relPath: '' }))
+}
+
+function hydrateKindRows(kinds: GameContentKind[]): KindFormRow[] {
+  const byKind = new Map(kinds.map(k => [k.kind, k]))
+  return KIND_OPTIONS.map(o => {
+    const hit = byKind.get(o.kind)
+    return {
+      ...o,
+      enabled: Boolean(hit),
+      relPath: hit?.relPath ?? '',
+    }
+  })
+}
+
+function serializeKindRows(rows: KindFormRow[]): GameContentKind[] {
+  return rows
+    .filter(r => r.enabled)
+    .map(r => ({
+      kind: r.kind,
+      relPath: r.relPath.trim() ? r.relPath.trim() : null,
+    }))
+}
 
 const api = useApi()
 const config = useRuntimeConfig()
@@ -18,6 +53,7 @@ const showCreate = ref(false)
 const createTitle = ref('')
 const createSlug = ref('')
 const createDescription = ref('')
+const createKinds = ref(blankKindRows())
 const createBusy = ref(false)
 const createError = ref<string | null>(null)
 const createIconFile = ref<File | null>(null)
@@ -31,6 +67,7 @@ const editGame = ref<GameListItem | null>(null)
 const editTitle = ref('')
 const editSlug = ref('')
 const editDescription = ref('')
+const editKinds = ref(blankKindRows())
 const editBusy = ref(false)
 const editError = ref<string | null>(null)
 const editIconFile = ref<File | null>(null)
@@ -60,6 +97,7 @@ function resetCreateForm() {
   createTitle.value = ''
   createSlug.value = ''
   createDescription.value = ''
+  createKinds.value = blankKindRows()
   createError.value = null
   createExePath.value = null
   createIconFile.value = null
@@ -73,6 +111,7 @@ function resetEditForm() {
   editTitle.value = ''
   editSlug.value = ''
   editDescription.value = ''
+  editKinds.value = blankKindRows()
   editError.value = null
   editExePath.value = null
   editIconFile.value = null
@@ -146,6 +185,7 @@ function openEdit(game: GameListItem) {
   editTitle.value = game.title
   editSlug.value = game.slug
   editDescription.value = game.description ?? ''
+  editKinds.value = hydrateKindRows(game.contentKinds ?? [])
   editError.value = null
   editIconFile.value = null
   editExePath.value = null
@@ -212,6 +252,7 @@ async function submitCreate() {
     if (slug) form.set('slug', slug)
     const description = createDescription.value.trim()
     if (description) form.set('description', description)
+    form.set('contentKinds', JSON.stringify(serializeKindRows(createKinds.value)))
     form.set('icon', createIconFile.value, 'icon.png')
 
     const res = await fetch(`${apiUrl.value}/api/games`, {
@@ -246,6 +287,7 @@ async function submitEdit() {
     form.set('title', editTitle.value.trim())
     form.set('slug', editSlug.value.trim())
     form.set('description', editDescription.value.trim())
+    form.set('contentKinds', JSON.stringify(serializeKindRows(editKinds.value)))
     if (editIconFile.value) {
       form.set('icon', editIconFile.value, 'icon.png')
     }
@@ -384,6 +426,34 @@ const editPreviewSrc = computed(() => {
                   class="w-full"
                 />
               </UFormField>
+              <fieldset class="grid gap-3">
+                <legend class="text-sm font-medium text-highlighted">
+                  Content types
+                </legend>
+                <p class="text-xs text-muted">
+                  Enable kinds this game supports. Paths are relative to the instance root; leave empty for the root.
+                </p>
+                <div
+                  v-for="row in createKinds"
+                  :key="row.kind"
+                  class="grid gap-2 rounded-lg border border-default px-3 py-2"
+                >
+                  <label class="flex items-center gap-2 text-sm">
+                    <input
+                      v-model="row.enabled"
+                      type="checkbox"
+                      class="size-4 accent-[var(--ui-primary)]"
+                    >
+                    <span>{{ row.label }}</span>
+                  </label>
+                  <UInput
+                    v-if="row.enabled"
+                    v-model="row.relPath"
+                    placeholder="Relative path (optional)"
+                    class="w-full"
+                  />
+                </div>
+              </fieldset>
               <UAlert
                 v-if="createError"
                 color="error"
@@ -508,6 +578,34 @@ const editPreviewSrc = computed(() => {
               class="w-full"
             />
           </UFormField>
+          <fieldset class="grid gap-3">
+            <legend class="text-sm font-medium text-highlighted">
+              Content types
+            </legend>
+            <p class="text-xs text-muted">
+              Enable kinds this game supports. Paths are relative to the instance root; leave empty for the root.
+            </p>
+            <div
+              v-for="row in editKinds"
+              :key="row.kind"
+              class="grid gap-2 rounded-lg border border-default px-3 py-2"
+            >
+              <label class="flex items-center gap-2 text-sm">
+                <input
+                  v-model="row.enabled"
+                  type="checkbox"
+                  class="size-4 accent-[var(--ui-primary)]"
+                >
+                <span>{{ row.label }}</span>
+              </label>
+              <UInput
+                v-if="row.enabled"
+                v-model="row.relPath"
+                placeholder="Relative path (optional)"
+                class="w-full"
+              />
+            </div>
+          </fieldset>
           <UAlert
             v-if="editError"
             color="error"
