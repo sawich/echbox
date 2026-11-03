@@ -4,6 +4,7 @@ import { type CatalogSort, filterCatalog } from '~/utils/catalog'
 
 const props = defineProps<{
   gameId?: string
+  instanceId?: string
   title?: string
   description?: string
 }>()
@@ -25,19 +26,19 @@ const installBusy = ref<string | null>(null)
 const installError = ref<string | null>(null)
 
 async function refreshInstalled() {
-  if (!props.gameId || !isDesktop.value) {
+  if (!props.instanceId || !isDesktop.value) {
     installedIds.value = new Set()
     return
   }
-  const rows = await listInstalledContent(props.gameId, 'clothes')
+  const rows = await listInstalledContent(props.instanceId, 'clothes')
   installedIds.value = new Set(rows.map(r => r.id))
 }
 
 onMounted(() => { void refreshInstalled() })
-watch(() => props.gameId, () => { void refreshInstalled() })
+watch(() => [props.gameId, props.instanceId], () => { void refreshInstalled() })
 
 async function toggleInstall(clothes: ClothesListItem) {
-  if (!props.gameId) return
+  if (!props.instanceId) return
   if (!isDesktop.value) {
     installError.value = 'Install is only available in the desktop app'
     return
@@ -50,9 +51,9 @@ async function toggleInstall(clothes: ClothesListItem) {
   installError.value = null
   try {
     if (installedIds.value.has(clothes.id)) {
-      await uninstallContent(props.gameId, 'clothes', clothes.id)
+      await uninstallContent(props.instanceId, 'clothes', clothes.id)
     } else {
-      await installContent(props.gameId, 'clothes', {
+      await installContent(props.instanceId, 'clothes', {
         id: clothes.id,
         versionId: clothes.latestVersionId!,
         semver: clothes.latestSemver!,
@@ -381,7 +382,7 @@ async function submitUpload() {
           :api-url="apiUrl"
         />
         <UButton
-          v-if="gameId"
+          v-if="instanceId"
           block
           size="sm"
           :color="installedIds.has(item.id) ? 'neutral' : 'primary'"

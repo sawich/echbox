@@ -8,6 +8,7 @@ const props = defineProps<{
   title: string
   description: string
   gameId?: string
+  instanceId?: string
 }>()
 
 const api = useApi()
@@ -25,11 +26,11 @@ const {
 const installedIds = ref<Set<string>>(new Set())
 
 async function refreshInstalled() {
-  if (!props.gameId || !isDesktop.value) {
+  if (!props.instanceId || !isDesktop.value) {
     installedIds.value = new Set()
     return
   }
-  const rows = await listInstalledContent(props.gameId, 'cards')
+  const rows = await listInstalledContent(props.instanceId, 'cards')
   installedIds.value = new Set(rows.map(r => r.id))
 }
 
@@ -52,7 +53,7 @@ const { data, error, status, refresh } = await useAsyncData(
 onMounted(() => {
   void refreshInstalled()
 })
-watch(() => props.gameId, () => {
+watch(() => [props.gameId, props.instanceId], () => {
   void refreshInstalled()
 })
 
@@ -60,7 +61,7 @@ const installBusy = ref<string | null>(null)
 const installError = ref<string | null>(null)
 
 async function toggleInstall(card: CardListItem) {
-  if (!props.gameId) return
+  if (!props.instanceId) return
   if (!isDesktop.value) {
     installError.value = 'Install is only available in the desktop app'
     return
@@ -73,10 +74,10 @@ async function toggleInstall(card: CardListItem) {
   installError.value = null
   try {
     if (installedIds.value.has(card.id)) {
-      await uninstallContent(props.gameId, 'cards', card.id)
+      await uninstallContent(props.instanceId, 'cards', card.id)
     }
     else {
-      await installContent(props.gameId, 'cards', {
+      await installContent(props.instanceId, 'cards', {
         id: card.id,
         versionId: card.latestVersionId!,
         semver: card.latestSemver!,
@@ -401,7 +402,7 @@ async function submitUpload() {
           :api-url="apiUrl"
         />
         <UButton
-          v-if="gameId"
+          v-if="instanceId"
           block
           size="sm"
           :color="installedIds.has(card.id) ? 'neutral' : 'primary'"

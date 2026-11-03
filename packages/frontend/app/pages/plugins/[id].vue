@@ -36,6 +36,7 @@ const api = useApi()
 const config = useRuntimeConfig()
 const apiUrl = computed(() => String(config.public.apiUrl).replace(/\/$/, ''))
 const { user, login } = useAuth()
+const { isDesktop, listInstalledInstances } = useLocalInstalls()
 
 const id = computed(() => String(route.params.id))
 
@@ -52,11 +53,26 @@ const { data, error, status, refresh } = await useAsyncData(
   { watch: [id] },
 )
 
-const backTo = computed(() =>
-  data.value?.gameId
-    ? `/library/${data.value.gameId}?tab=plugins`
-    : '/plugins',
+const libraryInstanceId = ref<string | null>(null)
+
+watch(
+  () => data.value?.gameId,
+  async (gameId) => {
+    libraryInstanceId.value = null
+    if (!gameId || !isDesktop.value) return
+    const instances = await listInstalledInstances()
+    libraryInstanceId.value = instances.find(i => i.gameId === gameId)?.instanceId ?? null
+  },
+  { immediate: true },
 )
+
+const backTo = computed(() => {
+  if (libraryInstanceId.value) {
+    return `/library/${libraryInstanceId.value}?tab=plugins`
+  }
+  if (data.value?.gameId) return '/library'
+  return '/plugins'
+})
 
 const selectedVersion = ref<string | null>(null)
 const editTitle = ref('')

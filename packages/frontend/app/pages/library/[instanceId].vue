@@ -1,5 +1,6 @@
 <script setup lang="ts">
 import type { GameListItem } from '@echbox/shared'
+import type { GameInstance } from '~/composables/useLocalInstalls'
 
 type LibraryTab = 'characters' | 'scenes' | 'clothes' | 'plugins' | 'softmods'
 
@@ -21,39 +22,45 @@ function tabFromQuery(raw: unknown): LibraryTab {
 }
 
 const route = useRoute()
-const gameId = computed(() => String(route.params.gameId))
+const instanceId = computed(() => String(route.params.instanceId))
 const api = useApi()
 const config = useRuntimeConfig()
 const apiUrl = computed(() => String(config.public.apiUrl).replace(/\/$/, ''))
-const { isDesktop, listInstalledGames } = useLocalInstalls()
+const { isDesktop, listInstalledInstances } = useLocalInstalls()
 
 const tab = ref<LibraryTab>(tabFromQuery(route.query.tab))
-const isInstalled = ref(false)
+const activeInstance = ref<GameInstance | null>(null)
+
+const catalogGameId = computed(() => activeInstance.value?.gameId ?? null)
 
 const { data: game, error, status, refresh } = await useAsyncData(
-  () => `library-game-${gameId.value}`,
+  () => `library-game-${catalogGameId.value ?? instanceId.value}`,
   async () => {
-    const { data: body, error: err } = await api.api.games({ id: gameId.value }).get()
+    const gameId = catalogGameId.value
+    if (!gameId) return null
+    const { data: body, error: err } = await api.api.games({ id: gameId }).get()
     if (err) throw err
     if (!body || 'error' in body) throw new Error('Game not found')
     return body as GameListItem
   },
-  { watch: [gameId] },
+  { watch: [catalogGameId] },
 )
 
 async function refreshInstalled() {
   if (!isDesktop.value) {
-    isInstalled.value = false
+    activeInstance.value = null
     return
   }
-  const ids = await listInstalledGames()
-  isInstalled.value = ids.includes(gameId.value)
+  const instances = await listInstalledInstances()
+  activeInstance.value = instances.find(i => i.instanceId === instanceId.value) ?? null
 }
+
+const isInstalled = computed(() => activeInstance.value !== null)
 
 onMounted(() => {
   void refreshInstalled()
 })
-watch(gameId, () => {
+watch(instanceId, () => {
   tab.value = tabFromQuery(route.query.tab)
   void refreshInstalled()
 })
@@ -69,6 +76,16 @@ function iconSrc(g: GameListItem) {
 <template>
   <div class="flex min-h-full flex-col">
     <header class="sticky top-0 z-10 border-b border-[color-mix(in_oklab,var(--ed-outline-variant)_70%,transparent)] bg-[color-mix(in_oklab,var(--ed-surface)_92%,transparent)] px-4 pt-4 backdrop-blur-md sm:px-6">
+      <UAlert
+        v-if="isDesktop && !activeInstance && status !== 'pending'"
+        color="warning"
+        variant="subtle"
+        icon="i-lucide-folder-x"
+        title="Instance not found"
+        description="This install may have been removed. Pick another game in the sidebar."
+        class="mb-3"
+      />
+
       <LoadError
         v-if="error"
         title="Game unavailable"
@@ -85,6 +102,10 @@ function iconSrc(g: GameListItem) {
           <div class="min-w-0">
             <h1 class="truncate text-xl font-semibold text-highlighted">
               {{ game.title }}
+              <span
+                v-if="activeInstance?.label"
+                class="text-base font-normal text-muted"
+              > · {{ activeInstance.label }}</span>
             </h1>
             <p class="text-xs text-dimmed">
               <span v-if="game.description">{{ game.description }} · </span>
@@ -110,37 +131,42 @@ function iconSrc(g: GameListItem) {
 
     <div class="flex-1">
       <CardGalleryPage
-        v-if="tab === 'characters' && game"
+        v-if="tab === 'characters' && game && catalogGameId"
         type="character"
         title="Characters"
         description="Character cards for this game."
-        :game-id="gameId"
+        :game-id="catalogGameId"
+        :instance-id="instanceId"
       />
       <SceneGalleryPage
-        v-else-if="tab === 'scenes' && game"
+        v-else-if="tab === 'scenes' && game && catalogGameId"
         title="Scenes"
         description="Studio scenes for this game."
-        :game-id="gameId"
+        :game-id="catalogGameId"
+        :instance-id="instanceId"
       />
       <ClothesGalleryPage
-        v-else-if="tab === 'clothes' && game"
+        v-else-if="tab === 'clothes' && game && catalogGameId"
         title="Clothes"
         description="Outfit cards for this game."
-        :game-id="gameId"
+        :game-id="catalogGameId"
+        :instance-id="instanceId"
       />
       <ModCatalogPage
-        v-else-if="tab === 'plugins' && game"
+        v-else-if="tab === 'plugins' && game && catalogGameId"
         mod-kind="plugin"
         title="Plugins"
         description="Plugins for this game."
-        :game-id="gameId"
+        :game-id="catalogGameId"
+        :instance-id="instanceId"
       />
       <ModCatalogPage
-        v-else-if="tab === 'softmods' && game"
+        v-else-if="tab === 'softmods' && game && catalogGameId"
         mod-kind="softmod"
         title="Softmods"
         description="Softmods for this game."
-        :game-id="gameId"
+        :game-id="catalogGameId"
+        :instance-id="instanceId"
       />
     </div>
   </div>

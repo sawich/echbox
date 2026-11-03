@@ -7,6 +7,7 @@ const props = defineProps<{
   title: string
   description: string
   gameId?: string
+  instanceId?: string
 }>()
 
 const api = useApi()
@@ -29,18 +30,18 @@ const installBusy = ref<string | null>(null)
 const installError = ref<string | null>(null)
 
 async function refreshInstalled() {
-  if (!props.gameId || !isDesktop.value) {
+  if (!props.instanceId || !isDesktop.value) {
     installedIds.value = new Set()
     return
   }
-  const rows = await listInstalledContent(props.gameId, contentKind.value)
+  const rows = await listInstalledContent(props.instanceId, contentKind.value)
   installedIds.value = new Set(rows.map(r => r.id))
 }
 
 onMounted(() => {
   void refreshInstalled()
 })
-watch(() => [props.gameId, props.modKind], () => {
+watch(() => [props.gameId, props.modKind, props.instanceId], () => {
   void refreshInstalled()
 })
 
@@ -67,7 +68,7 @@ const { data, error, status, refresh } = await useAsyncData(
 )
 
 async function toggleInstall(item: PluginListItem | SoftmodListItem) {
-  if (!props.gameId) return
+  if (!props.instanceId) return
   if (!isDesktop.value) {
     installError.value = 'Install is only available in the desktop app'
     return
@@ -80,10 +81,10 @@ async function toggleInstall(item: PluginListItem | SoftmodListItem) {
   installError.value = null
   try {
     if (installedIds.value.has(item.id)) {
-      await uninstallContent(props.gameId, contentKind.value, item.id)
+      await uninstallContent(props.instanceId, contentKind.value, item.id)
     }
     else {
-      await installContent(props.gameId, contentKind.value, {
+      await installContent(props.instanceId, contentKind.value, {
         id: item.id,
         versionId: item.latestVersionId!,
         semver: item.latestSemver!,
@@ -464,7 +465,7 @@ const canSubmitUpload = computed(() => {
         :mod-kind="modKind"
         :item="item"
         :api-url="apiUrl"
-        :show-install="Boolean(gameId)"
+        :show-install="Boolean(instanceId)"
         :installed="installedIds.has(item.id)"
         :install-loading="installBusy === item.id"
         :install-disabled="!isDesktop && !installedIds.has(item.id)"

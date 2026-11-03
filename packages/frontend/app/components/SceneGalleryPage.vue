@@ -4,6 +4,7 @@ import { type CatalogSort, filterCatalog } from '~/utils/catalog'
 
 const props = defineProps<{
   gameId?: string
+  instanceId?: string
   title?: string
   description?: string
 }>()
@@ -25,19 +26,19 @@ const installBusy = ref<string | null>(null)
 const installError = ref<string | null>(null)
 
 async function refreshInstalled() {
-  if (!props.gameId || !isDesktop.value) {
+  if (!props.instanceId || !isDesktop.value) {
     installedIds.value = new Set()
     return
   }
-  const rows = await listInstalledContent(props.gameId, 'scenes')
+  const rows = await listInstalledContent(props.instanceId, 'scenes')
   installedIds.value = new Set(rows.map(r => r.id))
 }
 
 onMounted(() => { void refreshInstalled() })
-watch(() => props.gameId, () => { void refreshInstalled() })
+watch(() => [props.gameId, props.instanceId], () => { void refreshInstalled() })
 
 async function toggleInstall(scene: SceneListItem) {
-  if (!props.gameId) return
+  if (!props.instanceId) return
   if (!isDesktop.value) {
     installError.value = 'Install is only available in the desktop app'
     return
@@ -50,9 +51,9 @@ async function toggleInstall(scene: SceneListItem) {
   installError.value = null
   try {
     if (installedIds.value.has(scene.id)) {
-      await uninstallContent(props.gameId, 'scenes', scene.id)
+      await uninstallContent(props.instanceId, 'scenes', scene.id)
     } else {
-      await installContent(props.gameId, 'scenes', {
+      await installContent(props.instanceId, 'scenes', {
         id: scene.id,
         versionId: scene.latestVersionId!,
         semver: scene.latestSemver!,
@@ -381,7 +382,7 @@ async function submitUpload() {
           :api-url="apiUrl"
         />
         <UButton
-          v-if="gameId"
+          v-if="instanceId"
           block
           size="sm"
           :color="installedIds.has(scene.id) ? 'neutral' : 'primary'"

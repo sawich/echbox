@@ -1,14 +1,15 @@
 <script setup lang="ts">
 import type { GameListItem } from '@echbox/shared'
+import type { GameInstance } from '~/composables/useLocalInstalls'
 
 const route = useRoute()
 const router = useRouter()
 const api = useApi()
 const config = useRuntimeConfig()
 const apiUrl = computed(() => String(config.public.apiUrl).replace(/\/$/, ''))
-const { isDesktop, listInstalledGames, uninstallGame } = useLocalInstalls()
+const { isDesktop, listInstalledInstances, uninstallInstance } = useLocalInstalls()
 
-const installedIds = ref<string[]>([])
+const instances = ref<GameInstance[]>([])
 const busyId = ref<string | null>(null)
 const actionError = ref<string | null>(null)
 
@@ -24,53 +25,53 @@ const gamesById = computed(() => {
   return map
 })
 
-const libraryGames = computed(() =>
-  installedIds.value.map(id => ({
-    id,
-    meta: gamesById.value.get(id) ?? null,
+const libraryEntries = computed(() =>
+  instances.value.map(instance => ({
+    instance,
+    meta: gamesById.value.get(instance.gameId) ?? null,
   })),
 )
 
-const selectedId = computed(() => {
-  const param = route.params.gameId
+const selectedInstanceId = computed(() => {
+  const param = route.params.instanceId
   return typeof param === 'string' ? param : null
 })
 
 async function refreshInstalled() {
   if (!isDesktop.value) {
-    installedIds.value = []
+    instances.value = []
     return
   }
-  installedIds.value = await listInstalledGames()
+  instances.value = await listInstalledInstances()
 }
 
 onMounted(() => {
   void refreshInstalled()
 })
 
-watch(libraryGames, (games) => {
+watch(libraryEntries, (entries) => {
   if (route.path !== '/library' && !route.path.startsWith('/library/')) return
-  if (selectedId.value) return
-  if (games.length > 0) {
-    void router.replace(`/library/${games[0]!.id}`)
+  if (selectedInstanceId.value) return
+  if (entries.length > 0) {
+    void router.replace(`/library/${entries[0]!.instance.instanceId}`)
   }
 }, { immediate: true })
 
-async function selectGame(id: string) {
-  if (selectedId.value === id) return
-  await router.push(`/library/${id}`)
+async function selectInstance(instanceId: string) {
+  if (selectedInstanceId.value === instanceId) return
+  await router.push(`/library/${instanceId}`)
 }
 
-async function onUninstall(id: string) {
+async function onUninstall(instanceId: string) {
   if (!isDesktop.value) return
-  busyId.value = id
+  busyId.value = instanceId
   actionError.value = null
   try {
-    await uninstallGame(id)
+    await uninstallInstance(instanceId)
     await refreshInstalled()
-    if (selectedId.value === id) {
-      const next = libraryGames.value.find(g => g.id !== id)
-      await router.replace(next ? `/library/${next.id}` : '/library')
+    if (selectedInstanceId.value === instanceId) {
+      const next = libraryEntries.value.find(e => e.instance.instanceId !== instanceId)
+      await router.replace(next ? `/library/${next.instance.instanceId}` : '/library')
     }
   }
   catch (err) {
@@ -85,6 +86,10 @@ provide('libraryRefreshInstalled', refreshInstalled)
 
 function iconSrc(game: GameListItem) {
   return `${apiUrl.value}${game.iconUrls['64']}?v=${encodeURIComponent(game.updatedAt)}`
+}
+
+function sidebarSubtitle(entry: { instance: GameInstance, meta: GameListItem | null }) {
+  return entry.meta?.slug || entry.instance.instanceId.slice(0, 8)
 }
 </script>
 
@@ -101,9 +106,9 @@ function iconSrc(game: GameListItem) {
           />
           <span class="truncate text-sm font-semibold text-highlighted">Library</span>
           <span
-            v-if="libraryGames.length"
+            v-if="libraryEntries.length"
             class="tabular-nums text-xs text-dimmed"
-          >{{ libraryGames.length }}</span>
+          >{{ libraryEntries.length }}</span>
         </div>
         <UButton
           to="/store"
@@ -142,7 +147,7 @@ function iconSrc(game: GameListItem) {
       />
 
       <div
-        v-else-if="isDesktop && libraryGames.length === 0"
+        v-else-if="isDesktop && libraryEntries.length === 0"
         class="m-3 space-y-3 text-sm text-muted"
       >
         <p>No installed games.</p>
@@ -163,19 +168,19 @@ function iconSrc(game: GameListItem) {
       >
         <ul class="space-y-0.5">
           <li
-            v-for="entry in libraryGames"
-            :key="entry.id"
+            v-for="entry in libraryEntries"
+            :key="entry.instance.instanceId"
           >
             <div
               class="group flex items-stretch gap-0.5 rounded-[var(--radius-md)]"
-              :class="selectedId === entry.id
+              :class="selectedInstanceId === entry.instance.instanceId
                 ? 'bg-[color-mix(in_oklab,var(--ed-primary)_16%,transparent)]'
                 : 'hover:bg-[color-mix(in_oklab,var(--ed-surface-variant)_55%,transparent)]'"
             >
               <button
                 type="button"
                 class="flex min-w-0 flex-1 items-center gap-2.5 px-2.5 py-2 text-left"
-                @click="selectGame(entry.id)"
+                @click="selectInstance(entry.instance.instanceId)"
               >
                 <img
                   v-if="entry.meta"
@@ -192,12 +197,16 @@ function iconSrc(game: GameListItem) {
                 <span class="min-w-0 flex-1">
                   <span
                     class="block truncate text-sm font-medium"
-                    :class="selectedId === entry.id ? 'text-primary' : 'text-highlighted'"
+                    :class="selectedInstanceId === entry.instance.instanceId ? 'text-primary' : 'text-highlighted'"
                   >
                     {{ entry.meta?.title || 'Unknown game' }}
+                    <span
+                      v-if="entry.instance.label"
+                      class="font-normal text-muted"
+                    > · {{ entry.instance.label }}</span>
                   </span>
                   <span class="mt-0.5 block truncate font-mono text-[10px] text-dimmed">
-                    {{ entry.meta?.slug || entry.id.slice(0, 8) }}
+                    {{ sidebarSubtitle(entry) }}
                   </span>
                 </span>
               </button>
@@ -207,9 +216,9 @@ function iconSrc(game: GameListItem) {
                 color="neutral"
                 icon="i-lucide-trash-2"
                 class="my-1 mr-1 opacity-0 group-hover:opacity-100"
-                :loading="busyId === entry.id"
+                :loading="busyId === entry.instance.instanceId"
                 aria-label="Uninstall"
-                @click="onUninstall(entry.id)"
+                @click="onUninstall(entry.instance.instanceId)"
               />
             </div>
           </li>
