@@ -25,8 +25,8 @@ export class GameConflictError extends GameServiceError {
 }
 
 export class BadGameError extends GameServiceError {
-  constructor(message: string) {
-    super(message, 400, "bad_game");
+  constructor(message: string, code = "bad_game") {
+    super(message, 400, code);
     this.name = "BadGameError";
   }
 }

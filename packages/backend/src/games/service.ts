@@ -1,7 +1,14 @@
+import {
+  BadContentPathError,
+  parseContentKindsInput,
+  type ContentKind,
+  type GameContentKind,
+} from "@echbox/shared";
 import { and, count, desc, eq, ne } from "drizzle-orm";
 import { getDb } from "../db/client";
 import {
   characterCards,
+  gameContentKinds,
   games,
   plugins,
   scenes,
@@ -35,6 +42,7 @@ export type GameRecord = {
   createdAt: string;
   updatedAt: string;
   iconUrls: GameIconUrls;
+  contentKinds: GameContentKind[];
 };
 
 export type CreateGameInput = GameServiceOptions & {
@@ -42,6 +50,7 @@ export type CreateGameInput = GameServiceOptions & {
   slug?: string;
   description?: string | null;
   createdByUserId: string;
+  contentKinds?: Array<{ kind: ContentKind; relPath?: string | null }>;
 };
 
 export type PatchGameInput = GameServiceOptions & {
@@ -49,6 +58,7 @@ export type PatchGameInput = GameServiceOptions & {
   title?: string;
   slug?: string;
   description?: string | null;
+  contentKinds?: Array<{ kind: ContentKind; relPath?: string | null }>;
 };
 
 function slugify(input: string, fallbackId: string): string {
@@ -60,7 +70,57 @@ function slugify(input: string, fallbackId: string): string {
   return normalized || `game-${fallbackId.slice(0, 8)}`;
 }
 
-function toRecord(row: typeof games.$inferSelect): GameRecord {
+function parseKindsOrThrow(
+  raw: Array<{ kind: ContentKind; relPath?: string | null }> | undefined,
+): GameContentKind[] {
+  try {
+    return parseContentKindsInput(raw ?? []);
+  } catch (err) {
+    const message =
+      err instanceof BadContentPathError
+        ? err.message
+        : err instanceof Error
+          ? err.message
+          : "Invalid contentKinds";
+    throw new BadGameError(message, "bad_content_kinds");
+  }
+}
+
+function loadContentKinds(
+  gameId: string,
+  dbPath?: string,
+): GameContentKind[] {
+  const db = getDb(dbPath);
+  return db
+    .select()
+    .from(gameContentKinds)
+    .where(eq(gameContentKinds.gameId, gameId))
+    .all()
+    .map((row) => ({
+      kind: row.kind as ContentKind,
+      relPath: row.relPath,
+    }));
+}
+
+function replaceContentKinds(
+  gameId: string,
+  kinds: GameContentKind[],
+  dbPath?: string,
+): void {
+  const db = getDb(dbPath);
+  db.delete(gameContentKinds).where(eq(gameContentKinds.gameId, gameId)).run();
+  for (const kind of kinds) {
+    db.insert(gameContentKinds)
+      .values({
+        gameId,
+        kind: kind.kind,
+        relPath: kind.relPath,
+      })
+      .run();
+  }
+}
+
+function toRecord(row: typeof games.$inferSelect, dbPath?: string): GameRecord {
   return {
     id: row.id,
     slug: row.slug,
@@ -70,6 +130,7 @@ function toRecord(row: typeof games.$inferSelect): GameRecord {
     createdAt: row.createdAt,
     updatedAt: row.updatedAt,
     iconUrls: gameIconUrls(row.id),
+    contentKinds: loadContentKinds(row.id, dbPath),
   };
 }
 
@@ -80,7 +141,7 @@ export function listGames(options?: GameServiceOptions): GameRecord[] {
     .from(games)
     .orderBy(desc(games.createdAt))
     .all()
-    .map(toRecord);
+    .map((row) => toRecord(row, options?.dbPath));
 }
 
 export function getGame(
@@ -89,7 +150,7 @@ export function getGame(
 ): GameRecord | null {
   const db = getDb(options?.dbPath);
   const row = db.select().from(games).where(eq(games.id, id)).get();
-  return row ? toRecord(row) : null;
+  return row ? toRecord(row, options?.dbPath) : null;
 }
 
 export function createGame(input: CreateGameInput): GameRecord {
@@ -97,6 +158,8 @@ export function createGame(input: CreateGameInput): GameRecord {
   if (!title) {
     throw new BadGameError("Title is required");
   }
+
+  const kinds = parseKindsOrThrow(input.contentKinds);
 
   const id = crypto.randomUUID();
   const slug = input.slug?.trim()
@@ -126,6 +189,8 @@ export function createGame(input: CreateGameInput): GameRecord {
     })
     .run();
 
+  replaceContentKinds(id, kinds, input.dbPath);
+
   return getGame(id, { dbPath: input.dbPath })!;
 }
 
@@ -135,6 +200,11 @@ export function patchGame(input: PatchGameInput): GameRecord {
   if (!existing) {
     throw new GameNotFoundError();
   }
+
+  const kinds =
+    input.contentKinds !== undefined
+      ? parseKindsOrThrow(input.contentKinds)
+      : undefined;
 
   const title =
     input.title !== undefined ? input.title.trim() : existing.title;
@@ -170,6 +240,10 @@ export function patchGame(input: PatchGameInput): GameRecord {
     })
     .where(eq(games.id, existing.id))
     .run();
+
+  if (kinds !== undefined) {
+    replaceContentKinds(existing.id, kinds, input.dbPath);
+  }
 
   return getGame(existing.id, { dbPath: input.dbPath })!;
 }
@@ -227,5 +301,20 @@ export function assertGameExists(
   }
   if (!getGame(gameId, options)) {
     throw new GameNotFoundError("Game not found");
+  }
+}
+
+export function assertGameSupportsKind(
+  gameId: string,
+  kind: ContentKind,
+  options?: GameServiceOptions,
+): void {
+  assertGameExists(gameId, options);
+  const kinds = loadContentKinds(gameId, options?.dbPath);
+  if (!kinds.some((k) => k.kind === kind)) {
+    throw new BadGameError(
+      `Game does not support content kind: ${kind}`,
+      "kind_not_supported",
+    );
   }
 }

@@ -1,6 +1,7 @@
 import {
   index,
   integer,
+  primaryKey,
   sqliteTable,
   text,
   uniqueIndex,
@@ -36,6 +37,21 @@ export const games = sqliteTable(
     updatedAt: text("updated_at").notNull(),
   },
   (table) => [index("games_created_by_user_id_idx").on(table.createdByUserId)],
+);
+
+export const gameContentKinds = sqliteTable(
+  "game_content_kinds",
+  {
+    gameId: text("game_id")
+      .notNull()
+      .references(() => games.id, { onDelete: "cascade" }),
+    kind: text("kind").notNull(),
+    relPath: text("rel_path"),
+  },
+  (table) => [
+    primaryKey({ columns: [table.gameId, table.kind] }),
+    index("game_content_kinds_game_id_idx").on(table.gameId),
+  ],
 );
 
 export const characterCards = sqliteTable(
