@@ -13,6 +13,7 @@ type SoftmodVersion = {
 
 type SoftmodDetail = {
   id: string
+  gameId: string
   authorId: string
   title: string
   modAuthor: string | null
@@ -51,6 +52,12 @@ const { data, error, status, refresh } = await useAsyncData(
     return softmod as SoftmodDetail
   },
   { watch: [id] },
+)
+
+const backTo = computed(() =>
+  data.value?.gameId
+    ? `/library/${data.value.gameId}?tab=softmods`
+    : '/softmods',
 )
 
 const selectedVersion = ref<string | null>(null)
@@ -242,7 +249,7 @@ async function handleDelete() {
       deleteError.value = val?.error || `Failed to delete (${err.status})`
       return
     }
-    await router.push('/softmods')
+    await router.push(backTo.value)
   }
   catch (e) {
     deleteError.value = e instanceof Error ? e.message : 'Failed to delete'
@@ -256,7 +263,7 @@ async function handleDelete() {
 <template>
   <main class="mx-auto w-full max-w-6xl px-4 py-6 sm:px-6 sm:py-10">
     <UButton
-      to="/softmods"
+      :to="backTo"
       variant="link"
       color="neutral"
       icon="i-lucide-arrow-left"

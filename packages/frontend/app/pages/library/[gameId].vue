@@ -1,6 +1,25 @@
 <script setup lang="ts">
 import type { GameListItem } from '@echbox/shared'
 
+type LibraryTab = 'characters' | 'scenes' | 'clothes' | 'plugins' | 'softmods'
+
+const tabs = [
+  { key: 'characters' as const, label: 'Characters', icon: 'i-lucide-user-round' },
+  { key: 'scenes' as const, label: 'Scenes', icon: 'i-lucide-clapperboard' },
+  { key: 'clothes' as const, label: 'Clothes', icon: 'i-lucide-shirt' },
+  { key: 'plugins' as const, label: 'Plugins', icon: 'i-lucide-puzzle' },
+  { key: 'softmods' as const, label: 'Softmods', icon: 'i-lucide-package' },
+]
+
+const TAB_KEYS = new Set(tabs.map(t => t.key))
+
+function tabFromQuery(raw: unknown): LibraryTab {
+  const value = Array.isArray(raw) ? raw[0] : raw
+  return typeof value === 'string' && TAB_KEYS.has(value as LibraryTab)
+    ? (value as LibraryTab)
+    : 'characters'
+}
+
 const route = useRoute()
 const gameId = computed(() => String(route.params.gameId))
 const api = useApi()
@@ -8,7 +27,7 @@ const config = useRuntimeConfig()
 const apiUrl = computed(() => String(config.public.apiUrl).replace(/\/$/, ''))
 const { isDesktop, listInstalledGames } = useLocalInstalls()
 
-const tab = ref<'characters' | 'scenes' | 'clothes' | 'plugins' | 'softmods'>('characters')
+const tab = ref<LibraryTab>(tabFromQuery(route.query.tab))
 const isInstalled = ref(false)
 
 const { data: game, error, status, refresh } = await useAsyncData(
@@ -35,17 +54,12 @@ onMounted(() => {
   void refreshInstalled()
 })
 watch(gameId, () => {
-  tab.value = 'characters'
+  tab.value = tabFromQuery(route.query.tab)
   void refreshInstalled()
 })
-
-const tabs = [
-  { key: 'characters' as const, label: 'Characters', icon: 'i-lucide-user-round' },
-  { key: 'scenes' as const, label: 'Scenes', icon: 'i-lucide-clapperboard' },
-  { key: 'clothes' as const, label: 'Clothes', icon: 'i-lucide-shirt' },
-  { key: 'plugins' as const, label: 'Plugins', icon: 'i-lucide-puzzle' },
-  { key: 'softmods' as const, label: 'Softmods', icon: 'i-lucide-package' },
-]
+watch(() => route.query.tab, (value) => {
+  tab.value = tabFromQuery(value)
+})
 
 function iconSrc(g: GameListItem) {
   return `${apiUrl.value}${g.iconUrls['128']}?v=${encodeURIComponent(g.updatedAt)}`

@@ -13,6 +13,7 @@ type PluginVersion = {
 
 type PluginDetail = {
   id: string
+  gameId: string
   authorId: string
   title: string
   description: string | null
@@ -49,6 +50,12 @@ const { data, error, status, refresh } = await useAsyncData(
     return plugin as PluginDetail
   },
   { watch: [id] },
+)
+
+const backTo = computed(() =>
+  data.value?.gameId
+    ? `/library/${data.value.gameId}?tab=plugins`
+    : '/plugins',
 )
 
 const selectedVersion = ref<string | null>(null)
@@ -282,7 +289,7 @@ async function handleDelete() {
       deleteError.value = val?.error || `Failed to delete (${err.status})`
       return
     }
-    await router.push('/plugins')
+    await router.push(backTo.value)
   }
   catch (e) {
     deleteError.value = e instanceof Error ? e.message : 'Failed to delete'
@@ -296,7 +303,7 @@ async function handleDelete() {
 <template>
   <main class="mx-auto w-full max-w-6xl px-4 py-6 sm:px-6 sm:py-10">
     <UButton
-      to="/plugins"
+      :to="backTo"
       variant="link"
       color="neutral"
       icon="i-lucide-arrow-left"
