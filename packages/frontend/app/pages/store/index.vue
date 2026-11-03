@@ -49,6 +49,12 @@ const instances = ref<GameInstance[]>([])
 const busyId = ref<string | null>(null)
 const actionError = ref<string | null>(null)
 
+const showInstall = ref(false)
+const installGameTarget = ref<GameListItem | null>(null)
+const installLabel = ref('')
+const installBusy = ref(false)
+const installError = ref<string | null>(null)
+
 const showCreate = ref(false)
 const createTitle = ref('')
 const createSlug = ref('')
@@ -215,22 +221,51 @@ onMounted(() => {
   void refreshInstalled()
 })
 
-async function onInstall(game: GameListItem) {
+function openInstall(game: GameListItem) {
   if (!isDesktop.value) {
     actionError.value = 'Install is only available in the desktop app'
     return
   }
+  installGameTarget.value = game
+  installLabel.value = game.title
+  installError.value = null
+  showInstall.value = true
+}
+
+function resetInstallForm() {
+  installGameTarget.value = null
+  installLabel.value = ''
+  installError.value = null
+  installBusy.value = false
+}
+
+watch(showInstall, (open) => {
+  if (!open) resetInstallForm()
+})
+
+async function confirmInstall() {
+  const game = installGameTarget.value
+  if (!game || installBusy.value) return
+  const label = installLabel.value.trim()
+  if (!label) {
+    installError.value = 'Enter a name for this install'
+    return
+  }
+  installBusy.value = true
   busyId.value = game.id
+  installError.value = null
   actionError.value = null
   try {
-    const created = await installGame(game.id)
+    const created = await installGame(game.id, label)
+    showInstall.value = false
     await refreshInstalled()
     await router.push(`/library/${created.instanceId}`)
   }
   catch (err) {
-    actionError.value = err instanceof Error ? err.message : 'Install failed'
+    installError.value = err instanceof Error ? err.message : 'Install failed'
   }
   finally {
+    installBusy.value = false
     busyId.value = null
   }
 }
@@ -500,6 +535,68 @@ const editPreviewSrc = computed(() => {
     </PageHeader>
 
     <UModal
+      v-model:open="showInstall"
+      title="Install game"
+      description="Choose a name for this local install. It appears in your Library."
+      :ui="{ content: 'sm:max-w-md' }"
+    >
+      <span class="hidden" />
+      <template #body>
+        <form
+          id="install-game-form"
+          class="grid gap-4"
+          @submit.prevent="confirmInstall"
+        >
+          <UFormField
+            label="Install name"
+            name="installLabel"
+            required
+          >
+            <UInput
+              v-model="installLabel"
+              autofocus
+              placeholder="My install"
+              :disabled="installBusy"
+            />
+          </UFormField>
+          <p
+            v-if="installGameTarget"
+            class="text-sm text-muted"
+          >
+            Catalog: {{ installGameTarget.title }}
+          </p>
+          <UAlert
+            v-if="installError"
+            color="error"
+            variant="subtle"
+            :title="installError"
+          />
+        </form>
+      </template>
+      <template #footer>
+        <div class="flex w-full justify-end gap-2">
+          <UButton
+            color="neutral"
+            variant="ghost"
+            :disabled="installBusy"
+            @click="showInstall = false"
+          >
+            Cancel
+          </UButton>
+          <UButton
+            type="submit"
+            form="install-game-form"
+            color="primary"
+            :loading="installBusy"
+            :disabled="!installLabel.trim()"
+          >
+            Install
+          </UButton>
+        </div>
+      </template>
+    </UModal>
+
+    <UModal
       v-if="isAdmin"
       v-model:open="showEdit"
       title="Edit game"
@@ -723,7 +820,7 @@ const editPreviewSrc = computed(() => {
             color="primary"
             :loading="busyId === game.id"
             :disabled="!isDesktop"
-            @click="onInstall(game)"
+            @click="openInstall(game)"
           >
             {{ isDesktop ? 'Install' : 'Desktop only' }}
           </UButton>

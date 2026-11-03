@@ -184,14 +184,18 @@ fn label_for_new_instance(game_id: &str) -> Result<String, String> {
     })
 }
 
-pub fn install_game(game_id: &str) -> Result<GameInstance, String> {
+pub fn install_game(game_id: &str, label: Option<&str>) -> Result<GameInstance, String> {
     validate_game_id(game_id)?;
     let instance_id = Uuid::new_v4().to_string();
-    let label = label_for_new_instance(game_id)?;
+    let trimmed = label.map(str::trim).filter(|s| !s.is_empty());
+    let resolved_label = match trimmed {
+        Some(s) => s.to_string(),
+        None => label_for_new_instance(game_id)?,
+    };
     let instance = GameInstance {
         instance_id: instance_id.clone(),
         game_id: game_id.to_string(),
-        label,
+        label: resolved_label,
         created_at: created_at_now(),
     };
     write_instance_json(&instance)?;
@@ -371,7 +375,7 @@ mod tests {
     #[test]
     fn install_game_created_at_is_rfc3339() {
         with_temp_home(|_home| {
-            let inst = install_game("game-1").unwrap();
+            let inst = install_game("game-1", None).unwrap();
             let ca = &inst.created_at;
             assert!(ca.contains('T'), "expected ISO datetime, got {ca}");
             assert!(
@@ -386,7 +390,7 @@ mod tests {
     #[test]
     fn list_skips_corrupt_instance_json() {
         with_temp_home(|_home| {
-            let good = install_game("good-game").unwrap();
+            let good = install_game("good-game", None).unwrap();
             let bad_dir = games_root().join("bad-instance");
             fs::create_dir_all(bad_dir.join(".echbox")).unwrap();
             fs::write(bad_dir.join(INSTANCE_JSON), "{ not json").unwrap();
@@ -420,7 +424,7 @@ mod tests {
             let bad_dir = games_root().join("corrupt-sibling");
             fs::create_dir_all(bad_dir.join(".echbox")).unwrap();
             fs::write(bad_dir.join(INSTANCE_JSON), "[]").unwrap();
-            let inst = install_game("fresh").unwrap();
+            let inst = install_game("fresh", None).unwrap();
             assert_eq!(inst.game_id, "fresh");
             let listed = list_installed_instances().unwrap();
             assert_eq!(listed.len(), 1);
@@ -455,7 +459,7 @@ mod tests {
     #[test]
     fn install_game_creates_empty_jsonl() {
         with_temp_home(|_home| {
-            let inst = install_game("game-1").unwrap();
+            let inst = install_game("game-1", None).unwrap();
             for kind in CONTENT_KINDS {
                 let path = manifest_path(&inst.instance_id, kind).unwrap();
                 assert!(path.exists());
@@ -469,14 +473,28 @@ mod tests {
     #[test]
     fn install_game_twice_creates_two_instances() {
         with_temp_home(|_home| {
-            let a = install_game("same-game").unwrap();
-            let b = install_game("same-game").unwrap();
+            let a = install_game("same-game", None).unwrap();
+            let b = install_game("same-game", None).unwrap();
             assert_ne!(a.instance_id, b.instance_id);
             assert_eq!(a.game_id, "same-game");
             assert_eq!(b.game_id, "same-game");
             assert_eq!(a.label, "");
             assert_eq!(b.label, "#2");
             assert_eq!(list_installed_instances().unwrap().len(), 2);
+        });
+    }
+
+    #[test]
+    fn install_game_uses_custom_label() {
+        with_temp_home(|_home| {
+            let a = install_game("same-game", Some("  My Setup  ")).unwrap();
+            let b = install_game("same-game", Some("Modded")).unwrap();
+            assert_eq!(a.label, "My Setup");
+            assert_eq!(b.label, "Modded");
+            let blank = install_game("same-game", Some("   ")).unwrap();
+            assert_eq!(blank.label, "");
+            let numbered = install_game("same-game", None).unwrap();
+            assert_eq!(numbered.label, "#2");
         });
     }
 
@@ -498,9 +516,9 @@ mod tests {
     #[test]
     fn uninstall_one_instance_keeps_sibling() {
         with_temp_home(|_home| {
-            let first = install_game("g").unwrap();
+            let first = install_game("g", None).unwrap();
             install_content(&first.instance_id, "cards", sample_row("c1")).unwrap();
-            let second = install_game("g").unwrap();
+            let second = install_game("g", None).unwrap();
             install_content(&second.instance_id, "cards", sample_row("c2")).unwrap();
             uninstall_instance(&first.instance_id).unwrap();
             let remaining = list_installed_instances().unwrap();
@@ -515,8 +533,8 @@ mod tests {
     #[test]
     fn content_is_per_instance() {
         with_temp_home(|_home| {
-            let a = install_game("game").unwrap();
-            let b = install_game("game").unwrap();
+            let a = install_game("game", None).unwrap();
+            let b = install_game("game", None).unwrap();
             install_content(&a.instance_id, "cards", sample_row("card-a")).unwrap();
             assert_eq!(list_installed_content(&a.instance_id, "cards").unwrap().len(), 1);
             assert!(list_installed_content(&b.instance_id, "cards").unwrap().is_empty());
@@ -526,7 +544,7 @@ mod tests {
     #[test]
     fn install_content_upserts_by_id() {
         with_temp_home(|_home| {
-            let inst = install_game("g").unwrap();
+            let inst = install_game("g", None).unwrap();
             let row = sample_row("c1");
             install_content(&inst.instance_id, "cards", row.clone()).unwrap();
             let mut updated = row;
@@ -545,7 +563,7 @@ mod tests {
     #[test]
     fn uninstall_content_removes_row() {
         with_temp_home(|_home| {
-            let inst = install_game("g").unwrap();
+            let inst = install_game("g", None).unwrap();
             install_content(
                 &inst.instance_id,
                 "plugins",

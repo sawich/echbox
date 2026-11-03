@@ -89,6 +89,9 @@ function iconSrc(game: GameListItem) {
 }
 
 function sidebarSubtitle(entry: { instance: GameInstance, meta: GameListItem | null }) {
+  if (entry.instance.label && entry.meta?.title && entry.instance.label !== entry.meta.title) {
+    return entry.meta.title
+  }
   return entry.meta?.slug || entry.instance.instanceId.slice(0, 8)
 }
 </script>
@@ -199,11 +202,7 @@ function sidebarSubtitle(entry: { instance: GameInstance, meta: GameListItem | n
                     class="block truncate text-sm font-medium"
                     :class="selectedInstanceId === entry.instance.instanceId ? 'text-primary' : 'text-highlighted'"
                   >
-                    {{ entry.meta?.title || 'Unknown game' }}
-                    <span
-                      v-if="entry.instance.label"
-                      class="font-normal text-muted"
-                    > · {{ entry.instance.label }}</span>
+                    {{ entry.instance.label || entry.meta?.title || 'Unknown game' }}
                   </span>
                   <span class="mt-0.5 block truncate font-mono text-[10px] text-dimmed">
                     {{ sidebarSubtitle(entry) }}

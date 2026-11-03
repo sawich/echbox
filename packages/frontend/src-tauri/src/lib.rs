@@ -14,8 +14,8 @@ fn list_installed_instances() -> Result<Vec<GameInstance>, String> {
 }
 
 #[tauri::command]
-fn install_game(game_id: String) -> Result<GameInstance, String> {
-    local_install::install_game(&game_id)
+fn install_game(game_id: String, label: Option<String>) -> Result<GameInstance, String> {
+    local_install::install_game(&game_id, label.as_deref())
 }
 
 #[tauri::command]

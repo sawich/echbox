@@ -31,11 +31,15 @@ export function useLocalInstalls() {
     return await invoke<GameInstance[]>('list_installed_instances')
   }
 
-  async function installGame(gameId: string): Promise<GameInstance> {
+  async function installGame(gameId: string, label?: string): Promise<GameInstance> {
     if (!isDesktop.value) {
       throw new Error('Install is only available in the desktop app')
     }
-    return await invoke<GameInstance>('install_game', { gameId })
+    const trimmed = label?.trim()
+    return await invoke<GameInstance>('install_game', {
+      gameId,
+      label: trimmed || null,
+    })
   }
 
   async function uninstallInstance(instanceId: string): Promise<void> {

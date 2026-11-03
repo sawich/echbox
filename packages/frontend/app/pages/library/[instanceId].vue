@@ -110,12 +110,14 @@ function iconSrc(g: GameListItem) {
           >
           <div class="min-w-0">
             <h1 class="truncate text-xl font-semibold text-highlighted">
-              {{ game.title }}
-              <span
-                v-if="activeInstance?.label"
-                class="text-base font-normal text-muted"
-              > · {{ activeInstance.label }}</span>
+              {{ activeInstance?.label || game.title }}
             </h1>
+            <p
+              v-if="activeInstance?.label && activeInstance.label !== game.title"
+              class="truncate text-sm text-muted"
+            >
+              {{ game.title }}
+            </p>
             <p class="text-xs text-dimmed">
               <span v-if="game.description">{{ game.description }} · </span>
               {{ isInstalled ? 'Installed locally' : 'Not installed on this device' }}
