@@ -4,10 +4,12 @@ export {
 } from "./schemas/health";
 
 export {
+  GameIconUrlsSchema,
   GameListItemSchema,
   GameDetailSchema,
   GameListResponseSchema,
   CreateGameBodySchema,
+  type GameIconUrls,
   type GameListItem,
   type GameDetail,
   type GameListResponse,

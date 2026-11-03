@@ -8,7 +8,16 @@ import {
   listGames,
   patchGame,
 } from "../games/service";
+import {
+  parseIconSize,
+  readGameIconWebp,
+  writeGameIcons,
+} from "../games/icons";
 import { authDerive } from "./auth";
+
+async function readUpload(file: File): Promise<Uint8Array> {
+  return new Uint8Array(await file.arrayBuffer());
+}
 
 function handleServiceError(
   err: unknown,
@@ -30,6 +39,38 @@ export const gameRoutes = new Elysia({ prefix: "/api/games" })
     return { games: listGames() };
   })
   .get(
+    "/:id/icons/:size",
+    async ({ params, set }) => {
+      const size = parseIconSize(params.size);
+      if (!size) {
+        set.status = 400;
+        return { error: "Invalid icon size", code: "bad_icon_size" };
+      }
+      const game = getGame(params.id);
+      if (!game) {
+        set.status = 404;
+        return { error: "Game not found", code: "game_not_found" };
+      }
+      const bytes = await readGameIconWebp(params.id, size);
+      if (!bytes) {
+        set.status = 404;
+        return { error: "Icon not found", code: "icon_not_found" };
+      }
+      return new Response(bytes, {
+        headers: {
+          "content-type": "image/webp",
+          "cache-control": "public, max-age=86400",
+        },
+      });
+    },
+    {
+      params: t.Object({
+        id: t.String(),
+        size: t.String(),
+      }),
+    },
+  )
+  .get(
     "/:id",
     ({ params, set }) => {
       const game = getGame(params.id);
@@ -45,7 +86,7 @@ export const gameRoutes = new Elysia({ prefix: "/api/games" })
   )
   .post(
     "/",
-    ({ body, user, set }) => {
+    async ({ body, user, set }) => {
       if (!user) {
         set.status = 401;
         return { error: "Unauthorized" };
@@ -54,30 +95,60 @@ export const gameRoutes = new Elysia({ prefix: "/api/games" })
         set.status = 403;
         return { error: "Forbidden", code: "admin_required" };
       }
+      if (!body.icon) {
+        set.status = 400;
+        return { error: "Icon is required", code: "icon_required" };
+      }
+
+      let iconBytes: Uint8Array;
       try {
-        const created = createGame({
+        iconBytes = await readUpload(body.icon);
+      } catch {
+        set.status = 400;
+        return { error: "Invalid icon upload", code: "bad_icon" };
+      }
+
+      let created;
+      try {
+        created = createGame({
           title: body.title,
           slug: body.slug,
           description: body.description,
           createdByUserId: user.id,
         });
-        set.status = 201;
-        return created;
       } catch (err) {
         return handleServiceError(err, set);
       }
+
+      try {
+        await writeGameIcons(created.id, iconBytes);
+      } catch (err) {
+        deleteGame(created.id);
+        if (err instanceof GameServiceError) {
+          return handleServiceError(err, set);
+        }
+        set.status = 400;
+        return {
+          error: err instanceof Error ? err.message : "Failed to write icons",
+          code: "icon_write_failed",
+        };
+      }
+
+      set.status = 201;
+      return created;
     },
     {
       body: t.Object({
         title: t.String(),
         slug: t.Optional(t.String()),
         description: t.Optional(t.Union([t.String(), t.Null()])),
+        icon: t.File(),
       }),
     },
   )
   .patch(
     "/:id",
-    ({ params, body, user, set }) => {
+    async ({ params, body, user, set }) => {
       if (!user) {
         set.status = 401;
         return { error: "Unauthorized" };
@@ -86,8 +157,10 @@ export const gameRoutes = new Elysia({ prefix: "/api/games" })
         set.status = 403;
         return { error: "Forbidden", code: "admin_required" };
       }
+
+      let updated;
       try {
-        return patchGame({
+        updated = patchGame({
           id: params.id,
           title: body.title,
           slug: body.slug,
@@ -96,6 +169,25 @@ export const gameRoutes = new Elysia({ prefix: "/api/games" })
       } catch (err) {
         return handleServiceError(err, set);
       }
+
+      if (body.icon) {
+        try {
+          const iconBytes = await readUpload(body.icon);
+          await writeGameIcons(updated.id, iconBytes);
+        } catch (err) {
+          if (err instanceof GameServiceError) {
+            return handleServiceError(err, set);
+          }
+          set.status = 400;
+          return {
+            error: err instanceof Error ? err.message : "Failed to write icons",
+            code: "icon_write_failed",
+          };
+        }
+        updated = getGame(updated.id)!;
+      }
+
+      return updated;
     },
     {
       params: t.Object({ id: t.String() }),
@@ -103,6 +195,7 @@ export const gameRoutes = new Elysia({ prefix: "/api/games" })
         title: t.Optional(t.String()),
         slug: t.Optional(t.String()),
         description: t.Optional(t.Union([t.String(), t.Null()])),
+        icon: t.Optional(t.File()),
       }),
     },
   )

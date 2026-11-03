@@ -12,6 +12,7 @@ import {
   GameConflictError,
   GameNotFoundError,
 } from "./errors";
+import { gameIconUrls, type GameIconUrls, removeGameIcons } from "./icons";
 
 export {
   BadGameError,
@@ -22,6 +23,7 @@ export {
 
 export type GameServiceOptions = {
   dbPath?: string;
+  dataDir?: string;
 };
 
 export type GameRecord = {
@@ -32,6 +34,7 @@ export type GameRecord = {
   createdByUserId: string;
   createdAt: string;
   updatedAt: string;
+  iconUrls: GameIconUrls;
 };
 
 export type CreateGameInput = GameServiceOptions & {
@@ -66,6 +69,7 @@ function toRecord(row: typeof games.$inferSelect): GameRecord {
     createdByUserId: row.createdByUserId,
     createdAt: row.createdAt,
     updatedAt: row.updatedAt,
+    iconUrls: gameIconUrls(row.id),
   };
 }
 
@@ -211,6 +215,7 @@ export function deleteGame(id: string, options?: GameServiceOptions): void {
   }
 
   db.delete(games).where(eq(games.id, id)).run();
+  removeGameIcons(id, options?.dataDir);
 }
 
 export function assertGameExists(

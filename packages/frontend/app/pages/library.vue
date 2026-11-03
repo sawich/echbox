@@ -4,6 +4,8 @@ import type { GameListItem } from '@echbox/shared'
 const route = useRoute()
 const router = useRouter()
 const api = useApi()
+const config = useRuntimeConfig()
+const apiUrl = computed(() => String(config.public.apiUrl).replace(/\/$/, ''))
 const { isDesktop, listInstalledGames, uninstallGame } = useLocalInstalls()
 
 const installedIds = ref<string[]>([])
@@ -80,6 +82,10 @@ async function onUninstall(id: string) {
 }
 
 provide('libraryRefreshInstalled', refreshInstalled)
+
+function iconSrc(game: GameListItem) {
+  return `${apiUrl.value}${game.iconUrls['64']}?v=${encodeURIComponent(game.updatedAt)}`
+}
 </script>
 
 <template>
@@ -168,17 +174,31 @@ provide('libraryRefreshInstalled', refreshInstalled)
             >
               <button
                 type="button"
-                class="min-w-0 flex-1 px-3 py-2.5 text-left"
+                class="flex min-w-0 flex-1 items-center gap-2.5 px-2.5 py-2 text-left"
                 @click="selectGame(entry.id)"
               >
-                <span
-                  class="block truncate text-sm font-medium"
-                  :class="selectedId === entry.id ? 'text-primary' : 'text-highlighted'"
+                <img
+                  v-if="entry.meta"
+                  :src="iconSrc(entry.meta)"
+                  :alt="`${entry.meta.title} icon`"
+                  class="size-8 shrink-0 rounded-md bg-elevated object-contain"
+                  loading="lazy"
                 >
-                  {{ entry.meta?.title || 'Unknown game' }}
-                </span>
-                <span class="mt-0.5 block truncate font-mono text-[10px] text-dimmed">
-                  {{ entry.meta?.slug || entry.id.slice(0, 8) }}
+                <UIcon
+                  v-else
+                  name="i-lucide-gamepad-2"
+                  class="size-8 shrink-0 rounded-md bg-elevated p-1.5 text-muted"
+                />
+                <span class="min-w-0 flex-1">
+                  <span
+                    class="block truncate text-sm font-medium"
+                    :class="selectedId === entry.id ? 'text-primary' : 'text-highlighted'"
+                  >
+                    {{ entry.meta?.title || 'Unknown game' }}
+                  </span>
+                  <span class="mt-0.5 block truncate font-mono text-[10px] text-dimmed">
+                    {{ entry.meta?.slug || entry.id.slice(0, 8) }}
+                  </span>
                 </span>
               </button>
               <UButton

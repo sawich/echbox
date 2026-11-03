@@ -1,5 +1,13 @@
 import { z } from "zod";
 
+export const GameIconUrlsSchema = z.object({
+  "32": z.string().min(1),
+  "64": z.string().min(1),
+  "128": z.string().min(1),
+  "256": z.string().min(1),
+});
+export type GameIconUrls = z.infer<typeof GameIconUrlsSchema>;
+
 export const GameListItemSchema = z.object({
   id: z.string().min(1),
   slug: z.string().min(1),
@@ -8,6 +16,7 @@ export const GameListItemSchema = z.object({
   createdByUserId: z.string().min(1),
   createdAt: z.iso.datetime(),
   updatedAt: z.iso.datetime(),
+  iconUrls: GameIconUrlsSchema,
 });
 export type GameListItem = z.infer<typeof GameListItemSchema>;
 

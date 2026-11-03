@@ -9,6 +9,8 @@
     "core:default",
     "deep-link:default",
     "opener:default",
-    "allow-local-install"
+    "dialog:default",
+    "allow-local-install",
+    "allow-exe-icon"
   ]
 }

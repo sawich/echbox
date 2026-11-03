@@ -1,0 +1,4 @@
+[[permission]]
+identifier = "allow-exe-icon"
+description = "Allow extracting the largest icon from a local .exe path"
+commands.allow = ["extract_exe_icon"]

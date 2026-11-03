@@ -1,6 +1,12 @@
+mod exe_icon;
 mod local_install;
 
 use local_install::ContentInstall;
+
+#[tauri::command]
+fn extract_exe_icon(path: String) -> Result<Vec<u8>, String> {
+    exe_icon::extract_largest_icon_png(&path)
+}
 
 #[tauri::command]
 fn list_installed_games() -> Result<Vec<String>, String> {
@@ -60,7 +66,9 @@ pub fn run() {
     builder
         .plugin(tauri_plugin_opener::init())
         .plugin(tauri_plugin_deep_link::init())
+        .plugin(tauri_plugin_dialog::init())
         .invoke_handler(tauri::generate_handler![
+            extract_exe_icon,
             list_installed_games,
             install_game,
             uninstall_game,

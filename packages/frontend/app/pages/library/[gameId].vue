@@ -4,6 +4,8 @@ import type { GameListItem } from '@echbox/shared'
 const route = useRoute()
 const gameId = computed(() => String(route.params.gameId))
 const api = useApi()
+const config = useRuntimeConfig()
+const apiUrl = computed(() => String(config.public.apiUrl).replace(/\/$/, ''))
 const { isDesktop, listInstalledGames } = useLocalInstalls()
 
 const tab = ref<'characters' | 'scenes' | 'plugins' | 'softmods'>('characters')
@@ -43,6 +45,10 @@ const tabs = [
   { key: 'plugins' as const, label: 'Plugins', icon: 'i-lucide-puzzle' },
   { key: 'softmods' as const, label: 'Softmods', icon: 'i-lucide-package' },
 ]
+
+function iconSrc(g: GameListItem) {
+  return `${apiUrl.value}${g.iconUrls['128']}?v=${encodeURIComponent(g.updatedAt)}`
+}
 </script>
 
 <template>
@@ -55,14 +61,21 @@ const tabs = [
         @retry="refresh()"
       />
       <template v-else-if="status === 'success' && game">
-        <div class="mb-3 min-w-0">
-          <h1 class="truncate text-xl font-semibold text-highlighted">
-            {{ game.title }}
-          </h1>
-          <p class="text-xs text-dimmed">
-            <span v-if="game.description">{{ game.description }} · </span>
-            {{ isInstalled ? 'Installed locally' : 'Not installed on this device' }}
-          </p>
+        <div class="mb-3 flex min-w-0 items-center gap-3">
+          <img
+            :src="iconSrc(game)"
+            :alt="`${game.title} icon`"
+            class="size-12 shrink-0 rounded-md bg-elevated object-contain"
+          >
+          <div class="min-w-0">
+            <h1 class="truncate text-xl font-semibold text-highlighted">
+              {{ game.title }}
+            </h1>
+            <p class="text-xs text-dimmed">
+              <span v-if="game.description">{{ game.description }} · </span>
+              {{ isInstalled ? 'Installed locally' : 'Not installed on this device' }}
+            </p>
+          </div>
         </div>
         <div class="flex flex-wrap gap-1 pb-3">
           <UButton
