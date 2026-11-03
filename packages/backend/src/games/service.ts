@@ -8,6 +8,7 @@ import { and, count, desc, eq, ne } from "drizzle-orm";
 import { getDb } from "../db/client";
 import {
   characterCards,
+  clothes,
   gameContentKinds,
   games,
   plugins,
@@ -260,6 +261,11 @@ function contentCountForGame(gameId: string, dbPath?: string): number {
     .from(scenes)
     .where(eq(scenes.gameId, gameId))
     .get()?.n;
+  const clothesN = db
+    .select({ n: count() })
+    .from(clothes)
+    .where(eq(clothes.gameId, gameId))
+    .get()?.n;
   const pluginN = db
     .select({ n: count() })
     .from(plugins)
@@ -270,7 +276,13 @@ function contentCountForGame(gameId: string, dbPath?: string): number {
     .from(softmods)
     .where(eq(softmods.gameId, gameId))
     .get()?.n;
-  return (cards ?? 0) + (sceneN ?? 0) + (pluginN ?? 0) + (softmodN ?? 0);
+  return (
+    (cards ?? 0) +
+    (sceneN ?? 0) +
+    (clothesN ?? 0) +
+    (pluginN ?? 0) +
+    (softmodN ?? 0)
+  );
 }
 
 export function deleteGame(id: string, options?: GameServiceOptions): void {

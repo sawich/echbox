@@ -5,11 +5,13 @@ import { join } from "node:path";
 import { eq } from "drizzle-orm";
 import { getDb } from "../../db/client";
 import { migrateDb } from "../../db/migrate";
-import { games, users } from "../../db/schema";
+import { clothes, games, users } from "../../db/schema";
 import {
   BadGameError,
+  GameConflictError,
   assertGameSupportsKind,
   createGame,
+  deleteGame,
   getGame,
   patchGame,
 } from "../service";
@@ -17,13 +19,17 @@ import {
 describe("game content kinds", () => {
   let tempDir: string;
   let dbPath: string;
+  let dataDir: string;
   let userId: string;
 
   beforeEach(() => {
     tempDir = mkdtempSync(join(tmpdir(), "echbox-game-kinds-"));
     dbPath = join(tempDir, "test.db");
+    dataDir = join(tempDir, "data");
     process.env.DATABASE_PATH = dbPath;
     Bun.env.DATABASE_PATH = dbPath;
+    process.env.DATA_DIR = dataDir;
+    Bun.env.DATA_DIR = dataDir;
 
     migrateDb(dbPath);
     const db = getDb(dbPath);
@@ -42,6 +48,8 @@ describe("game content kinds", () => {
   afterEach(() => {
     delete process.env.DATABASE_PATH;
     delete Bun.env.DATABASE_PATH;
+    delete process.env.DATA_DIR;
+    delete Bun.env.DATA_DIR;
     rmSync(tempDir, { recursive: true, force: true });
   });
 
@@ -130,5 +138,32 @@ describe("game content kinds", () => {
     const db = getDb(dbPath);
     const rows = db.select().from(games).where(eq(games.title, "Bad path")).all();
     expect(rows).toHaveLength(0);
+  });
+
+  test("deleteGame blocked when only clothes remain", () => {
+    const game = createGame({
+      title: "Clothes only",
+      createdByUserId: userId,
+      dbPath,
+      contentKinds: [{ kind: "clothes", relPath: null }],
+    });
+    const now = new Date().toISOString();
+    getDb(dbPath)
+      .insert(clothes)
+      .values({
+        id: crypto.randomUUID(),
+        gameId: game.id,
+        authorId: userId,
+        slug: "outfit",
+        title: "Outfit",
+        latestSemver: null,
+        latestVersionId: null,
+        createdAt: now,
+        updatedAt: now,
+      })
+      .run();
+    expect(() => deleteGame(game.id, { dbPath, dataDir })).toThrow(
+      GameConflictError,
+    );
   });
 });

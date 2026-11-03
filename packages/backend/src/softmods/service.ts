@@ -28,7 +28,8 @@ import {
   removeSoftmodVersionFiles,
   softmodVersionPaths,
 } from "./storage";
-import { assertGameSupportsKind } from "../games/service";import {
+import { assertGameSupportsKind } from "../games/service";
+import {
   getSoftmodVoteCounts,
   getSoftmodVoteCountsForSoftmods,
   type SoftmodVoteCounts,
