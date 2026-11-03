@@ -3,6 +3,7 @@ import {
   type CharacterCardDetail,
   CardServiceError,
   DuplicateCardHashError,
+  DuplicateCardSemverError,
   addVersion,
   createCard,
   deleteCard,
@@ -46,7 +47,19 @@ function handleServiceError(
       code: err.code,
       cardId: err.cardId,
       card_id: err.card_id,
-      version: err.version,
+      versionId: err.versionId,
+      semver: err.semver,
+      conflict: err.conflict,
+    };
+  }
+  if (err instanceof DuplicateCardSemverError) {
+    set.status = 409;
+    return {
+      error: err.message,
+      code: err.code,
+      cardId: err.cardId,
+      semver: err.semver,
+      conflict: err.conflict,
     };
   }
   if (err instanceof CardServiceError) {
@@ -122,6 +135,7 @@ export const galleryRoutes = new Elysia({ prefix: "/api/kk" })
           gameId: body.gameId,
           title: body.title,
           slug: body.slug,
+          semver: body.semver,
           notes: body.notes,
           fileBytes,
         });
@@ -137,6 +151,7 @@ export const galleryRoutes = new Elysia({ prefix: "/api/kk" })
         gameId: t.String(),
         title: t.Optional(t.String()),
         slug: t.Optional(t.String()),
+        semver: t.String(),
         notes: t.Optional(t.String()),
       }),
     },
@@ -197,6 +212,7 @@ export const galleryRoutes = new Elysia({ prefix: "/api/kk" })
         const added = await addVersion({
           cardId: params.id,
           authorId: user.id,
+          semver: body.semver,
           notes: body.notes,
           fileBytes,
         });
@@ -211,6 +227,7 @@ export const galleryRoutes = new Elysia({ prefix: "/api/kk" })
       }),
       body: t.Object({
         file: t.File(),
+        semver: t.String(),
         notes: t.Optional(t.String()),
       }),
     },
@@ -269,16 +286,11 @@ export const galleryRoutes = new Elysia({ prefix: "/api/kk" })
     },
   )
   .get(
-    "/cards/:id/versions/:version/image",
+    "/cards/:id/versions/:versionId/image",
     async ({ params, query, set }) => {
-      const version = Number(params.version);
-      if (!Number.isInteger(version) || version < 1) {
-        set.status = 404;
-        return new Response("Not found", { status: 404 });
-      }
       const wantOriginal =
         query.original === "1" || query.original === "true";
-      const charaImg = await getCharacterVersionImage(params.id, version, {
+      const charaImg = await getCharacterVersionImage(params.id, params.versionId, {
         original: wantOriginal,
       });
       if (charaImg) {
@@ -296,7 +308,7 @@ export const galleryRoutes = new Elysia({ prefix: "/api/kk" })
     {
       params: t.Object({
         id: t.String(),
-        version: t.String(),
+        versionId: t.String(),
       }),
       query: t.Object({
         original: t.Optional(t.String()),

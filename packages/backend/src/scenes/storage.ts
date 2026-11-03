@@ -18,10 +18,10 @@ export function getSceneDir(sceneId: string, dataDir?: string): string {
 
 export function getVersionDir(
   sceneId: string,
-  version: number,
+  versionId: string,
   dataDir?: string,
 ): string {
-  return join(getSceneDir(sceneId, dataDir), `v${version}`);
+  return join(getSceneDir(sceneId, dataDir), versionId);
 }
 
 export type VersionPaths = {
@@ -32,10 +32,10 @@ export type VersionPaths = {
 
 export function getVersionPaths(
   sceneId: string,
-  version: number,
+  versionId: string,
   dataDir?: string,
 ): VersionPaths {
-  const versionDir = getVersionDir(sceneId, version, dataDir);
+  const versionDir = getVersionDir(sceneId, versionId, dataDir);
   return {
     versionDir,
     originalPath: join(versionDir, "original.png"),

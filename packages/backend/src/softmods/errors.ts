@@ -15,20 +15,44 @@ export class SoftmodServiceError extends Error {
 export class DuplicateSoftmodHashError extends SoftmodServiceError {
   readonly softmodId: string;
   readonly softmod_id: string;
-  readonly version: number;
-  readonly conflict: { softmodId: string; version: number };
+  readonly versionId: string;
+  readonly semver: string;
+  readonly conflict: { softmodId: string; versionId: string; semver: string };
 
-  constructor(softmodId: string, version: number) {
+  constructor(softmodId: string, versionId: string, semver: string) {
     super(
       409,
       "CONFLICT",
-      `Duplicate softmod content hash (already exists in softmod ${softmodId} v${version})`,
+      `Duplicate softmod content hash (already exists in softmod ${softmodId} v${semver})`,
     );
     this.name = "DuplicateSoftmodHashError";
     this.softmodId = softmodId;
     this.softmod_id = softmodId;
-    this.version = version;
-    this.conflict = { softmodId, version };
+    this.versionId = versionId;
+    this.semver = semver;
+    this.conflict = { softmodId, versionId, semver };
+  }
+}
+
+export class DuplicateSoftmodSemverError extends SoftmodServiceError {
+  readonly softmodId: string;
+  readonly softmod_id: string;
+  readonly versionId: string;
+  readonly semver: string;
+  readonly conflict: { softmodId: string; versionId: string; semver: string };
+
+  constructor(softmodId: string, versionId: string, semver: string) {
+    super(
+      409,
+      "CONFLICT",
+      `Softmod ${softmodId} already has version ${semver}`,
+    );
+    this.name = "DuplicateSoftmodSemverError";
+    this.softmodId = softmodId;
+    this.softmod_id = softmodId;
+    this.versionId = versionId;
+    this.semver = semver;
+    this.conflict = { softmodId, versionId, semver };
   }
 }
 

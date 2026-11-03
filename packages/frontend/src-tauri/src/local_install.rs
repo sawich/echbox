@@ -8,7 +8,8 @@ const CONTENT_KINDS: &[&str] = &["cards", "plugins", "scenes", "softmods"];
 #[serde(rename_all = "camelCase")]
 pub struct ContentInstall {
     pub id: String,
-    pub version: i32,
+    pub version_id: String,
+    pub semver: String,
     pub title: String,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub content_hash: Option<String>,
@@ -217,19 +218,22 @@ mod tests {
             install_game("g").unwrap();
             let row = ContentInstall {
                 id: "c1".into(),
-                version: 1,
+                version_id: "vid-1".into(),
+                semver: "1.0.0".into(),
                 title: "One".into(),
                 content_hash: Some("abc".into()),
                 installed_at: "2026-01-01T00:00:00.000Z".into(),
             };
             install_content("g", "cards", row.clone()).unwrap();
             let mut updated = row;
-            updated.version = 2;
+            updated.version_id = "vid-2".into();
+            updated.semver = "2.0.0".into();
             updated.title = "Two".into();
             install_content("g", "cards", updated.clone()).unwrap();
             let listed = list_installed_content("g", "cards").unwrap();
             assert_eq!(listed.len(), 1);
-            assert_eq!(listed[0].version, 2);
+            assert_eq!(listed[0].semver, "2.0.0");
+            assert_eq!(listed[0].version_id, "vid-2");
             assert_eq!(listed[0].title, "Two");
         });
     }
@@ -243,7 +247,8 @@ mod tests {
                 "plugins",
                 ContentInstall {
                     id: "p1".into(),
-                    version: 1,
+                    version_id: "vid-p1".into(),
+                    semver: "1.0.0".into(),
                     title: "P".into(),
                     content_hash: None,
                     installed_at: "t".into(),

@@ -15,20 +15,40 @@ export class CardServiceError extends Error {
 export class DuplicateCardHashError extends CardServiceError {
   readonly cardId: string;
   readonly card_id: string;
-  readonly version: number;
-  readonly conflict: { cardId: string; version: number };
+  readonly versionId: string;
+  readonly semver: string;
+  readonly conflict: { cardId: string; versionId: string; semver: string };
 
-  constructor(cardId: string, version: number) {
+  constructor(cardId: string, versionId: string, semver: string) {
     super(
       409,
       "CONFLICT",
-      `Duplicate card content hash (already exists in card ${cardId} v${version})`,
+      `Duplicate card content hash (already exists in card ${cardId} v${semver})`,
     );
     this.name = "DuplicateCardHashError";
     this.cardId = cardId;
     this.card_id = cardId;
-    this.version = version;
-    this.conflict = { cardId, version };
+    this.versionId = versionId;
+    this.semver = semver;
+    this.conflict = { cardId, versionId, semver };
+  }
+}
+
+export class DuplicateCardSemverError extends CardServiceError {
+  readonly cardId: string;
+  readonly semver: string;
+  readonly conflict: { cardId: string; semver: string };
+
+  constructor(cardId: string, semver: string) {
+    super(
+      409,
+      "DUPLICATE_SEMVER",
+      `Card ${cardId} already has version ${semver}`,
+    );
+    this.name = "DuplicateCardSemverError";
+    this.cardId = cardId;
+    this.semver = semver;
+    this.conflict = { cardId, semver };
   }
 }
 

@@ -2,6 +2,7 @@ import { describe, expect, test } from "bun:test";
 import { mkdtempSync, rmSync } from "node:fs";
 import { join } from "node:path";
 import { tmpdir } from "node:os";
+import { newId } from "../../id";
 import { getDb } from "../client";
 import { migrateDb } from "../migrate";
 import {
@@ -50,6 +51,7 @@ describe("schema", () => {
 
       const { userId, gameId } = insertUserAndGame(db, "discord-1");
       const cardId = crypto.randomUUID();
+      const v1Id = crypto.randomUUID();
       const hash = "a".repeat(64);
 
       db.insert(characterCards).values({
@@ -58,15 +60,16 @@ describe("schema", () => {
         authorId: userId,
         slug: "test-card",
         title: "Test",
-        latestVersion: 1,
+        latestSemver: "1.0.0",
+        latestVersionId: v1Id,
         createdAt: new Date().toISOString(),
         updatedAt: new Date().toISOString(),
       }).run();
 
       db.insert(characterCardVersions).values({
-        id: crypto.randomUUID(),
+        id: v1Id,
         cardId,
-        version: 1,
+        semver: "1.0.0",
         notes: null,
         contentHash: hash,
         originalPath: "/tmp/original.png",
@@ -79,7 +82,7 @@ describe("schema", () => {
         db.insert(characterCardVersions).values({
           id: crypto.randomUUID(),
           cardId,
-          version: 2,
+          semver: "2.0.0",
           notes: null,
           contentHash: hash,
           originalPath: "/tmp/original2.png",
@@ -102,6 +105,7 @@ describe("schema", () => {
 
       const { userId, gameId } = insertUserAndGame(db, "discord-softmod");
       const softmodId = crypto.randomUUID();
+      const softmodV1Id = newId();
       const hash = "b".repeat(64);
 
       db.insert(softmods).values({
@@ -112,16 +116,16 @@ describe("schema", () => {
         modAuthor: "Mod Author",
         description: "Desc",
         website: null,
-        latestVersion: 1,
+        latestSemver: "1.0.0",
+        latestVersionId: softmodV1Id,
         createdAt: new Date().toISOString(),
         updatedAt: new Date().toISOString(),
       }).run();
 
       db.insert(softmodVersions).values({
-        id: crypto.randomUUID(),
+        id: softmodV1Id,
         softmodId,
-        version: 1,
-        packageVersion: "1.0.0",
+        semver: "1.0.0",
         notes: null,
         contentHash: hash,
         originalPath: "/tmp/original.zipmod",
@@ -131,10 +135,9 @@ describe("schema", () => {
 
       expect(() =>
         db.insert(softmodVersions).values({
-          id: crypto.randomUUID(),
+          id: newId(),
           softmodId,
-          version: 2,
-          packageVersion: "2.0.0",
+          semver: "2.0.0",
           notes: null,
           contentHash: hash,
           originalPath: "/tmp/original2.zipmod",
@@ -156,6 +159,7 @@ describe("schema", () => {
 
       const { userId, gameId } = insertUserAndGame(db, "discord-scene");
       const sceneId = crypto.randomUUID();
+      const v1Id = crypto.randomUUID();
       const hash = "d".repeat(64);
 
       db.insert(scenes).values({
@@ -164,15 +168,16 @@ describe("schema", () => {
         authorId: userId,
         slug: "test-scene",
         title: "Test Scene",
-        latestVersion: 1,
+        latestSemver: "1.0.0",
+        latestVersionId: v1Id,
         createdAt: new Date().toISOString(),
         updatedAt: new Date().toISOString(),
       }).run();
 
       db.insert(sceneVersions).values({
-        id: crypto.randomUUID(),
+        id: v1Id,
         sceneId,
-        version: 1,
+        semver: "1.0.0",
         notes: null,
         contentHash: hash,
         originalPath: "/tmp/original.png",
@@ -185,7 +190,7 @@ describe("schema", () => {
         db.insert(sceneVersions).values({
           id: crypto.randomUUID(),
           sceneId,
-          version: 2,
+          semver: "2.0.0",
           notes: null,
           contentHash: hash,
           originalPath: "/tmp/original2.png",
@@ -208,6 +213,7 @@ describe("schema", () => {
 
       const { userId, gameId } = insertUserAndGame(db, "discord-plugin");
       const pluginId = crypto.randomUUID();
+      const pluginV1Id = newId();
       const hash = "c".repeat(64);
 
       db.insert(plugins).values({
@@ -216,15 +222,16 @@ describe("schema", () => {
         authorId: userId,
         title: "Test Plugin",
         description: "Desc",
-        latestVersion: 1,
+        latestSemver: "1.0.0",
+        latestVersionId: pluginV1Id,
         createdAt: new Date().toISOString(),
         updatedAt: new Date().toISOString(),
       }).run();
 
       db.insert(pluginVersions).values({
-        id: crypto.randomUUID(),
+        id: pluginV1Id,
         pluginId,
-        version: 1,
+        semver: "1.0.0",
         notes: null,
         contentHash: hash,
         originalPath: "/tmp/original.zip",
@@ -234,9 +241,9 @@ describe("schema", () => {
 
       expect(() =>
         db.insert(pluginVersions).values({
-          id: crypto.randomUUID(),
+          id: newId(),
           pluginId,
-          version: 2,
+          semver: "2.0.0",
           notes: null,
           contentHash: hash,
           originalPath: "/tmp/original2.zip",

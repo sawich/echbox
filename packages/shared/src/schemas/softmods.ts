@@ -15,10 +15,10 @@ export const SoftmodListItemSchema = CardVoteCountsSchema.extend({
   modAuthor: z.string().nullable(),
   description: z.string().optional(),
   website: z.string().nullable().optional(),
-  latestVersion: z.number().int().positive(),
+  latestSemver: z.string().min(1),
+  latestVersionId: z.string().min(1),
   versionCount: z.number().int().positive(),
   downloadUrl: z.string().min(1),
   uploader: SoftmodUploaderSchema,
-  packageVersion: z.string(),
 });
 export type SoftmodListItem = z.infer<typeof SoftmodListItemSchema>;

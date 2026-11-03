@@ -50,7 +50,8 @@ export const characterCards = sqliteTable(
       .references(() => users.id),
     slug: text("slug").notNull(),
     title: text("title").notNull(),
-    latestVersion: integer("latest_version").notNull(),
+    latestSemver: text("latest_semver").notNull(),
+    latestVersionId: text("latest_version_id").notNull(),
     createdAt: text("created_at").notNull(),
     updatedAt: text("updated_at").notNull(),
   },
@@ -67,7 +68,7 @@ export const characterCardVersions = sqliteTable(
     cardId: text("card_id")
       .notNull()
       .references(() => characterCards.id),
-    version: integer("version").notNull(),
+    semver: text("semver").notNull(),
     notes: text("notes"),
     contentHash: text("content_hash").notNull().unique(),
     originalPath: text("original_path").notNull(),
@@ -76,9 +77,9 @@ export const characterCardVersions = sqliteTable(
     createdAt: text("created_at").notNull(),
   },
   (table) => [
-    uniqueIndex("character_card_versions_card_id_version_idx").on(
+    uniqueIndex("character_card_versions_card_id_semver_idx").on(
       table.cardId,
-      table.version,
+      table.semver,
     ),
   ],
 );
@@ -119,7 +120,8 @@ export const scenes = sqliteTable(
       .references(() => users.id),
     slug: text("slug").notNull(),
     title: text("title").notNull(),
-    latestVersion: integer("latest_version").notNull(),
+    latestSemver: text("latest_semver").notNull(),
+    latestVersionId: text("latest_version_id").notNull(),
     createdAt: text("created_at").notNull(),
     updatedAt: text("updated_at").notNull(),
   },
@@ -136,7 +138,7 @@ export const sceneVersions = sqliteTable(
     sceneId: text("scene_id")
       .notNull()
       .references(() => scenes.id),
-    version: integer("version").notNull(),
+    semver: text("semver").notNull(),
     notes: text("notes"),
     contentHash: text("content_hash").notNull().unique(),
     originalPath: text("original_path").notNull(),
@@ -145,9 +147,9 @@ export const sceneVersions = sqliteTable(
     createdAt: text("created_at").notNull(),
   },
   (table) => [
-    uniqueIndex("scene_versions_scene_id_version_idx").on(
+    uniqueIndex("scene_versions_scene_id_semver_idx").on(
       table.sceneId,
-      table.version,
+      table.semver,
     ),
   ],
 );
@@ -193,7 +195,8 @@ export const softmods = sqliteTable(
     modAuthor: text("mod_author"),
     description: text("description").notNull(),
     website: text("website"),
-    latestVersion: integer("latest_version").notNull(),
+    latestSemver: text("latest_semver").notNull(),
+    latestVersionId: text("latest_version_id").notNull(),
     createdAt: text("created_at").notNull(),
     updatedAt: text("updated_at").notNull(),
   },
@@ -210,8 +213,7 @@ export const softmodVersions = sqliteTable(
     softmodId: text("softmod_id")
       .notNull()
       .references(() => softmods.id),
-    version: integer("version").notNull(),
-    packageVersion: text("package_version").notNull(),
+    semver: text("semver").notNull(),
     notes: text("notes"),
     contentHash: text("content_hash").notNull().unique(),
     originalPath: text("original_path").notNull(),
@@ -219,9 +221,9 @@ export const softmodVersions = sqliteTable(
     createdAt: text("created_at").notNull(),
   },
   (table) => [
-    uniqueIndex("softmod_versions_softmod_id_version_idx").on(
+    uniqueIndex("softmod_versions_softmod_id_semver_idx").on(
       table.softmodId,
-      table.version,
+      table.semver,
     ),
   ],
 );
@@ -265,7 +267,8 @@ export const plugins = sqliteTable(
       .references(() => users.id),
     title: text("title").notNull(),
     description: text("description"),
-    latestVersion: integer("latest_version").notNull(),
+    latestSemver: text("latest_semver").notNull(),
+    latestVersionId: text("latest_version_id").notNull(),
     createdAt: text("created_at").notNull(),
     updatedAt: text("updated_at").notNull(),
   },
@@ -282,7 +285,7 @@ export const pluginVersions = sqliteTable(
     pluginId: text("plugin_id")
       .notNull()
       .references(() => plugins.id),
-    version: integer("version").notNull(),
+    semver: text("semver").notNull(),
     notes: text("notes"),
     contentHash: text("content_hash").notNull().unique(),
     originalPath: text("original_path").notNull(),
@@ -290,9 +293,9 @@ export const pluginVersions = sqliteTable(
     createdAt: text("created_at").notNull(),
   },
   (table) => [
-    uniqueIndex("plugin_versions_plugin_id_version_idx").on(
+    uniqueIndex("plugin_versions_plugin_id_semver_idx").on(
       table.pluginId,
-      table.version,
+      table.semver,
     ),
   ],
 );

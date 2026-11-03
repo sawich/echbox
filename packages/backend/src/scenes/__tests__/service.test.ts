@@ -71,7 +71,9 @@ describe("scene service", () => {
 
   test("createScene stores original PNG, WebP preview, and DB rows", async () => {
     const fileBytes = await fixtureBytes("scene", "kk_scene_simple.png");
-    const created = await createScene({ gameId,
+    const created = await createScene({
+      gameId,
+      semver: "1.0.0",
       authorId,
       title: "Simple Studio",
       fileBytes,
@@ -84,29 +86,35 @@ describe("scene service", () => {
     expect(created.type).toBe("scene");
     expect(created.authorId).toBe(authorId);
     expect(created.title).toBe("Simple Studio");
-    expect(created.latestVersion).toBe(1);
+    expect(created.latestSemver).toBe("1.0.0");
+    expect(created.latestVersionId).toBe(created.versions[0]!.id);
     expect(created.versions).toHaveLength(1);
+    expect(created.versions[0]!.semver).toBe("1.0.0");
     expect(created.versions[0]!.imageUrl).toBe(
-      `/api/scenes/${created.id}/versions/1/image`,
+      `/api/scenes/${created.id}/versions/${created.latestVersionId}/image`,
     );
     expect(created.versions[0]!.notes).toBe("Initial upload");
 
-    const paths = getVersionPaths(created.id, 1, dataDir);
+    const paths = getVersionPaths(created.id, created.latestVersionId, dataDir);
     expect(existsSync(paths.originalPath)).toBe(true);
     expect(existsSync(paths.previewPath)).toBe(true);
-    expect(paths.originalPath).toContain(`/scenes/${created.id}/v1/`);
+    expect(paths.originalPath).toContain(
+      `/scenes/${created.id}/${created.latestVersionId}/`,
+    );
 
     const list = await listScenes({ dbPath, dataDir });
     expect(list).toHaveLength(1);
     expect(list[0]!.authorId).toBe(authorId);
     expect(list[0]!.imageUrl).toBe(
-      `/api/scenes/${created.id}/versions/1/image`,
+      `/api/scenes/${created.id}/versions/${created.latestVersionId}/image`,
     );
   });
 
-  test("second createScene with same file throws 409 with sceneId and version", async () => {
+  test("second createScene with same file throws 409 with sceneId, versionId and semver", async () => {
     const fileBytes = await fixtureBytes("scene", "kk_scene_simple.png");
-    const first = await createScene({ gameId,
+    const first = await createScene({
+      gameId,
+      semver: "1.0.0",
       authorId,
       fileBytes,
       dbPath,
@@ -115,7 +123,9 @@ describe("scene service", () => {
 
     let caught: unknown;
     try {
-      await createScene({ gameId,
+      await createScene({
+      gameId,
+      semver: "1.0.0",
         authorId: otherUserId,
         fileBytes,
         dbPath,
@@ -129,11 +139,13 @@ describe("scene service", () => {
     const conflict = caught as {
       status: number;
       sceneId: string;
-      version: number;
+      versionId: string;
+      semver: string;
     };
     expect(conflict.status).toBe(409);
     expect(conflict.sceneId).toBe(first.id);
-    expect(conflict.version).toBe(1);
+    expect(conflict.versionId).toBe(first.latestVersionId);
+    expect(conflict.semver).toBe("1.0.0");
 
     expect(await listScenes({ dbPath, dataDir })).toHaveLength(1);
   });
@@ -143,7 +155,9 @@ describe("scene service", () => {
 
     let caught: unknown;
     try {
-      await createScene({ gameId,
+      await createScene({
+      gameId,
+      semver: "1.0.0",
         authorId,
         fileBytes: charaBytes,
         dbPath,
@@ -163,7 +177,9 @@ describe("scene service", () => {
     const v1Bytes = await fixtureBytes("scene", "kk_scene_simple.png");
     const v2Bytes = await fixtureBytes("scene", "kk_scene_mod.png");
 
-    const scene = await createScene({ gameId,
+    const scene = await createScene({
+      gameId,
+      semver: "1.0.0",
       authorId,
       title: "Evolving Scene",
       fileBytes: v1Bytes,
@@ -173,6 +189,7 @@ describe("scene service", () => {
 
     const updated = await addSceneVersion({
       sceneId: scene.id,
+      semver: "2.0.0",
       authorId,
       fileBytes: v2Bytes,
       notes: "Modded scene",
@@ -180,13 +197,15 @@ describe("scene service", () => {
       dataDir,
     });
 
-    expect(updated.latestVersion).toBe(2);
+    expect(updated.latestSemver).toBe("2.0.0");
+    expect(updated.latestVersionId).toBe(updated.versions[1]!.id);
     expect(updated.versions).toHaveLength(2);
 
     let caught: unknown;
     try {
       await addSceneVersion({
         sceneId: scene.id,
+        semver: "2.0.0",
         authorId,
         fileBytes: v1Bytes,
         dbPath,
@@ -203,7 +222,9 @@ describe("scene service", () => {
     const v1Bytes = await fixtureBytes("scene", "kk_scene_simple.png");
     const v2Bytes = await fixtureBytes("scene", "kk_scene_mod.png");
 
-    const scene = await createScene({ gameId,
+    const scene = await createScene({
+      gameId,
+      semver: "1.0.0",
       authorId,
       fileBytes: v1Bytes,
       dbPath,
@@ -214,6 +235,7 @@ describe("scene service", () => {
     try {
       await addSceneVersion({
         sceneId: scene.id,
+        semver: "2.0.0",
         authorId: otherUserId,
         fileBytes: v2Bytes,
         dbPath,
@@ -225,17 +247,96 @@ describe("scene service", () => {
 
     expect((caught as { status: number }).status).toBe(403);
     expect(
-      existsSync(getVersionPaths(scene.id, 2, dataDir).originalPath),
+      existsSync(
+        getVersionPaths(scene.id, "unused-version-id", dataDir).originalPath,
+      ),
     ).toBe(false);
+    expect((await getScene(scene.id, { dbPath, dataDir }))!.versions).toHaveLength(
+      1,
+    );
   });
 
-  test("findSceneByHash returns sceneId and version when present", async () => {
+  test("addSceneVersion rejects duplicate semver with 409 DUPLICATE_SEMVER", async () => {
+    const scene = await createScene({
+      gameId,
+      authorId,
+      semver: "1.0.0",
+      fileBytes: await fixtureBytes("scene", "kk_scene_simple.png"),
+      dbPath,
+      dataDir,
+    });
+
+    let caught: unknown;
+    try {
+      await addSceneVersion({
+        sceneId: scene.id,
+        authorId,
+        semver: "1.0.0",
+        fileBytes: await fixtureBytes("scene", "kk_scene_mod.png"),
+        dbPath,
+        dataDir,
+      });
+    } catch (err) {
+      caught = err;
+    }
+    const err = caught as { status: number; code: string; semver: string };
+    expect(err.status).toBe(409);
+    expect(err.code).toBe("DUPLICATE_SEMVER");
+    expect(err.semver).toBe("1.0.0");
+  });
+
+  test("createScene and addSceneVersion reject missing or invalid semver with 400", async () => {
+    const bytes = await fixtureBytes("scene", "kk_scene_simple.png");
+    for (const bad of ["", "not-a-version"]) {
+      let caught: unknown;
+      try {
+        await createScene({
+          gameId,
+          authorId,
+          semver: bad,
+          fileBytes: bytes,
+          dbPath,
+          dataDir,
+        });
+      } catch (err) {
+        caught = err;
+      }
+      expect((caught as { status: number }).status).toBe(400);
+    }
+    expect(await listScenes({ dbPath, dataDir })).toHaveLength(0);
+  });
+
+  test("latest is chosen by semver, not insertion order", async () => {
+    const scene = await createScene({
+      gameId,
+      authorId,
+      semver: "2.0.0",
+      fileBytes: await fixtureBytes("scene", "kk_scene_simple.png"),
+      dbPath,
+      dataDir,
+    });
+    const updated = await addSceneVersion({
+      sceneId: scene.id,
+      authorId,
+      semver: "1.5.0",
+      fileBytes: await fixtureBytes("scene", "kk_scene_mod.png"),
+      dbPath,
+      dataDir,
+    });
+    expect(updated.latestSemver).toBe("2.0.0");
+    expect(updated.latestVersionId).toBe(scene.latestVersionId);
+    expect(updated.versions.map((v) => v.semver)).toEqual(["1.5.0", "2.0.0"]);
+  });
+
+  test("findSceneByHash returns sceneId, versionId and semver when present", async () => {
     const v1Bytes = await fixtureBytes("scene", "kk_scene_simple.png");
     const hash = sha256Hex(v1Bytes);
 
     expect(findSceneByHash(hash, { dbPath })).toBeNull();
 
-    const scene = await createScene({ gameId,
+    const scene = await createScene({
+      gameId,
+      semver: "1.0.0",
       authorId,
       fileBytes: v1Bytes,
       dbPath,
@@ -244,13 +345,16 @@ describe("scene service", () => {
 
     expect(findSceneByHash(hash, { dbPath })).toEqual({
       sceneId: scene.id,
-      version: 1,
+      versionId: scene.latestVersionId,
+      semver: "1.0.0",
     });
   });
 
   test("patchScene and deleteScene enforce author-only access", async () => {
     const fileBytes = await fixtureBytes("scene", "kk_scene_simple.png");
-    const scene = await createScene({ gameId,
+    const scene = await createScene({
+      gameId,
+      semver: "1.0.0",
       authorId,
       title: "Before",
       fileBytes,

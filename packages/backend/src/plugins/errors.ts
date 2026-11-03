@@ -15,20 +15,44 @@ export class PluginServiceError extends Error {
 export class DuplicatePluginHashError extends PluginServiceError {
   readonly pluginId: string;
   readonly plugin_id: string;
-  readonly version: number;
-  readonly conflict: { pluginId: string; version: number };
+  readonly versionId: string;
+  readonly semver: string;
+  readonly conflict: { pluginId: string; versionId: string; semver: string };
 
-  constructor(pluginId: string, version: number) {
+  constructor(pluginId: string, versionId: string, semver: string) {
     super(
       409,
       "CONFLICT",
-      `Duplicate plugin content hash (already exists in plugin ${pluginId} v${version})`,
+      `Duplicate plugin content hash (already exists in plugin ${pluginId} v${semver})`,
     );
     this.name = "DuplicatePluginHashError";
     this.pluginId = pluginId;
     this.plugin_id = pluginId;
-    this.version = version;
-    this.conflict = { pluginId, version };
+    this.versionId = versionId;
+    this.semver = semver;
+    this.conflict = { pluginId, versionId, semver };
+  }
+}
+
+export class DuplicatePluginSemverError extends PluginServiceError {
+  readonly pluginId: string;
+  readonly plugin_id: string;
+  readonly versionId: string;
+  readonly semver: string;
+  readonly conflict: { pluginId: string; versionId: string; semver: string };
+
+  constructor(pluginId: string, versionId: string, semver: string) {
+    super(
+      409,
+      "CONFLICT",
+      `Plugin ${pluginId} already has version ${semver}`,
+    );
+    this.name = "DuplicatePluginSemverError";
+    this.pluginId = pluginId;
+    this.plugin_id = pluginId;
+    this.versionId = versionId;
+    this.semver = semver;
+    this.conflict = { pluginId, versionId, semver };
   }
 }
 

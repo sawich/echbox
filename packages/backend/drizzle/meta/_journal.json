@@ -50,6 +50,13 @@
       "when": 1793563252025,
       "tag": "0006_busy_gorilla_man",
       "breakpoints": true
+    },
+    {
+      "idx": 7,
+      "version": "6",
+      "when": 1794040000000,
+      "tag": "0007_semver_uuid_versions",
+      "breakpoints": true
     }
   ]
 }

@@ -59,7 +59,9 @@ describe("scene votes", () => {
     gameId = seedTestGame(authorId, { dbPath }).id;
 
     const fileBytes = await fixtureBytes("scene", "kk_scene_simple.png");
-    const created = await createScene({ gameId,
+    const created = await createScene({
+      gameId,
+      semver: "1.0.0",
       authorId,
       fileBytes,
       dbPath,

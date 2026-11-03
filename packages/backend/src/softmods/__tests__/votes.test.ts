@@ -61,6 +61,7 @@ describe("softmod votes", () => {
     const fileBytes = await fixtureBytes("softmods", "testmod.zipmod");
     const created = await createSoftmod({ gameId,
       authorId,
+      semver: "1.2.3",
       fileBytes,
       dbPath,
       dataDir,

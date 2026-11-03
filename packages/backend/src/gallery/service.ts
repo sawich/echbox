@@ -1,6 +1,17 @@
-import type { CardDetail, CardListItem, CardType } from "@echbox/shared";
+import {
+  compareSemver,
+  type CardDetail,
+  type CardListItem,
+  type CardType,
+} from "@echbox/shared";
 import { KoikatuCharaData, KoikatuSceneData } from "../kkloader";
-import { loadSeed, resolveFixture, type SeedCard, type SeedVersion } from "./seed";
+import {
+  loadSeed,
+  resolveFixture,
+  seedVersionSemver,
+  type SeedCard,
+  type SeedVersion,
+} from "./seed";
 
 type CachedPayload = {
   summary: Record<string, unknown>;
@@ -8,8 +19,12 @@ type CachedPayload = {
   displayName: string | null;
 };
 
-function imageUrl(cardId: string, version: number): string {
-  return `/api/kk/cards/${cardId}/versions/${version}/image`;
+function seedVersionId(cardId: string, ver: SeedVersion): string {
+  return `${cardId}-v${seedVersionSemver(ver)}`;
+}
+
+function imageUrl(cardId: string, versionId: string): string {
+  return `/api/kk/cards/${cardId}/versions/${versionId}/image`;
 }
 
 async function parseFixture(
@@ -60,7 +75,9 @@ export function createGalleryService() {
   }
 
   function latestVersion(card: SeedCard): SeedVersion {
-    return card.versions.reduce((a, b) => (a.version >= b.version ? a : b));
+    return card.versions.reduce((a, b) =>
+      compareSemver(seedVersionSemver(a), seedVersionSemver(b)) >= 0 ? a : b,
+    );
   }
 
   async function resolveTitle(card: SeedCard): Promise<string> {
@@ -82,9 +99,10 @@ export function createGalleryService() {
         type: card.type,
         slug: card.slug,
         title: await resolveTitle(card),
-        latestVersion: latest.version,
+        latestSemver: seedVersionSemver(latest),
+        latestVersionId: seedVersionId(card.id, latest),
         versionCount: card.versions.length,
-        imageUrl: imageUrl(card.id, latest.version),
+        imageUrl: imageUrl(card.id, seedVersionId(card.id, latest)),
         summary: payload.summary,
       });
     }
@@ -96,13 +114,16 @@ export function createGalleryService() {
     if (!card) return null;
     const title = await resolveTitle(card);
     const versions = [];
-    for (const ver of [...card.versions].sort((a, b) => a.version - b.version)) {
+    for (const ver of [...card.versions].sort((a, b) =>
+      compareSemver(seedVersionSemver(a), seedVersionSemver(b)),
+    )) {
       const payload = await cached(card.type, ver.fixture);
       versions.push({
-        version: ver.version,
+        id: seedVersionId(card.id, ver),
+        semver: seedVersionSemver(ver),
         createdAt: ver.createdAt,
         notes: ver.notes,
-        imageUrl: imageUrl(card.id, ver.version),
+        imageUrl: imageUrl(card.id, seedVersionId(card.id, ver)),
         summary: payload.summary,
       });
     }
@@ -111,18 +132,19 @@ export function createGalleryService() {
       type: card.type,
       slug: card.slug,
       title,
-      latestVersion: latestVersion(card).version,
+      latestSemver: seedVersionSemver(latestVersion(card)),
+      latestVersionId: seedVersionId(card.id, latestVersion(card)),
       versions,
     };
   }
 
   async function getVersionImage(
     id: string,
-    version: number,
+    versionId: string,
   ): Promise<Uint8Array | null> {
     const card = byId.get(id);
     if (!card) return null;
-    const ver = card.versions.find((v) => v.version === version);
+    const ver = card.versions.find((v) => seedVersionId(card.id, v) === versionId);
     if (!ver) return null;
     const payload = await cached(card.type, ver.fixture);
     return payload.imageBytes;

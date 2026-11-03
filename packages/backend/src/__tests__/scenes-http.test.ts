@@ -98,6 +98,7 @@ describe("Scene HTTP routes", () => {
 
     const fileBytes = await fixtureBytes("scene", "kk_scene_simple.png");
     const form = new FormData();
+    form.append("semver", "1.0.0");
     form.append("gameId", gameId);
     form.append(
       "file",
@@ -117,13 +118,15 @@ describe("Scene HTTP routes", () => {
     const created = (await createRes.json()) as {
       id: string;
       title: string;
-      latestVersion: number;
+      latestSemver: string;
+      latestVersionId: string;
       authorId: string;
       type: string;
     };
     expect(created.id).toBeString();
     expect(created.title).toBe("HTTP Studio");
-    expect(created.latestVersion).toBe(1);
+    expect(created.latestSemver).toBe("1.0.0");
+    expect(created.latestVersionId).toBeString();
     expect(created.authorId).toBe(authorId);
     expect(created.type).toBe("scene");
 
@@ -138,13 +141,14 @@ describe("Scene HTTP routes", () => {
     expect(listBody.scenes[0]!.id).toBe(created.id);
     expect(listBody.scenes[0]!.type).toBe("scene");
     expect(listBody.scenes[0]!.imageUrl).toBe(
-      `/api/scenes/${created.id}/versions/1/image`,
+      `/api/scenes/${created.id}/versions/${created.latestVersionId}/image`,
     );
   });
 
   test("POST /api/scenes requires auth (401)", async () => {
     const fileBytes = await fixtureBytes("scene", "kk_scene_simple.png");
     const form = new FormData();
+    form.append("semver", "1.0.0");
     form.append("gameId", gameId);
     form.append(
       "file",
@@ -164,6 +168,8 @@ describe("Scene HTTP routes", () => {
     const fileBytes = await fixtureBytes("scene", "kk_scene_simple.png");
 
     const form1 = new FormData();
+
+    form1.append("semver", "1.0.0");
     form1.append(
       "file",
       new File([fileBytes], "kk_scene_simple.png", { type: "image/png" }),
@@ -177,9 +183,14 @@ describe("Scene HTTP routes", () => {
       }),
     );
     expect(res1.status).toBe(201);
-    const created = (await res1.json()) as { id: string };
+    const created = (await res1.json()) as {
+      id: string;
+      latestVersionId: string;
+    };
 
     const form2 = new FormData();
+
+    form2.append("semver", "1.0.0");
     form2.append(
       "file",
       new File([fileBytes], "kk_scene_simple.png", { type: "image/png" }),
@@ -195,12 +206,20 @@ describe("Scene HTTP routes", () => {
     expect(res2.status).toBe(409);
     const conflictBody = (await res2.json()) as {
       sceneId: string;
-      version: number;
+      versionId: string;
+      semver: string;
       code: string;
+      conflict: { sceneId: string; versionId: string; semver: string };
     };
     expect(conflictBody.code).toBe("CONFLICT");
     expect(conflictBody.sceneId).toBe(created.id);
-    expect(conflictBody.version).toBe(1);
+    expect(conflictBody.versionId).toBe(created.latestVersionId);
+    expect(conflictBody.semver).toBe("1.0.0");
+    expect(conflictBody.conflict).toEqual({
+      sceneId: created.id,
+      versionId: created.latestVersionId,
+      semver: "1.0.0",
+    });
   });
 
   test("GET /api/scenes/by-hash/:hash returns 404 when unknown and 200 after upload", async () => {
@@ -213,6 +232,8 @@ describe("Scene HTTP routes", () => {
     expect(missRes.status).toBe(404);
 
     const form = new FormData();
+
+    form.append("semver", "1.0.0");
     form.append("gameId", gameId);
     form.append(
       "file",
@@ -227,7 +248,10 @@ describe("Scene HTTP routes", () => {
       }),
     );
     expect(createRes.status).toBe(201);
-    const created = (await createRes.json()) as { id: string };
+    const created = (await createRes.json()) as {
+      id: string;
+      latestVersionId: string;
+    };
 
     const hitRes = await app.handle(
       new Request(`http://localhost/api/scenes/by-hash/${hash}`),
@@ -235,15 +259,18 @@ describe("Scene HTTP routes", () => {
     expect(hitRes.status).toBe(200);
     const hitBody = (await hitRes.json()) as {
       sceneId: string;
-      version: number;
+      versionId: string;
+      semver: string;
     };
     expect(hitBody.sceneId).toBe(created.id);
-    expect(hitBody.version).toBe(1);
+    expect(hitBody.versionId).toBe(created.latestVersionId);
+    expect(hitBody.semver).toBe("1.0.0");
   });
 
-  test("GET /api/scenes/:id/versions/:version/image serves WebP by default and PNG with original=1", async () => {
+  test("GET /api/scenes/:id/versions/:versionId/image serves WebP by default and PNG with original=1", async () => {
     const fileBytes = await fixtureBytes("scene", "kk_scene_simple.png");
     const form = new FormData();
+    form.append("semver", "1.0.0");
     form.append("gameId", gameId);
     form.append(
       "file",
@@ -258,11 +285,14 @@ describe("Scene HTTP routes", () => {
       }),
     );
     expect(createRes.status).toBe(201);
-    const created = (await createRes.json()) as { id: string };
+    const created = (await createRes.json()) as {
+      id: string;
+      latestVersionId: string;
+    };
 
     const previewRes = await app.handle(
       new Request(
-        `http://localhost/api/scenes/${created.id}/versions/1/image`,
+        `http://localhost/api/scenes/${created.id}/versions/${created.latestVersionId}/image`,
       ),
     );
     expect(previewRes.status).toBe(200);
@@ -273,7 +303,7 @@ describe("Scene HTTP routes", () => {
 
     const origRes = await app.handle(
       new Request(
-        `http://localhost/api/scenes/${created.id}/versions/1/image?original=1`,
+        `http://localhost/api/scenes/${created.id}/versions/${created.latestVersionId}/image?original=1`,
       ),
     );
     expect(origRes.status).toBe(200);
@@ -285,6 +315,7 @@ describe("Scene HTTP routes", () => {
   test("PUT /api/scenes/:id/vote requires auth and updates counts", async () => {
     const fileBytes = await fixtureBytes("scene", "kk_scene_simple.png");
     const form = new FormData();
+    form.append("semver", "1.0.0");
     form.append("gameId", gameId);
     form.append(
       "file",
@@ -331,6 +362,7 @@ describe("Scene HTTP routes", () => {
   test("DELETE /api/scenes/:id enforces auth and author-only (401/403/200)", async () => {
     const fileBytes = await fixtureBytes("scene", "kk_scene_simple.png");
     const form = new FormData();
+    form.append("semver", "1.0.0");
     form.append("gameId", gameId);
     form.append(
       "file",
@@ -379,6 +411,7 @@ describe("Scene HTTP routes", () => {
   test("scene HTTP responses strip originalPath and previewPath from detail and versions", async () => {
     const fileBytes = await fixtureBytes("scene", "kk_scene_simple.png");
     const form = new FormData();
+    form.append("semver", "1.0.0");
     form.append("gameId", gameId);
     form.append(
       "file",
@@ -422,5 +455,55 @@ describe("Scene HTTP routes", () => {
     expect(res.status).toBe(200);
     const body = (await res.json()) as { cards: unknown[] };
     expect(body.cards).toEqual([]);
+  });
+
+  test("POST /api/scenes/:id/versions adds semver version, rejects duplicate semver (409) and invalid semver (400)", async () => {
+    const v1Bytes = await fixtureBytes("scene", "kk_scene_simple.png");
+    const v2Bytes = await fixtureBytes("scene", "kk_scene_mod.png");
+
+    const createForm = new FormData();
+    createForm.append("gameId", gameId);
+    createForm.append("semver", "1.0.0");
+    createForm.append("file", new File([v1Bytes], "a.png", { type: "image/png" }));
+    const createRes = await app.handle(
+      new Request("http://localhost/api/scenes", {
+        method: "POST",
+        headers: { cookie: authorCookie },
+        body: createForm,
+      }),
+    );
+    expect(createRes.status).toBe(201);
+    const created = (await createRes.json()) as { id: string };
+
+    const post = (semver: string) => {
+      const f = new FormData();
+      f.append("semver", semver);
+      f.append("file", new File([v2Bytes], "b.png", { type: "image/png" }));
+      return app.handle(
+        new Request(`http://localhost/api/scenes/${created.id}/versions`, {
+          method: "POST",
+          headers: { cookie: authorCookie },
+          body: f,
+        }),
+      );
+    };
+
+    const dupRes = await post("1.0.0");
+    expect(dupRes.status).toBe(409);
+    const dupBody = (await dupRes.json()) as { code: string; semver: string };
+    expect(dupBody.code).toBe("DUPLICATE_SEMVER");
+    expect(dupBody.semver).toBe("1.0.0");
+
+    expect((await post("banana")).status).toBe(400);
+
+    const okRes = await post("1.1.0");
+    expect(okRes.status).toBe(200);
+    const ok = (await okRes.json()) as {
+      latestSemver: string;
+      latestVersionId: string;
+      versions: { id: string; semver: string }[];
+    };
+    expect(ok.latestSemver).toBe("1.1.0");
+    expect(ok.latestVersionId).toBe(ok.versions[1]!.id);
   });
 });

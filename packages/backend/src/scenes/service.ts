@@ -1,6 +1,13 @@
-import type { CardDetail, CardListItem } from "@echbox/shared";
-import { and, asc, desc, eq } from "drizzle-orm";
+import {
+  compareSemver,
+  parseSemver,
+  pickLatestBySemver,
+  type CardDetail,
+  type CardListItem,
+} from "@echbox/shared";
+import { and, desc, eq } from "drizzle-orm";
 import { getDb } from "../db/client";
+import { newId } from "../id";
 import { sceneVersions, sceneVotes, scenes, users } from "../db/schema";
 import { KoikatuCharaData, KoikatuSceneData } from "../kkloader";
 import { sha256Hex } from "../cards/hash";
@@ -8,6 +15,7 @@ import { writeWebpPreview } from "../cards/preview";
 import {
   BadSceneError,
   DuplicateSceneHashError,
+  DuplicateSceneSemverError,
   ForbiddenSceneError,
   SceneNotFoundError,
 } from "./errors";
@@ -26,6 +34,7 @@ import {
 export {
   BadSceneError,
   DuplicateSceneHashError,
+  DuplicateSceneSemverError,
   ForbiddenSceneError,
   SceneNotFoundError,
   SceneServiceError,
@@ -74,6 +83,7 @@ export type CreateSceneInput = SceneServiceOptions & {
   title?: string;
   slug?: string;
   fileBytes: Uint8Array;
+  semver: string;
   notes?: string;
 };
 
@@ -81,6 +91,7 @@ export type AddSceneVersionInput = SceneServiceOptions & {
   sceneId: string;
   authorId: string;
   fileBytes: Uint8Array;
+  semver: string;
   notes?: string;
 };
 
@@ -99,8 +110,19 @@ export type DeleteSceneInput = SceneServiceOptions & {
   authorId: string;
 };
 
-function imageUrl(sceneId: string, version: number): string {
-  return `/api/scenes/${sceneId}/versions/${version}/image`;
+function imageUrl(sceneId: string, versionId: string): string {
+  return `/api/scenes/${sceneId}/versions/${versionId}/image`;
+}
+
+function normalizeSemver(input: string | undefined): string {
+  if (input === undefined || !input.trim()) {
+    throw new BadSceneError("semver is required");
+  }
+  try {
+    return parseSemver(input);
+  } catch {
+    throw new BadSceneError(`Invalid semver: ${input}`);
+  }
 }
 
 function slugify(input: string, fallbackId: string): string {
@@ -140,7 +162,7 @@ async function parseScene(fileBytes: Uint8Array): Promise<KoikatuSceneData> {
 export function findSceneByHash(
   hash: string,
   options?: SceneServiceOptions,
-): { sceneId: string; version: number } | null {
+): { sceneId: string; versionId: string; semver: string } | null {
   const normalized = hash.trim().toLowerCase();
   if (!normalized) return null;
 
@@ -148,7 +170,8 @@ export function findSceneByHash(
   const row = db
     .select({
       sceneId: sceneVersions.sceneId,
-      version: sceneVersions.version,
+      versionId: sceneVersions.id,
+      semver: sceneVersions.semver,
     })
     .from(sceneVersions)
     .where(eq(sceneVersions.contentHash, normalized))
@@ -157,7 +180,8 @@ export function findSceneByHash(
   if (!row) return null;
   return {
     sceneId: row.sceneId,
-    version: row.version,
+    versionId: row.versionId,
+    semver: row.semver,
   };
 }
 
@@ -178,14 +202,15 @@ export async function getScene(
     .select()
     .from(sceneVersions)
     .where(eq(sceneVersions.sceneId, id))
-    .orderBy(asc(sceneVersions.version))
-    .all();
+    .all()
+    .sort((a, b) => compareSemver(a.semver, b.semver));
 
   const versions: SceneVersionDetail[] = versionRows.map((v) => ({
-    version: v.version,
+    id: v.id,
+    semver: v.semver,
     createdAt: v.createdAt,
     ...(v.notes != null ? { notes: v.notes } : {}),
-    imageUrl: imageUrl(scene.id, v.version),
+    imageUrl: imageUrl(scene.id, v.id),
     summary: JSON.parse(v.summaryJson) as Record<string, unknown>,
     contentHash: v.contentHash,
     originalPath: v.originalPath,
@@ -211,7 +236,8 @@ export async function getScene(
     authorAvatar: author?.avatar ?? null,
     slug: scene.slug,
     title: scene.title,
-    latestVersion: scene.latestVersion,
+    latestSemver: scene.latestSemver,
+    latestVersionId: scene.latestVersionId,
     createdAt: scene.createdAt,
     updatedAt: scene.updatedAt,
     ...votes,
@@ -257,11 +283,9 @@ export async function listScenes(
   for (const scene of rows) {
     const versions = versionsByScene.get(scene.id) ?? [];
     const latestRow =
-      versions.find((v) => v.version === scene.latestVersion) ??
-      versions.reduce<(typeof versions)[number] | undefined>(
-        (best, cur) => (!best || cur.version > best.version ? cur : best),
-        undefined,
-      );
+      versions.find((v) => v.id === scene.latestVersionId) ??
+      pickLatestBySemver(versions) ??
+      undefined;
 
     const summary = latestRow
       ? (JSON.parse(latestRow.summaryJson) as Record<string, unknown>)
@@ -280,9 +304,10 @@ export async function listScenes(
       authorId: scene.authorId,
       slug: scene.slug,
       title: scene.title,
-      latestVersion: scene.latestVersion,
+      latestSemver: scene.latestSemver,
+      latestVersionId: scene.latestVersionId,
       versionCount: versions.length || 1,
-      imageUrl: imageUrl(scene.id, scene.latestVersion),
+      imageUrl: imageUrl(scene.id, scene.latestVersionId),
       summary,
       ...votes,
     });
@@ -296,7 +321,8 @@ export async function createScene(
 ): Promise<
   SceneDetail & {
     sceneId: string;
-    version: number;
+    versionId: string;
+    semver: string;
     contentHash: string;
     originalPath: string;
     previewPath: string;
@@ -305,19 +331,23 @@ export async function createScene(
   const { authorId, gameId, title, slug, fileBytes, notes, dbPath, dataDir } =
     input;
 
+  const semver = normalizeSemver(input.semver);
   assertGameExists(gameId, { dbPath });
 
   const contentHash = sha256Hex(fileBytes);
   const existing = findSceneByHash(contentHash, { dbPath });
   if (existing) {
-    throw new DuplicateSceneHashError(existing.sceneId, existing.version);
+    throw new DuplicateSceneHashError(
+      existing.sceneId,
+      existing.versionId,
+      existing.semver,
+    );
   }
 
   const ks = await parseScene(fileBytes);
 
-  const sceneId = crypto.randomUUID();
-  const versionId = crypto.randomUUID();
-  const version = 1;
+  const sceneId = newId();
+  const versionId = newId();
   const now = new Date().toISOString();
 
   const resolvedTitle = title?.trim() || "Untitled Scene";
@@ -325,7 +355,11 @@ export async function createScene(
     ? slugify(slug, sceneId)
     : slugify(resolvedTitle, sceneId);
 
-  const { originalPath, previewPath } = getVersionPaths(sceneId, version, dataDir);
+  const { originalPath, previewPath } = getVersionPaths(
+    sceneId,
+    versionId,
+    dataDir,
+  );
 
   let previewSource = ks.image;
   if (!previewSource || previewSource.byteLength === 0) {
@@ -346,7 +380,8 @@ export async function createScene(
         authorId,
         slug: resolvedSlug,
         title: resolvedTitle,
-        latestVersion: version,
+        latestSemver: semver,
+        latestVersionId: versionId,
         createdAt: now,
         updatedAt: now,
       })
@@ -356,7 +391,7 @@ export async function createScene(
       .values({
         id: versionId,
         sceneId,
-        version,
+        semver,
         notes: notes ?? null,
         contentHash,
         originalPath,
@@ -371,7 +406,8 @@ export async function createScene(
   return {
     ...detail!,
     sceneId,
-    version,
+    versionId,
+    semver,
     contentHash,
     originalPath,
     previewPath,
@@ -383,13 +419,15 @@ export async function addSceneVersion(
 ): Promise<
   SceneDetail & {
     sceneId: string;
-    version: number;
+    versionId: string;
+    semver: string;
     contentHash: string;
     originalPath: string;
     previewPath: string;
   }
 > {
   const { sceneId, authorId, fileBytes, notes, dbPath, dataDir } = input;
+  const semver = normalizeSemver(input.semver);
   const db = getDb(dbPath);
 
   const scene = db
@@ -409,18 +447,35 @@ export async function addSceneVersion(
   const contentHash = sha256Hex(fileBytes);
   const existing = findSceneByHash(contentHash, { dbPath });
   if (existing) {
-    throw new DuplicateSceneHashError(existing.sceneId, existing.version);
+    throw new DuplicateSceneHashError(
+      existing.sceneId,
+      existing.versionId,
+      existing.semver,
+    );
+  }
+
+  const duplicateSemver = db
+    .select({ id: sceneVersions.id })
+    .from(sceneVersions)
+    .where(
+      and(
+        eq(sceneVersions.sceneId, sceneId),
+        eq(sceneVersions.semver, semver),
+      ),
+    )
+    .get();
+  if (duplicateSemver) {
+    throw new DuplicateSceneSemverError(sceneId, semver);
   }
 
   const ks = await parseScene(fileBytes);
 
-  const nextVersion = scene.latestVersion + 1;
-  const versionId = crypto.randomUUID();
+  const versionId = newId();
   const now = new Date().toISOString();
 
   const { originalPath, previewPath } = getVersionPaths(
     sceneId,
-    nextVersion,
+    versionId,
     dataDir,
   );
 
@@ -439,7 +494,7 @@ export async function addSceneVersion(
       .values({
         id: versionId,
         sceneId,
-        version: nextVersion,
+        semver,
         notes: notes ?? null,
         contentHash,
         originalPath,
@@ -449,9 +504,17 @@ export async function addSceneVersion(
       })
       .run();
 
+    const allVersions = tx
+      .select({ id: sceneVersions.id, semver: sceneVersions.semver })
+      .from(sceneVersions)
+      .where(eq(sceneVersions.sceneId, sceneId))
+      .all();
+    const latest = pickLatestBySemver(allVersions)!;
+
     tx.update(scenes)
       .set({
-        latestVersion: nextVersion,
+        latestSemver: latest.semver,
+        latestVersionId: latest.id,
         updatedAt: now,
       })
       .where(eq(scenes.id, sceneId))
@@ -462,7 +525,8 @@ export async function addSceneVersion(
   return {
     ...detail!,
     sceneId,
-    version: nextVersion,
+    versionId,
+    semver,
     contentHash,
     originalPath,
     previewPath,
@@ -524,7 +588,7 @@ export async function patchScene(
         .where(
           and(
             eq(sceneVersions.sceneId, targetId),
-            eq(sceneVersions.version, scene.latestVersion),
+            eq(sceneVersions.id, scene.latestVersionId),
           ),
         )
         .run();
@@ -582,7 +646,7 @@ export async function deleteScene(
 
 export async function getSceneVersionImage(
   sceneId: string,
-  version: number,
+  versionId: string,
   options?: SceneServiceOptions & { original?: boolean },
 ): Promise<{ bytes: Uint8Array; contentType: string } | null> {
   const db = getDb(options?.dbPath);
@@ -592,7 +656,7 @@ export async function getSceneVersionImage(
     .where(
       and(
         eq(sceneVersions.sceneId, sceneId),
-        eq(sceneVersions.version, version),
+        eq(sceneVersions.id, versionId),
       ),
     )
     .get();
@@ -646,8 +710,8 @@ export function createSceneService(options: SceneServiceOptions = {}) {
     },
     getSceneVersionImage: (
       sceneId: string,
-      version: number,
+      versionId: string,
       opts?: { original?: boolean },
-    ) => getSceneVersionImage(sceneId, version, { ...options, ...opts }),
+    ) => getSceneVersionImage(sceneId, versionId, { ...options, ...opts }),
   };
 }

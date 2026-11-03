@@ -229,6 +229,7 @@ describe("Games HTTP routes", () => {
       authorId: userId,
       gameId: game.id,
       title: "Content",
+      semver: "1.0.0",
       fileBytes: zipSync({ "data.txt": strToU8("x") }),
       dbPath,
       dataDir,

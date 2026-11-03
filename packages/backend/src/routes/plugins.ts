@@ -2,6 +2,7 @@ import { Elysia, t } from "elysia";
 import {
   type PluginDetail,
   DuplicatePluginHashError,
+  DuplicatePluginSemverError,
   PluginServiceError,
   addPluginVersion,
   createPlugin,
@@ -27,23 +28,28 @@ function stripPluginPaths(detail: PluginDetail) {
   };
 }
 
-function downloadFilename(pluginId: string, version: number): string {
+function downloadFilename(pluginId: string, versionId: string): string {
   const safeId = pluginId.replace(/[^\w.-]+/g, "_");
-  return `${safeId}-v${version}.zip`;
+  const safeVersion = versionId.replace(/[^\w.-]+/g, "_");
+  return `${safeId}-${safeVersion}.zip`;
 }
 
 function handleServiceError(
   err: unknown,
   set: { status?: number | string },
 ) {
-  if (err instanceof DuplicatePluginHashError) {
+  if (
+    err instanceof DuplicatePluginHashError ||
+    err instanceof DuplicatePluginSemverError
+  ) {
     set.status = 409;
     return {
       error: err.message,
       code: err.code,
       pluginId: err.pluginId,
       plugin_id: err.plugin_id,
-      version: err.version,
+      versionId: err.versionId,
+      semver: err.semver,
       conflict: err.conflict,
     };
   }
@@ -111,6 +117,7 @@ export const pluginRoutes = new Elysia({ prefix: "/api/plugins" })
           gameId: body.gameId,
           title: body.title,
           description: body.description,
+          semver: body.semver,
           notes: body.notes,
           fileBytes,
         });
@@ -126,6 +133,7 @@ export const pluginRoutes = new Elysia({ prefix: "/api/plugins" })
         gameId: t.String(),
         title: t.String(),
         description: t.Optional(t.String()),
+        semver: t.String({ minLength: 1 }),
         notes: t.Optional(t.String()),
       }),
     },
@@ -216,6 +224,7 @@ export const pluginRoutes = new Elysia({ prefix: "/api/plugins" })
           pluginId: params.id,
           authorId: user.id,
           fileBytes,
+          semver: body.semver,
           notes: body.notes,
         });
         return stripPluginPaths(added);
@@ -229,6 +238,7 @@ export const pluginRoutes = new Elysia({ prefix: "/api/plugins" })
       }),
       body: t.Object({
         file: t.File(),
+        semver: t.String({ minLength: 1 }),
         notes: t.Optional(t.String()),
       }),
     },
@@ -256,21 +266,15 @@ export const pluginRoutes = new Elysia({ prefix: "/api/plugins" })
     },
   )
   .get(
-    "/:id/versions/:version/download",
+    "/:id/versions/:versionId/download",
     async ({ params, set }) => {
-      const version = Number(params.version);
-      if (!Number.isInteger(version) || version < 1) {
-        set.status = 404;
-        return new Response("Not found", { status: 404 });
-      }
-
-      const file = await getPluginVersionBytes(params.id, version);
+      const file = await getPluginVersionBytes(params.id, params.versionId);
       if (!file) {
         set.status = 404;
         return new Response("Not found", { status: 404 });
       }
 
-      const filename = downloadFilename(params.id, version);
+      const filename = downloadFilename(params.id, params.versionId);
       return new Response(file.bytes, {
         headers: {
           "content-type": file.contentType,
@@ -282,7 +286,7 @@ export const pluginRoutes = new Elysia({ prefix: "/api/plugins" })
     {
       params: t.Object({
         id: t.String(),
-        version: t.String(),
+        versionId: t.String(),
       }),
     },
   );

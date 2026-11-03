@@ -15,20 +15,40 @@ export class SceneServiceError extends Error {
 export class DuplicateSceneHashError extends SceneServiceError {
   readonly sceneId: string;
   readonly scene_id: string;
-  readonly version: number;
-  readonly conflict: { sceneId: string; version: number };
+  readonly versionId: string;
+  readonly semver: string;
+  readonly conflict: { sceneId: string; versionId: string; semver: string };
 
-  constructor(sceneId: string, version: number) {
+  constructor(sceneId: string, versionId: string, semver: string) {
     super(
       409,
       "CONFLICT",
-      `Duplicate scene content hash (already exists in scene ${sceneId} v${version})`,
+      `Duplicate scene content hash (already exists in scene ${sceneId} v${semver})`,
     );
     this.name = "DuplicateSceneHashError";
     this.sceneId = sceneId;
     this.scene_id = sceneId;
-    this.version = version;
-    this.conflict = { sceneId, version };
+    this.versionId = versionId;
+    this.semver = semver;
+    this.conflict = { sceneId, versionId, semver };
+  }
+}
+
+export class DuplicateSceneSemverError extends SceneServiceError {
+  readonly sceneId: string;
+  readonly semver: string;
+  readonly conflict: { sceneId: string; semver: string };
+
+  constructor(sceneId: string, semver: string) {
+    super(
+      409,
+      "DUPLICATE_SEMVER",
+      `Scene ${sceneId} already has version ${semver}`,
+    );
+    this.name = "DuplicateSceneSemverError";
+    this.sceneId = sceneId;
+    this.semver = semver;
+    this.conflict = { sceneId, semver };
   }
 }
 

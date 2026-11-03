@@ -60,6 +60,8 @@ describe("user profile", () => {
       ])
       .run();
 
+    gameId = seedTestGame(authorId, { dbPath }).id;
+
     authorCookie = (await createSession(authorId, dbPath)).cookie.split(";")[0]!;
     voterCookie = (await createSession(voterId, dbPath)).cookie.split(";")[0]!;
   });
@@ -120,6 +122,7 @@ describe("user profile", () => {
     const fileBytes = await fixtureBytes("chara", "kk_chara.png");
     const form = new FormData();
     form.append("gameId", gameId);
+    form.append("semver", "1.0.0");
     form.append(
       "file",
       new File([fileBytes], "kk_chara.png", { type: "image/png" }),
@@ -174,6 +177,8 @@ describe("user profile", () => {
   test("profile aggregates cards, plugins, and softmods with combined vote stats", async () => {
     const cardBytes = await fixtureBytes("chara", "kk_chara.png");
     const cardForm = new FormData();
+    cardForm.append("gameId", gameId);
+    cardForm.append("semver", "1.0.0");
     cardForm.append(
       "file",
       new File([cardBytes], "kk_chara.png", { type: "image/png" }),
@@ -198,6 +203,8 @@ describe("user profile", () => {
       new File([pluginBytes], "plugin.zip", { type: "application/zip" }),
     );
     pluginForm.append("title", "Profile Plugin");
+    pluginForm.append("gameId", gameId);
+    pluginForm.append("semver", "1.0.0");
     const pluginRes = await app.handle(
       new Request("http://localhost/api/plugins", {
         method: "POST",
@@ -216,6 +223,8 @@ describe("user profile", () => {
         type: "application/zip",
       }),
     );
+    softmodForm.append("gameId", gameId);
+    softmodForm.append("semver", "1.0.0");
     const softmodRes = await app.handle(
       new Request("http://localhost/api/softmods", {
         method: "POST",
@@ -262,13 +271,15 @@ describe("user profile", () => {
     expect(parsed.softmods[0]!.id).toBe(softmod.id);
     expect(parsed.softmods[0]!.likes).toBe(1);
     expect(parsed.softmods[0]!.uploader.id).toBe(authorId);
-    expect(parsed.softmods[0]!.packageVersion.length).toBeGreaterThan(0);
+    expect(parsed.softmods[0]!.latestSemver.length).toBeGreaterThan(0);
+    expect(parsed.softmods[0]).not.toHaveProperty("packageVersion");
   });
 
   test("profile includes author scenes in scenes list and aggregated stats", async () => {
     const fileBytes = await fixtureBytes("scene", "kk_scene_simple.png");
     const form = new FormData();
     form.append("gameId", gameId);
+    form.append("semver", "1.0.0");
     form.append(
       "file",
       new File([fileBytes], "kk_scene_simple.png", { type: "image/png" }),

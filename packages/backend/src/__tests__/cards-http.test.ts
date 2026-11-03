@@ -98,6 +98,7 @@ describe("Character CRUD + hash lookup + gallery split HTTP routes", () => {
 
     const fileBytes = await fixtureBytes("chara", "kk_chara.png");
     const form = new FormData();
+    form.append("semver", "1.0.0");
     form.append("gameId", gameId);
     form.append("file", new File([fileBytes], "kk_chara.png", { type: "image/png" }));
     form.append("title", "HTTP Heroine");
@@ -114,12 +115,14 @@ describe("Character CRUD + hash lookup + gallery split HTTP routes", () => {
     const created = (await createRes.json()) as {
       id: string;
       title: string;
-      latestVersion: number;
+      latestSemver: string;
+      latestVersionId: string;
       authorId: string;
     };
     expect(created.id).toBeString();
     expect(created.title).toBe("HTTP Heroine");
-    expect(created.latestVersion).toBe(1);
+    expect(created.latestSemver).toBe("1.0.0");
+    expect(created.latestVersionId).toBeString();
     expect(created.authorId).toBe(authorId);
 
     const listRes = await app.handle(
@@ -134,7 +137,7 @@ describe("Character CRUD + hash lookup + gallery split HTTP routes", () => {
     expect(listBody.cards[0]!.title).toBe("HTTP Heroine");
     expect(listBody.cards[0]!.type).toBe("character");
     expect(listBody.cards[0]!.imageUrl).toBe(
-      `/api/kk/cards/${created.id}/versions/1/image`,
+      `/api/kk/cards/${created.id}/versions/${created.latestVersionId}/image`,
     );
   });
 
@@ -157,6 +160,8 @@ describe("Character CRUD + hash lookup + gallery split HTTP routes", () => {
     expect(missRes.status).toBe(404);
 
     const form = new FormData();
+
+    form.append("semver", "1.0.0");
     form.append("gameId", gameId);
     form.append("file", new File([fileBytes], "kk_chara.png", { type: "image/png" }));
 
@@ -168,7 +173,10 @@ describe("Character CRUD + hash lookup + gallery split HTTP routes", () => {
       }),
     );
     expect(createRes.status).toBe(201);
-    const created = (await createRes.json()) as { id: string };
+    const created = (await createRes.json()) as {
+      id: string;
+      latestVersionId: string;
+    };
 
     const hitRes = await app.handle(
       new Request(`http://localhost/api/kk/cards/by-hash/${hash}`),
@@ -176,16 +184,21 @@ describe("Character CRUD + hash lookup + gallery split HTTP routes", () => {
     expect(hitRes.status).toBe(200);
     const hitBody = (await hitRes.json()) as {
       cardId: string;
-      version: number;
+      versionId: string;
+      semver: string;
     };
     expect(hitBody.cardId).toBe(created.id);
-    expect(hitBody.version).toBe(1);
+    expect(hitBody.versionId).toBe(created.latestVersionId);
+    expect(hitBody.semver).toBe("1.0.0");
   });
 
   test("POST /api/kk/cards requires auth (401) and rejects duplicate hash with 409", async () => {
     const fileBytes = await fixtureBytes("chara", "kk_chara.png");
 
     const unauthForm = new FormData();
+    unauthForm.append("gameId", gameId);
+
+    unauthForm.append("semver", "1.0.0");
     unauthForm.append("file", new File([fileBytes], "kk_chara.png", { type: "image/png" }));
     const unauthRes = await app.handle(
       new Request("http://localhost/api/kk/cards", {
@@ -196,6 +209,10 @@ describe("Character CRUD + hash lookup + gallery split HTTP routes", () => {
     expect(unauthRes.status).toBe(401);
 
     const form1 = new FormData();
+
+    form1.append("gameId", gameId);
+
+    form1.append("semver", "1.0.0");
     form1.append("file", new File([fileBytes], "kk_chara.png", { type: "image/png" }));
     const res1 = await app.handle(
       new Request("http://localhost/api/kk/cards", {
@@ -205,9 +222,16 @@ describe("Character CRUD + hash lookup + gallery split HTTP routes", () => {
       }),
     );
     expect(res1.status).toBe(201);
-    const created = (await res1.json()) as { id: string };
+    const created = (await res1.json()) as {
+      id: string;
+      latestVersionId: string;
+    };
 
     const form2 = new FormData();
+
+    form2.append("gameId", gameId);
+
+    form2.append("semver", "1.0.0");
     form2.append("file", new File([fileBytes], "kk_chara.png", { type: "image/png" }));
     const res2 = await app.handle(
       new Request("http://localhost/api/kk/cards", {
@@ -219,15 +243,24 @@ describe("Character CRUD + hash lookup + gallery split HTTP routes", () => {
     expect(res2.status).toBe(409);
     const conflictBody = (await res2.json()) as {
       cardId: string;
-      version: number;
+      versionId: string;
+      semver: string;
+      conflict: { cardId: string; versionId: string; semver: string };
     };
     expect(conflictBody.cardId).toBe(created.id);
-    expect(conflictBody.version).toBe(1);
+    expect(conflictBody.versionId).toBe(created.latestVersionId);
+    expect(conflictBody.semver).toBe("1.0.0");
+    expect(conflictBody.conflict).toEqual({
+      cardId: created.id,
+      versionId: created.latestVersionId,
+      semver: "1.0.0",
+    });
   });
 
   test("GET /api/kk/cards/:id/versions/:version/image serves WebP preview by default", async () => {
     const fileBytes = await fixtureBytes("chara", "kk_chara.png");
     const form = new FormData();
+    form.append("semver", "1.0.0");
     form.append("gameId", gameId);
     form.append("file", new File([fileBytes], "kk_chara.png", { type: "image/png" }));
 
@@ -239,10 +272,15 @@ describe("Character CRUD + hash lookup + gallery split HTTP routes", () => {
       }),
     );
     expect(createRes.status).toBe(201);
-    const created = (await createRes.json()) as { id: string };
+    const created = (await createRes.json()) as {
+      id: string;
+      latestVersionId: string;
+    };
 
     const imgRes = await app.handle(
-      new Request(`http://localhost/api/kk/cards/${created.id}/versions/1/image`),
+      new Request(
+        `http://localhost/api/kk/cards/${created.id}/versions/${created.latestVersionId}/image`,
+      ),
     );
     expect(imgRes.status).toBe(200);
     expect(imgRes.headers.get("content-type")).toContain("image/webp");
@@ -256,6 +294,10 @@ describe("Character CRUD + hash lookup + gallery split HTTP routes", () => {
     const v2Bytes = await fixtureBytes("chara", "kk_mod_chara.png");
 
     const createForm = new FormData();
+
+    createForm.append("gameId", gameId);
+
+    createForm.append("semver", "1.0.0");
     createForm.append("file", new File([v1Bytes], "kk_chara.png", { type: "image/png" }));
     createForm.append("title", "Original Title");
 
@@ -271,6 +313,7 @@ describe("Character CRUD + hash lookup + gallery split HTTP routes", () => {
 
     // Non-author add version -> 403
     const forbidVerForm = new FormData();
+    forbidVerForm.append("semver", "2.0.0");
     forbidVerForm.append("file", new File([v2Bytes], "kk_mod_chara.png", { type: "image/png" }));
     const forbidVerRes = await app.handle(
       new Request(`http://localhost/api/kk/cards/${created.id}/versions`, {
@@ -283,6 +326,7 @@ describe("Character CRUD + hash lookup + gallery split HTTP routes", () => {
 
     // Author add version -> 200/201
     const verForm = new FormData();
+    verForm.append("semver", "2.0.0");
     verForm.append("file", new File([v2Bytes], "kk_mod_chara.png", { type: "image/png" }));
     verForm.append("notes", "v2 notes");
     const verRes = await app.handle(
@@ -294,14 +338,17 @@ describe("Character CRUD + hash lookup + gallery split HTTP routes", () => {
     );
     expect(verRes.status).toBe(200);
     const updatedCard = (await verRes.json()) as {
-      latestVersion: number;
-      versions: { version: number; notes?: string }[];
+      latestSemver: string;
+      latestVersionId: string;
+      versions: { id: string; semver: string; notes?: string }[];
     };
-    expect(updatedCard.latestVersion).toBe(2);
+    expect(updatedCard.latestSemver).toBe("2.0.0");
+    expect(updatedCard.latestVersionId).toBe(updatedCard.versions[1]!.id);
     expect(updatedCard.versions).toHaveLength(2);
 
     // Duplicate version upload -> 409
     const dupVerForm = new FormData();
+    dupVerForm.append("semver", "3.0.0");
     dupVerForm.append("file", new File([v1Bytes], "kk_chara.png", { type: "image/png" }));
     const dupVerRes = await app.handle(
       new Request(`http://localhost/api/kk/cards/${created.id}/versions`, {
@@ -339,7 +386,7 @@ describe("Character CRUD + hash lookup + gallery split HTTP routes", () => {
     expect(patchRes.status).toBe(200);
     const patched = (await patchRes.json()) as {
       title: string;
-      versions: { version: number; notes?: string }[];
+      versions: { id: string; semver: string; notes?: string }[];
     };
     expect(patched.title).toBe("Renamed Title");
     expect(patched.versions[1]!.notes).toBe("Edited v2 note");
@@ -374,6 +421,10 @@ describe("Character CRUD + hash lookup + gallery split HTTP routes", () => {
     const v2Bytes = await fixtureBytes("chara", "kk_mod_chara.png");
 
     const createForm = new FormData();
+
+    createForm.append("gameId", gameId);
+
+    createForm.append("semver", "1.0.0");
     createForm.append("file", new File([v1Bytes], "kk_chara.png", { type: "image/png" }));
     createForm.append("title", "No Paths Card");
 
@@ -407,6 +458,8 @@ describe("Character CRUD + hash lookup + gallery split HTTP routes", () => {
     expect(detail.versions[0]!.previewPath).toBeUndefined();
 
     const verForm = new FormData();
+
+    verForm.append("semver", "2.0.0");
     verForm.append("file", new File([v2Bytes], "kk_mod_chara.png", { type: "image/png" }));
     const verRes = await app.handle(
       new Request(`http://localhost/api/kk/cards/${created.id}/versions`, {
@@ -446,5 +499,51 @@ describe("Character CRUD + hash lookup + gallery split HTTP routes", () => {
       expect(v.originalPath).toBeUndefined();
       expect(v.previewPath).toBeUndefined();
     }
+  });
+
+  test("POST /api/kk/cards/:id/versions rejects duplicate semver (409) and invalid semver (400)", async () => {
+    const v1Bytes = await fixtureBytes("chara", "kk_chara.png");
+    const v2Bytes = await fixtureBytes("chara", "kk_mod_chara.png");
+
+    const createForm = new FormData();
+    createForm.append("gameId", gameId);
+    createForm.append("semver", "1.0.0");
+    createForm.append("file", new File([v1Bytes], "kk_chara.png", { type: "image/png" }));
+    const createRes = await app.handle(
+      new Request("http://localhost/api/kk/cards", {
+        method: "POST",
+        headers: { cookie: authorCookie },
+        body: createForm,
+      }),
+    );
+    expect(createRes.status).toBe(201);
+    const created = (await createRes.json()) as { id: string };
+
+    const dupForm = new FormData();
+    dupForm.append("semver", "1.0.0");
+    dupForm.append("file", new File([v2Bytes], "kk_mod_chara.png", { type: "image/png" }));
+    const dupRes = await app.handle(
+      new Request(`http://localhost/api/kk/cards/${created.id}/versions`, {
+        method: "POST",
+        headers: { cookie: authorCookie },
+        body: dupForm,
+      }),
+    );
+    expect(dupRes.status).toBe(409);
+    const dupBody = (await dupRes.json()) as { code: string; semver: string };
+    expect(dupBody.code).toBe("DUPLICATE_SEMVER");
+    expect(dupBody.semver).toBe("1.0.0");
+
+    const badForm = new FormData();
+    badForm.append("semver", "banana");
+    badForm.append("file", new File([v2Bytes], "kk_mod_chara.png", { type: "image/png" }));
+    const badRes = await app.handle(
+      new Request(`http://localhost/api/kk/cards/${created.id}/versions`, {
+        method: "POST",
+        headers: { cookie: authorCookie },
+        body: badForm,
+      }),
+    );
+    expect(badRes.status).toBe(400);
   });
 });

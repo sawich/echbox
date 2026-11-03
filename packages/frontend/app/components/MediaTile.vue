@@ -7,7 +7,7 @@ const props = defineProps<{
   aspectClass: string
   kind: string
   /** Shown as a badge when the item has more than one version. */
-  version?: number | null
+  semver?: string | null
   likes?: number | null
   dislikes?: number | null
 }>()
@@ -40,10 +40,10 @@ const showVotes = computed(() => typeof props.likes === 'number')
             {{ kind }}
           </span>
           <span
-            v-if="version && version > 1"
+            v-if="semver"
             class="rounded-full bg-[var(--ed-primary)] px-2 py-0.5 font-mono text-[11px] font-medium text-[var(--ed-on-primary)] shadow-sm"
           >
-            v{{ version }}
+            v{{ semver }}
           </span>
         </div>
 

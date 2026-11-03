@@ -1,6 +1,6 @@
 export type UploadDuplicateHit = {
   id: string
-  version?: number
+  semver?: string
 }
 
 export function parseUploadDuplicatePayload(
@@ -15,6 +15,6 @@ export function parseUploadDuplicatePayload(
     ?? (payload.sceneId as string | undefined)
     ?? (payload.scene_id as string | undefined)
   if (!id) return null
-  const version = payload.version as number | undefined
-  return { id, version }
+  const semver = payload.semver as string | undefined
+  return { id, semver }
 }

@@ -30,12 +30,6 @@ const modAuthor = computed(() =>
     : null,
 )
 
-const packageVersion = computed(() =>
-  props.modKind === 'softmod'
-    ? (props.item as SoftmodListItem).packageVersion
-    : null,
-)
-
 const description = computed(() => {
   const d = props.item.description
   return typeof d === 'string' && d.trim() ? d.trim() : null
@@ -71,16 +65,7 @@ const description = computed(() => {
           size="sm"
           class="font-mono"
         >
-          v{{ item.latestVersion }}
-        </UBadge>
-        <UBadge
-          v-if="packageVersion"
-          color="neutral"
-          variant="subtle"
-          size="sm"
-          class="font-mono"
-        >
-          pkg {{ packageVersion }}
+          v{{ item.latestSemver }}
         </UBadge>
       </div>
 

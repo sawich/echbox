@@ -14,10 +14,11 @@ describe("gallery service (scenes)", () => {
     expect(cards.every((c) => c.type === "scene")).toBe(true);
     const sample = cards.find((c) => c.id === "scene-simple");
     expect(sample).toBeDefined();
-    expect(sample!.latestVersion).toBe(1);
+    expect(sample!.latestSemver).toBe("1.0.0");
+    expect(sample!.latestVersionId).toBe("scene-simple-v1.0.0");
     expect(sample!.versionCount).toBe(1);
     expect(sample!.imageUrl).toBe(
-      "/api/kk/cards/scene-simple/versions/1/image",
+      "/api/kk/cards/scene-simple/versions/scene-simple-v1.0.0/image",
     );
     expect(sample!.title.length).toBeGreaterThan(0);
   });
@@ -34,12 +35,12 @@ describe("gallery service (scenes)", () => {
     const card = await svc.getCard("scene-simple");
     expect(card).not.toBeNull();
     expect(card!.type).toBe("scene");
-    expect(card!.versions.map((v) => v.version)).toEqual([1]);
+    expect(card!.versions.map((v) => v.semver)).toEqual(["1.0.0"]);
   });
 
   test("getVersionImage returns png bytes for scene-simple", async () => {
     const svc = createGalleryService();
-    const bytes = await svc.getVersionImage("scene-simple", 1);
+    const bytes = await svc.getVersionImage("scene-simple", "scene-simple-v1.0.0");
     expect(bytes).not.toBeNull();
     expect(bytes!.byteLength).toBeGreaterThan(8);
     expect(bytes![0]).toBe(0x89);
@@ -119,7 +120,7 @@ describe("GET /api/kk/cards", () => {
   test("GET fixture scene image via kk/cards is 404 after cutover", async () => {
     const res = await app.handle(
       new Request(
-        "http://localhost/api/kk/cards/scene-simple/versions/1/image",
+        "http://localhost/api/kk/cards/scene-simple/versions/scene-simple-v1.0.0/image",
       ),
     );
     expect(res.status).toBe(404);

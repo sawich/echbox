@@ -81,7 +81,8 @@ async function toggleInstall(item: PluginListItem | SoftmodListItem) {
     else {
       await installContent(props.gameId, contentKind.value, {
         id: item.id,
-        version: item.latestVersion,
+        versionId: item.latestVersionId,
+        semver: item.latestSemver,
         title: item.title,
         contentHash: null,
         installedAt: new Date().toISOString(),
@@ -117,7 +118,8 @@ const uploadDescription = ref('')
 const uploadNotes = ref('')
 const uploadBusy = ref(false)
 const uploadError = ref<string | null>(null)
-const duplicateHit = ref<{ id: string, version?: number } | null>(null)
+const semver = useSemverInput()
+const duplicateHit = ref<{ id: string, semver?: string } | null>(null)
 
 const uploadAccept = computed(() =>
   props.modKind === 'plugin' ? '.zip,application/zip' : '.zipmod',
@@ -145,6 +147,7 @@ function resetUploadForm() {
   uploadTitle.value = ''
   uploadDescription.value = ''
   uploadNotes.value = ''
+  semver.reset()
   uploadError.value = null
   duplicateHit.value = null
 }
@@ -173,13 +176,13 @@ async function onFileSelected(file: File | null | undefined) {
     if (props.modKind === 'plugin') {
       const { data: hit, status: hitStatus } = await api.api.plugins['by-hash']({ hash }).get()
       if (hitStatus === 200 && hit && 'pluginId' in hit) {
-        duplicateHit.value = { id: hit.pluginId, version: hit.version }
+        duplicateHit.value = { id: hit.pluginId, semver: hit.semver }
       }
     }
     else {
       const { data: hit, status: hitStatus } = await api.api.softmods['by-hash']({ hash }).get()
       if (hitStatus === 200 && hit && 'softmodId' in hit) {
-        duplicateHit.value = { id: hit.softmodId, version: hit.version }
+        duplicateHit.value = { id: hit.softmodId, semver: hit.semver }
       }
     }
   }
@@ -189,7 +192,7 @@ async function onFileSelected(file: File | null | undefined) {
 }
 
 async function submitUpload() {
-  if (!uploadFile.value || uploadBusy.value) return
+  if (!uploadFile.value || uploadBusy.value || !semver.canonical.value) return
   if (props.modKind === 'plugin' && !uploadTitle.value.trim()) return
 
   uploadBusy.value = true
@@ -206,6 +209,7 @@ async function submitUpload() {
     const form = new FormData()
     form.append('file', uploadFile.value)
     form.append('gameId', props.gameId)
+    form.append('semver', semver.canonical.value)
     if (props.modKind === 'plugin') {
       form.append('title', uploadTitle.value.trim())
       if (uploadDescription.value.trim()) {
@@ -253,7 +257,7 @@ async function submitUpload() {
 }
 
 const canSubmitUpload = computed(() => {
-  if (!uploadFile.value || uploadBusy.value || duplicateHit.value) return false
+  if (!uploadFile.value || !semver.valid.value || uploadBusy.value || duplicateHit.value) return false
   if (props.modKind === 'plugin') return Boolean(uploadTitle.value.trim())
   return true
 })
@@ -328,6 +332,19 @@ const canSubmitUpload = computed(() => {
               </template>
 
               <UFormField
+                label="Version"
+                required
+                :error="semver.raw.value.trim() ? semver.error.value ?? undefined : undefined"
+                help="Semantic version, e.g. 1.0.0"
+              >
+                <UInput
+                  v-model="semver.raw.value"
+                  placeholder="1.0.0"
+                  class="w-full font-mono"
+                />
+              </UFormField>
+
+              <UFormField
                 label="Release notes"
                 hint="Optional"
               >
@@ -341,7 +358,7 @@ const canSubmitUpload = computed(() => {
               <DuplicateNotice
                 v-if="duplicateHit"
                 :to="duplicateLinkTo"
-                :label="`${modKind} ${duplicateHit.id}${duplicateHit.version ? ` (v${duplicateHit.version})` : ''}`"
+                :label="`${modKind} ${duplicateHit.id}${duplicateHit.semver ? ` (v${duplicateHit.semver})` : ''}`"
                 lead="This file already exists as"
                 @navigate="showUpload = false"
               />

@@ -24,14 +24,14 @@ const { data, error, status, refresh } = await useAsyncData(
   { watch: [id] },
 )
 
-const selectedVersion = ref<number | null>(null)
+const selectedVersion = ref<string | null>(null)
 const editTitle = ref('')
 
 watch(
   data,
   (scene) => {
     if (!scene) return
-    selectedVersion.value = scene.latestVersion
+    selectedVersion.value = scene.latestVersionId
     editTitle.value = scene.title
   },
   { immediate: true },
@@ -101,8 +101,8 @@ async function submitVote(vote: CardVoteValue | null) {
 const active = computed(() => {
   const scene = data.value
   if (!scene) return null
-  const version = selectedVersion.value ?? scene.latestVersion
-  return scene.versions.find(v => v.version === version) ?? scene.versions.at(-1) ?? null
+  const versionId = selectedVersion.value ?? scene.latestVersionId
+  return scene.versions.find(v => v.id === versionId) ?? scene.versions.at(-1) ?? null
 })
 
 const imageSrc = computed(() => {
@@ -149,6 +149,7 @@ async function saveTitle() {
 
 const versionFile = ref<File | null>(null)
 const versionNotes = ref('')
+const semver = useSemverInput()
 const uploadingVersion = ref(false)
 const versionError = ref<string | null>(null)
 const versionDuplicateHit = ref<UploadDuplicateHit | null>(null)
@@ -160,7 +161,7 @@ function onVersionFileChange(file: File | null | undefined) {
 }
 
 async function submitNewVersion() {
-  if (!versionFile.value || uploadingVersion.value) return
+  if (!versionFile.value || uploadingVersion.value || !semver.canonical.value) return
   uploadingVersion.value = true
   versionError.value = null
   versionDuplicateHit.value = null
@@ -168,6 +169,7 @@ async function submitNewVersion() {
   try {
     const form = new FormData()
     form.append('file', versionFile.value)
+    form.append('semver', semver.canonical.value)
     if (versionNotes.value.trim()) {
       form.append('notes', versionNotes.value.trim())
     }
@@ -190,9 +192,10 @@ async function submitNewVersion() {
 
     versionFile.value = null
     versionNotes.value = ''
+    semver.reset()
     await refresh()
-    if (payload && typeof payload.latestVersion === 'number') {
-      selectedVersion.value = payload.latestVersion
+    if (payload && typeof payload.latestVersionId === 'string') {
+      selectedVersion.value = payload.latestVersionId
     }
   }
   catch (e) {
@@ -377,6 +380,7 @@ async function handleDeleteScene() {
           <VersionList
             v-model="selectedVersion"
             :versions="data.versions"
+            :latest-version-id="data.latestVersionId"
           />
         </SectionCard>
 
@@ -420,7 +424,7 @@ async function handleDeleteScene() {
               class="space-y-3"
               @submit.prevent="submitNewVersion"
             >
-              <UFormField :label="`Publish v${data.latestVersion + 1}`">
+              <UFormField label="Publish new version">
                 <UFileUpload
                   :model-value="versionFile"
                   accept="image/png"
@@ -432,6 +436,18 @@ async function handleDeleteScene() {
                   @update:model-value="onVersionFileChange"
                 />
               </UFormField>
+              <UFormField
+                label="Version"
+                required
+                :error="semver.raw.value.trim() ? semver.error.value ?? undefined : undefined"
+                help="Semantic version, e.g. 1.0.0"
+              >
+                <UInput
+                  v-model="semver.raw.value"
+                  placeholder="1.0.0"
+                  class="w-full font-mono"
+                />
+              </UFormField>
               <UInput
                 v-model="versionNotes"
                 placeholder="What changed? (optional)"
@@ -440,7 +456,7 @@ async function handleDeleteScene() {
               <DuplicateNotice
                 v-if="versionDuplicateHit"
                 :to="`/scenes/${versionDuplicateHit.id}`"
-                :label="`scene ${versionDuplicateHit.id}${versionDuplicateHit.version ? ` (v${versionDuplicateHit.version})` : ''}`"
+                :label="`scene ${versionDuplicateHit.id}${versionDuplicateHit.semver ? ` (v${versionDuplicateHit.semver})` : ''}`"
                 lead="This file already exists as"
               />
               <UAlert
@@ -456,9 +472,9 @@ async function handleDeleteScene() {
                 variant="soft"
                 icon="i-lucide-upload"
                 :loading="uploadingVersion"
-                :disabled="!versionFile || uploadingVersion"
+                :disabled="!versionFile || !semver.valid.value || uploadingVersion"
               >
-                Upload v{{ data.latestVersion + 1 }}
+                Publish new version
               </UButton>
             </form>
 
@@ -472,7 +488,7 @@ async function handleDeleteScene() {
         </SectionCard>
 
         <JsonPanel
-          :title="`Scene data · v${active?.version ?? data.latestVersion}`"
+          :title="`Scene data · v${active?.semver ?? data.latestSemver}`"
           :value="active?.summary ?? {}"
         />
       </div>

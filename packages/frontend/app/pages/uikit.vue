@@ -24,7 +24,7 @@ const swatches = [
 const demoVote = ref<CardVoteValue | null>('like')
 const demoLikes = computed(() => 41 + (demoVote.value === 'like' ? 1 : 0))
 const demoDislikes = computed(() => 6 + (demoVote.value === 'dislike' ? 1 : 0))
-const demoVersion = ref<number | null>(2)
+const demoVersion = ref<string | null>('demo-v2')
 const demoQuery = ref('')
 const demoSort = ref<'recent' | 'top' | 'title'>('recent')
 </script>
@@ -155,8 +155,8 @@ const demoSort = ref<'recent' | 'top' | 'title'>('recent')
         <VersionList
           v-model="demoVersion"
           :versions="[
-            { version: 1, createdAt: '2026-03-02T10:00:00.000Z', notes: 'Initial release' },
-            { version: 2, createdAt: '2026-09-14T18:30:00.000Z', notes: 'New outfit and hair' },
+            { id: 'demo-v1', semver: '1.0.0', createdAt: '2026-03-02T10:00:00.000Z', notes: 'Initial release' },
+            { id: 'demo-v2', semver: '1.1.0', createdAt: '2026-09-14T18:30:00.000Z', notes: 'New outfit and hair' },
           ]"
         />
       </SectionCard>

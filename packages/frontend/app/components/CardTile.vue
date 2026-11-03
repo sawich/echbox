@@ -26,7 +26,7 @@ const showVotes = computed(
     :subtitle="card.slug"
     :aspect-class="galleryAspect(card.type)"
     :kind="card.type"
-    :version="card.versionCount > 1 ? card.latestVersion : null"
+    :semver="card.versionCount > 1 ? card.latestSemver : null"
     :likes="showVotes ? card.likes : null"
     :dislikes="showVotes ? card.dislikes : null"
   />

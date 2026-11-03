@@ -1,6 +1,13 @@
-import type { CardDetail, CardListItem } from "@echbox/shared";
-import { and, asc, desc, eq } from "drizzle-orm";
+import {
+  compareSemver,
+  parseSemver,
+  pickLatestBySemver,
+  type CardDetail,
+  type CardListItem,
+} from "@echbox/shared";
+import { and, desc, eq } from "drizzle-orm";
 import { getDb } from "../db/client";
+import { newId } from "../id";
 import {
   cardVotes,
   characterCardVersions,
@@ -12,6 +19,7 @@ import {
   BadCardError,
   CardNotFoundError,
   DuplicateCardHashError,
+  DuplicateCardSemverError,
   ForbiddenCardError,
 } from "./errors";
 import { sha256Hex } from "./hash";
@@ -29,6 +37,7 @@ export {
   CardNotFoundError,
   CardServiceError,
   DuplicateCardHashError,
+  DuplicateCardSemverError,
   ForbiddenCardError,
 } from "./errors";
 
@@ -75,6 +84,7 @@ export type CreateCardInput = CardServiceOptions & {
   title?: string;
   slug?: string;
   fileBytes: Uint8Array;
+  semver: string;
   notes?: string;
 };
 
@@ -82,6 +92,7 @@ export type AddVersionInput = CardServiceOptions & {
   cardId: string;
   authorId: string;
   fileBytes: Uint8Array;
+  semver: string;
   notes?: string;
 };
 
@@ -100,8 +111,19 @@ export type DeleteCardInput = CardServiceOptions & {
   authorId: string;
 };
 
-function imageUrl(cardId: string, version: number): string {
-  return `/api/kk/cards/${cardId}/versions/${version}/image`;
+function imageUrl(cardId: string, versionId: string): string {
+  return `/api/kk/cards/${cardId}/versions/${versionId}/image`;
+}
+
+function normalizeSemver(input: string | undefined): string {
+  if (input === undefined || !input.trim()) {
+    throw new BadCardError("semver is required");
+  }
+  try {
+    return parseSemver(input);
+  } catch {
+    throw new BadCardError(`Invalid semver: ${input}`);
+  }
 }
 
 function slugify(input: string, fallbackId: string): string {
@@ -132,7 +154,7 @@ async function parseCharacterCard(fileBytes: Uint8Array): Promise<KoikatuCharaDa
 export function findByHash(
   hash: string,
   options?: CardServiceOptions,
-): { cardId: string; version: number } | null {
+): { cardId: string; versionId: string; semver: string } | null {
   const normalized = hash.trim().toLowerCase();
   if (!normalized) return null;
 
@@ -140,7 +162,8 @@ export function findByHash(
   const row = db
     .select({
       cardId: characterCardVersions.cardId,
-      version: characterCardVersions.version,
+      versionId: characterCardVersions.id,
+      semver: characterCardVersions.semver,
     })
     .from(characterCardVersions)
     .where(eq(characterCardVersions.contentHash, normalized))
@@ -149,7 +172,8 @@ export function findByHash(
   if (!row) return null;
   return {
     cardId: row.cardId,
-    version: row.version,
+    versionId: row.versionId,
+    semver: row.semver,
   };
 }
 
@@ -170,14 +194,15 @@ export async function getCard(
     .select()
     .from(characterCardVersions)
     .where(eq(characterCardVersions.cardId, id))
-    .orderBy(asc(characterCardVersions.version))
-    .all();
+    .all()
+    .sort((a, b) => compareSemver(a.semver, b.semver));
 
   const versions: CharacterCardVersionDetail[] = versionRows.map((v) => ({
-    version: v.version,
+    id: v.id,
+    semver: v.semver,
     createdAt: v.createdAt,
     ...(v.notes != null ? { notes: v.notes } : {}),
-    imageUrl: imageUrl(card.id, v.version),
+    imageUrl: imageUrl(card.id, v.id),
     summary: JSON.parse(v.summaryJson) as Record<string, unknown>,
     contentHash: v.contentHash,
     originalPath: v.originalPath,
@@ -203,7 +228,8 @@ export async function getCard(
     authorAvatar: author?.avatar ?? null,
     slug: card.slug,
     title: card.title,
-    latestVersion: card.latestVersion,
+    latestSemver: card.latestSemver,
+    latestVersionId: card.latestVersionId,
     createdAt: card.createdAt,
     updatedAt: card.updatedAt,
     ...votes,
@@ -252,11 +278,9 @@ export async function listCharacters(
   for (const card of cards) {
     const versions = versionsByCard.get(card.id) ?? [];
     const latestRow =
-      versions.find((v) => v.version === card.latestVersion) ??
-      versions.reduce<(typeof versions)[number] | undefined>(
-        (best, cur) => (!best || cur.version > best.version ? cur : best),
-        undefined,
-      );
+      versions.find((v) => v.id === card.latestVersionId) ??
+      pickLatestBySemver(versions) ??
+      undefined;
 
     const summary = latestRow
       ? (JSON.parse(latestRow.summaryJson) as Record<string, unknown>)
@@ -275,9 +299,10 @@ export async function listCharacters(
       authorId: card.authorId,
       slug: card.slug,
       title: card.title,
-      latestVersion: card.latestVersion,
+      latestSemver: card.latestSemver,
+      latestVersionId: card.latestVersionId,
       versionCount: versions.length || 1,
-      imageUrl: imageUrl(card.id, card.latestVersion),
+      imageUrl: imageUrl(card.id, card.latestVersionId),
       summary,
       ...votes,
     });
@@ -291,7 +316,8 @@ export async function createCard(
 ): Promise<
   CharacterCardDetail & {
     cardId: string;
-    version: number;
+    versionId: string;
+    semver: string;
     contentHash: string;
     originalPath: string;
     previewPath: string;
@@ -300,19 +326,23 @@ export async function createCard(
   const { authorId, gameId, title, slug, fileBytes, notes, dbPath, dataDir } =
     input;
 
+  const semver = normalizeSemver(input.semver);
   assertGameExists(gameId, { dbPath });
 
   const contentHash = sha256Hex(fileBytes);
   const existing = findByHash(contentHash, { dbPath });
   if (existing) {
-    throw new DuplicateCardHashError(existing.cardId, existing.version);
+    throw new DuplicateCardHashError(
+      existing.cardId,
+      existing.versionId,
+      existing.semver,
+    );
   }
 
   const kc = await parseCharacterCard(fileBytes);
 
-  const cardId = crypto.randomUUID();
-  const versionId = crypto.randomUUID();
-  const version = 1;
+  const cardId = newId();
+  const versionId = newId();
   const now = new Date().toISOString();
 
   const resolvedTitle = title?.trim() || kc.name?.trim() || "Untitled";
@@ -320,7 +350,11 @@ export async function createCard(
     ? slugify(slug, cardId)
     : slugify(resolvedTitle, cardId);
 
-  const { originalPath, previewPath } = getVersionPaths(cardId, version, dataDir);
+  const { originalPath, previewPath } = getVersionPaths(
+    cardId,
+    versionId,
+    dataDir,
+  );
 
   let previewSource = kc.image ?? kc.faceImage;
   if (!previewSource || previewSource.byteLength === 0) {
@@ -341,7 +375,8 @@ export async function createCard(
         authorId,
         slug: resolvedSlug,
         title: resolvedTitle,
-        latestVersion: version,
+        latestSemver: semver,
+        latestVersionId: versionId,
         createdAt: now,
         updatedAt: now,
       })
@@ -351,7 +386,7 @@ export async function createCard(
       .values({
         id: versionId,
         cardId,
-        version,
+        semver,
         notes: notes ?? null,
         contentHash,
         originalPath,
@@ -366,7 +401,8 @@ export async function createCard(
   return {
     ...detail!,
     cardId,
-    version,
+    versionId,
+    semver,
     contentHash,
     originalPath,
     previewPath,
@@ -378,13 +414,15 @@ export async function addVersion(
 ): Promise<
   CharacterCardDetail & {
     cardId: string;
-    version: number;
+    versionId: string;
+    semver: string;
     contentHash: string;
     originalPath: string;
     previewPath: string;
   }
 > {
   const { cardId, authorId, fileBytes, notes, dbPath, dataDir } = input;
+  const semver = normalizeSemver(input.semver);
   const db = getDb(dbPath);
 
   const card = db
@@ -404,18 +442,35 @@ export async function addVersion(
   const contentHash = sha256Hex(fileBytes);
   const existing = findByHash(contentHash, { dbPath });
   if (existing) {
-    throw new DuplicateCardHashError(existing.cardId, existing.version);
+    throw new DuplicateCardHashError(
+      existing.cardId,
+      existing.versionId,
+      existing.semver,
+    );
+  }
+
+  const duplicateSemver = db
+    .select({ id: characterCardVersions.id })
+    .from(characterCardVersions)
+    .where(
+      and(
+        eq(characterCardVersions.cardId, cardId),
+        eq(characterCardVersions.semver, semver),
+      ),
+    )
+    .get();
+  if (duplicateSemver) {
+    throw new DuplicateCardSemverError(cardId, semver);
   }
 
   const kc = await parseCharacterCard(fileBytes);
 
-  const nextVersion = card.latestVersion + 1;
-  const versionId = crypto.randomUUID();
+  const versionId = newId();
   const now = new Date().toISOString();
 
   const { originalPath, previewPath } = getVersionPaths(
     cardId,
-    nextVersion,
+    versionId,
     dataDir,
   );
 
@@ -434,7 +489,7 @@ export async function addVersion(
       .values({
         id: versionId,
         cardId,
-        version: nextVersion,
+        semver,
         notes: notes ?? null,
         contentHash,
         originalPath,
@@ -444,9 +499,20 @@ export async function addVersion(
       })
       .run();
 
+    const allVersions = tx
+      .select({
+        id: characterCardVersions.id,
+        semver: characterCardVersions.semver,
+      })
+      .from(characterCardVersions)
+      .where(eq(characterCardVersions.cardId, cardId))
+      .all();
+    const latest = pickLatestBySemver(allVersions)!;
+
     tx.update(characterCards)
       .set({
-        latestVersion: nextVersion,
+        latestSemver: latest.semver,
+        latestVersionId: latest.id,
         updatedAt: now,
       })
       .where(eq(characterCards.id, cardId))
@@ -457,7 +523,8 @@ export async function addVersion(
   return {
     ...detail!,
     cardId,
-    version: nextVersion,
+    versionId,
+    semver,
     contentHash,
     originalPath,
     previewPath,
@@ -519,7 +586,7 @@ export async function patchCard(
         .where(
           and(
             eq(characterCardVersions.cardId, targetId),
-            eq(characterCardVersions.version, card.latestVersion),
+            eq(characterCardVersions.id, card.latestVersionId),
           ),
         )
         .run();
@@ -579,7 +646,7 @@ export async function deleteCard(
 
 export async function getVersionImage(
   cardId: string,
-  version: number,
+  versionId: string,
   options?: CardServiceOptions & { original?: boolean },
 ): Promise<{ bytes: Uint8Array; contentType: string } | null> {
   const db = getDb(options?.dbPath);
@@ -589,7 +656,7 @@ export async function getVersionImage(
     .where(
       and(
         eq(characterCardVersions.cardId, cardId),
-        eq(characterCardVersions.version, version),
+        eq(characterCardVersions.id, versionId),
       ),
     )
     .get();
@@ -642,8 +709,8 @@ export function createCardService(options: CardServiceOptions = {}) {
     },
     getVersionImage: (
       cardId: string,
-      version: number,
+      versionId: string,
       opts?: { original?: boolean },
-    ) => getVersionImage(cardId, version, { ...options, ...opts }),
+    ) => getVersionImage(cardId, versionId, { ...options, ...opts }),
   };
 }

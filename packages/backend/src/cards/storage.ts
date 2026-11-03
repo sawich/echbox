@@ -18,10 +18,10 @@ export function getCardDir(cardId: string, dataDir?: string): string {
 
 export function getVersionDir(
   cardId: string,
-  version: number,
+  versionId: string,
   dataDir?: string,
 ): string {
-  return join(getCardDir(cardId, dataDir), `v${version}`);
+  return join(getCardDir(cardId, dataDir), versionId);
 }
 
 export type VersionPaths = {
@@ -32,10 +32,10 @@ export type VersionPaths = {
 
 export function getVersionPaths(
   cardId: string,
-  version: number,
+  versionId: string,
   dataDir?: string,
 ): VersionPaths {
-  const versionDir = getVersionDir(cardId, version, dataDir);
+  const versionDir = getVersionDir(cardId, versionId, dataDir);
   return {
     versionDir,
     originalPath: join(versionDir, "original.png"),

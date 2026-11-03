@@ -74,7 +74,8 @@ async function toggleInstall(card: CardListItem) {
     else {
       await installContent(props.gameId, 'cards', {
         id: card.id,
-        version: card.latestVersion,
+        versionId: card.latestVersionId,
+        semver: card.latestSemver,
         title: card.title,
         contentHash: null,
         installedAt: new Date().toISOString(),
@@ -105,12 +106,14 @@ const uploadTitle = ref('')
 const uploadNotes = ref('')
 const uploadBusy = ref(false)
 const uploadError = ref<string | null>(null)
-const duplicateHit = ref<{ cardId: string, version: number } | null>(null)
+const semver = useSemverInput()
+const duplicateHit = ref<{ cardId: string, semver: string } | null>(null)
 
 function resetUploadForm() {
   uploadFile.value = null
   uploadTitle.value = ''
   uploadNotes.value = ''
+  semver.reset()
   uploadError.value = null
   duplicateHit.value = null
 }
@@ -138,7 +141,7 @@ async function onFileSelected(file: File | null | undefined) {
     const hash = await computeSha256Hex(file)
     const { data: hit, status: hitStatus } = await api.api.kk.cards['by-hash']({ hash }).get()
     if (hitStatus === 200 && hit && 'cardId' in hit) {
-      duplicateHit.value = { cardId: hit.cardId, version: hit.version }
+      duplicateHit.value = { cardId: hit.cardId, semver: hit.semver }
     }
   }
   catch {
@@ -147,7 +150,7 @@ async function onFileSelected(file: File | null | undefined) {
 }
 
 async function submitUpload() {
-  if (!uploadFile.value || uploadBusy.value) return
+  if (!uploadFile.value || uploadBusy.value || !semver.canonical.value) return
   uploadBusy.value = true
   uploadError.value = null
   duplicateHit.value = null
@@ -162,6 +165,7 @@ async function submitUpload() {
     const form = new FormData()
     form.append('file', uploadFile.value)
     form.append('gameId', props.gameId)
+    form.append('semver', semver.canonical.value)
     if (uploadTitle.value.trim()) {
       form.append('title', uploadTitle.value.trim())
     }
@@ -180,7 +184,7 @@ async function submitUpload() {
       if (res.status === 409 && payload && (payload.cardId || payload.card_id)) {
         duplicateHit.value = {
           cardId: payload.cardId ?? payload.card_id,
-          version: payload.version ?? 1,
+          semver: payload.semver ?? '',
         }
       }
       uploadError.value = payload?.error || `Upload failed (${res.status})`
@@ -257,6 +261,19 @@ async function submitUpload() {
               </UFormField>
 
               <UFormField
+                label="Version"
+                required
+                :error="semver.raw.value.trim() ? semver.error.value ?? undefined : undefined"
+                help="Semantic version, e.g. 1.0.0"
+              >
+                <UInput
+                  v-model="semver.raw.value"
+                  placeholder="1.0.0"
+                  class="w-full font-mono"
+                />
+              </UFormField>
+
+              <UFormField
                 label="Version notes"
                 hint="Optional"
               >
@@ -270,7 +287,7 @@ async function submitUpload() {
               <DuplicateNotice
                 v-if="duplicateHit"
                 :to="`/cards/${duplicateHit.cardId}`"
-                :label="`card ${duplicateHit.cardId} (v${duplicateHit.version})`"
+                :label="`card ${duplicateHit.cardId} (v${duplicateHit.semver})`"
                 lead="This exact card file already exists in"
                 @navigate="showUpload = false"
               />
@@ -301,7 +318,7 @@ async function submitUpload() {
                 color="primary"
                 icon="i-lucide-check"
                 :loading="uploadBusy"
-                :disabled="!uploadFile || uploadBusy || Boolean(duplicateHit)"
+                :disabled="!uploadFile || !semver.valid.value || uploadBusy || Boolean(duplicateHit)"
               >
                 Publish card
               </UButton>

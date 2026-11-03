@@ -2,6 +2,7 @@ import { Elysia, t } from "elysia";
 import {
   type SoftmodDetail,
   DuplicateSoftmodHashError,
+  DuplicateSoftmodSemverError,
   SoftmodGuidConflictError,
   SoftmodServiceError,
   addSoftmodVersion,
@@ -27,23 +28,28 @@ function stripSoftmodPaths(detail: SoftmodDetail) {
   };
 }
 
-function downloadFilename(softmodId: string, version: number): string {
+function downloadFilename(softmodId: string, versionId: string): string {
   const safeId = softmodId.replace(/[^\w.-]+/g, "_");
-  return `${safeId}-v${version}.zipmod`;
+  const safeVersion = versionId.replace(/[^\w.-]+/g, "_");
+  return `${safeId}-${safeVersion}.zipmod`;
 }
 
 function handleServiceError(
   err: unknown,
   set: { status?: number | string },
 ) {
-  if (err instanceof DuplicateSoftmodHashError) {
+  if (
+    err instanceof DuplicateSoftmodHashError ||
+    err instanceof DuplicateSoftmodSemverError
+  ) {
     set.status = 409;
     return {
       error: err.message,
       code: err.code,
       softmodId: err.softmodId,
       softmod_id: err.softmod_id,
-      version: err.version,
+      versionId: err.versionId,
+      semver: err.semver,
       conflict: err.conflict,
     };
   }
@@ -117,6 +123,8 @@ export const softmodRoutes = new Elysia({ prefix: "/api/softmods" })
         const fileBytes = await readUpload(body.file);
         const created = await createSoftmod({
           authorId: user.id,
+          gameId: body.gameId,
+          semver: body.semver,
           fileBytes,
           notes: body.notes,
         });
@@ -130,6 +138,7 @@ export const softmodRoutes = new Elysia({ prefix: "/api/softmods" })
       body: t.Object({
         file: t.File(),
         gameId: t.String(),
+        semver: t.String({ minLength: 1 }),
         notes: t.Optional(t.String()),
       }),
     },
@@ -190,6 +199,7 @@ export const softmodRoutes = new Elysia({ prefix: "/api/softmods" })
         const added = await addSoftmodVersion({
           softmodId: params.id,
           authorId: user.id,
+          semver: body.semver,
           fileBytes,
           notes: body.notes,
         });
@@ -204,6 +214,7 @@ export const softmodRoutes = new Elysia({ prefix: "/api/softmods" })
       }),
       body: t.Object({
         file: t.File(),
+        semver: t.String({ minLength: 1 }),
         notes: t.Optional(t.String()),
       }),
     },
@@ -231,21 +242,15 @@ export const softmodRoutes = new Elysia({ prefix: "/api/softmods" })
     },
   )
   .get(
-    "/:id/versions/:version/download",
+    "/:id/versions/:versionId/download",
     async ({ params, set }) => {
-      const version = Number(params.version);
-      if (!Number.isInteger(version) || version < 1) {
-        set.status = 404;
-        return new Response("Not found", { status: 404 });
-      }
-
-      const file = await getSoftmodVersionBytes(params.id, version);
+      const file = await getSoftmodVersionBytes(params.id, params.versionId);
       if (!file) {
         set.status = 404;
         return new Response("Not found", { status: 404 });
       }
 
-      const filename = downloadFilename(params.id, version);
+      const filename = downloadFilename(params.id, params.versionId);
       return new Response(file.bytes, {
         headers: {
           "content-type": file.contentType,
@@ -257,7 +262,7 @@ export const softmodRoutes = new Elysia({ prefix: "/api/softmods" })
     {
       params: t.Object({
         id: t.String(),
-        version: t.String(),
+        versionId: t.String(),
       }),
     },
   );

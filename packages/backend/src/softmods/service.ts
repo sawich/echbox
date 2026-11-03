@@ -1,4 +1,5 @@
-import { and, asc, desc, eq } from "drizzle-orm";
+import { compareSemver, parseSemver, pickLatestBySemver } from "@echbox/shared";
+import { and, desc, eq } from "drizzle-orm";
 import { sha256Hex } from "../cards/hash";
 import { assertNonEmptyZip } from "../common/zip";
 import {
@@ -7,10 +8,12 @@ import {
   stageUpload,
 } from "../common/staging";
 import { getDb } from "../db/client";
+import { newId } from "../id";
 import { softmodVersions, softmodVotes, softmods, users } from "../db/schema";
 import {
   BadSoftmodError,
   DuplicateSoftmodHashError,
+  DuplicateSoftmodSemverError,
   ForbiddenSoftmodError,
   SoftmodGuidConflictError,
   SoftmodNotFoundError,
@@ -34,6 +37,7 @@ import {
 export {
   BadSoftmodError,
   DuplicateSoftmodHashError,
+  DuplicateSoftmodSemverError,
   ForbiddenSoftmodError,
   SoftmodGuidConflictError,
   SoftmodNotFoundError,
@@ -51,8 +55,9 @@ export type SoftmodUploader = {
 };
 
 export type SoftmodVersionDetail = {
-  version: number;
-  packageVersion: string;
+  id: string;
+  versionId: string;
+  semver: string;
   createdAt: string;
   downloadUrl: string;
   contentHash: string;
@@ -69,7 +74,8 @@ export type SoftmodDetail = SoftmodVoteCounts & {
   modAuthor: string | null;
   description: string;
   website: string | null;
-  latestVersion: number;
+  latestSemver: string;
+  latestVersionId: string;
   createdAt: string;
   updatedAt: string;
   uploader: SoftmodUploader;
@@ -85,11 +91,11 @@ export type SoftmodListItem = SoftmodVoteCounts & {
   title: string;
   modAuthor: string | null;
   description: string;
-  latestVersion: number;
+  latestSemver: string;
+  latestVersionId: string;
   versionCount: number;
   downloadUrl: string;
   uploader: SoftmodUploader;
-  packageVersion: string;
 };
 
 export type ListSoftmodsOptions = SoftmodServiceOptions & {
@@ -104,6 +110,7 @@ export type GetSoftmodOptions = SoftmodServiceOptions & {
 export type CreateSoftmodInput = SoftmodServiceOptions & {
   authorId: string;
   gameId: string;
+  semver: string;
   fileBytes: Uint8Array;
   notes?: string;
 };
@@ -111,6 +118,7 @@ export type CreateSoftmodInput = SoftmodServiceOptions & {
 export type AddSoftmodVersionInput = SoftmodServiceOptions & {
   softmodId: string;
   authorId: string;
+  semver: string;
   fileBytes: Uint8Array;
   notes?: string;
 };
@@ -120,8 +128,19 @@ export type DeleteSoftmodInput = SoftmodServiceOptions & {
   authorId: string;
 };
 
-function downloadUrl(softmodId: string, version: number): string {
-  return `/api/softmods/${softmodId}/versions/${version}/download`;
+function downloadUrl(softmodId: string, versionId: string): string {
+  return `/api/softmods/${softmodId}/versions/${versionId}/download`;
+}
+
+function normalizeSemver(input: unknown): string {
+  if (typeof input !== "string" || !input.trim()) {
+    throw new BadSoftmodError("Softmod semver is required");
+  }
+  try {
+    return parseSemver(input);
+  } catch {
+    throw new BadSoftmodError(`Invalid semver: ${input}`);
+  }
 }
 
 function validateArchive(fileBytes: Uint8Array): void {
@@ -147,7 +166,7 @@ function parseManifest(fileBytes: Uint8Array) {
 export function findSoftmodByHash(
   hash: string,
   options?: SoftmodServiceOptions,
-): { softmodId: string; version: number } | null {
+): { softmodId: string; versionId: string; semver: string } | null {
   const normalized = hash.trim().toLowerCase();
   if (!normalized) return null;
 
@@ -155,7 +174,8 @@ export function findSoftmodByHash(
   const row = db
     .select({
       softmodId: softmodVersions.softmodId,
-      version: softmodVersions.version,
+      versionId: softmodVersions.id,
+      semver: softmodVersions.semver,
     })
     .from(softmodVersions)
     .where(eq(softmodVersions.contentHash, normalized))
@@ -164,7 +184,8 @@ export function findSoftmodByHash(
   if (!row) return null;
   return {
     softmodId: row.softmodId,
-    version: row.version,
+    versionId: row.versionId,
+    semver: row.semver,
   };
 }
 
@@ -192,10 +213,11 @@ function mapVersionRow(
   v: typeof softmodVersions.$inferSelect,
 ): SoftmodVersionDetail {
   return {
-    version: v.version,
-    packageVersion: v.packageVersion,
+    id: v.id,
+    versionId: v.id,
+    semver: v.semver,
     createdAt: v.createdAt,
-    downloadUrl: downloadUrl(softmodId, v.version),
+    downloadUrl: downloadUrl(softmodId, v.id),
     contentHash: v.contentHash,
     originalPath: v.originalPath,
     summary: JSON.parse(v.summaryJson) as Record<string, unknown>,
@@ -220,8 +242,8 @@ export async function getSoftmod(
     .select()
     .from(softmodVersions)
     .where(eq(softmodVersions.softmodId, id))
-    .orderBy(asc(softmodVersions.version))
     .all();
+  versionRows.sort((a, b) => compareSemver(a.semver, b.semver));
 
   const versions = versionRows.map((v) => mapVersionRow(id, v));
   const votes = getSoftmodVoteCounts(id, options?.viewerUserId, options?.dbPath);
@@ -234,11 +256,12 @@ export async function getSoftmod(
     modAuthor: softmod.modAuthor,
     description: softmod.description,
     website: softmod.website,
-    latestVersion: softmod.latestVersion,
+    latestSemver: softmod.latestSemver,
+    latestVersionId: softmod.latestVersionId,
     createdAt: softmod.createdAt,
     updatedAt: softmod.updatedAt,
     uploader: loadUploader(db, softmod.authorId),
-    downloadUrl: downloadUrl(softmod.id, softmod.latestVersion),
+    downloadUrl: downloadUrl(softmod.id, softmod.latestVersionId),
     versionCount: versions.length || 1,
     ...votes,
     versions,
@@ -281,13 +304,6 @@ export async function listSoftmods(
   const out: SoftmodListItem[] = [];
   for (const softmod of rows) {
     const versions = versionsBySoftmod.get(softmod.id) ?? [];
-    const latestRow =
-      versions.find((v) => v.version === softmod.latestVersion) ??
-      versions.reduce<(typeof versions)[number] | undefined>(
-        (best, cur) => (!best || cur.version > best.version ? cur : best),
-        undefined,
-      );
-
     const votes = voteMap.get(softmod.id) ?? {
       likes: 0,
       dislikes: 0,
@@ -301,11 +317,11 @@ export async function listSoftmods(
       title: softmod.title,
       modAuthor: softmod.modAuthor,
       description: softmod.description,
-      latestVersion: softmod.latestVersion,
+      latestSemver: softmod.latestSemver,
+      latestVersionId: softmod.latestVersionId,
       versionCount: versions.length || 1,
-      downloadUrl: downloadUrl(softmod.id, softmod.latestVersion),
+      downloadUrl: downloadUrl(softmod.id, softmod.latestVersionId),
       uploader: loadUploader(db, softmod.authorId),
-      packageVersion: latestRow?.packageVersion ?? "",
       ...votes,
     });
   }
@@ -317,6 +333,7 @@ export async function createSoftmod(
   input: CreateSoftmodInput,
 ): Promise<SoftmodDetail> {
   const { authorId, gameId, fileBytes, notes, dbPath, dataDir } = input;
+  const semver = normalizeSemver(input.semver);
 
   assertGameExists(gameId, { dbPath });
 
@@ -327,7 +344,8 @@ export async function createSoftmod(
   if (existingHash) {
     throw new DuplicateSoftmodHashError(
       existingHash.softmodId,
-      existingHash.version,
+      existingHash.versionId,
+      existingHash.semver,
     );
   }
 
@@ -346,10 +364,9 @@ export async function createSoftmod(
     throw new SoftmodGuidConflictError(softmodId);
   }
 
-  const version = 1;
-  const versionId = crypto.randomUUID();
+  const versionId = newId();
   const now = new Date().toISOString();
-  const { originalPath } = softmodVersionPaths(dataDir, softmodId, version);
+  const { originalPath } = softmodVersionPaths(dataDir, softmodId, versionId);
   const summaryJson = JSON.stringify(manifest.raw);
 
   // Stage bytes first; the final path is only written inside the DB
@@ -369,7 +386,8 @@ export async function createSoftmod(
             modAuthor: manifest.author || null,
             description: manifest.description,
             website: manifest.website,
-            latestVersion: version,
+            latestSemver: semver,
+            latestVersionId: versionId,
             createdAt: now,
             updatedAt: now,
           })
@@ -379,8 +397,7 @@ export async function createSoftmod(
           .values({
             id: versionId,
             softmodId,
-            version,
-            packageVersion: manifest.version,
+            semver,
             notes: notes ?? null,
             contentHash,
             originalPath,
@@ -400,7 +417,11 @@ export async function createSoftmod(
     if (isUniqueConstraintError(err)) {
       const dupHash = findSoftmodByHash(contentHash, { dbPath });
       if (dupHash) {
-        throw new DuplicateSoftmodHashError(dupHash.softmodId, dupHash.version);
+        throw new DuplicateSoftmodHashError(
+          dupHash.softmodId,
+          dupHash.versionId,
+          dupHash.semver,
+        );
       }
       const dupGuid = db
         .select({ id: softmods.id })
@@ -422,6 +443,7 @@ export async function addSoftmodVersion(
   input: AddSoftmodVersionInput,
 ): Promise<SoftmodDetail> {
   const { softmodId, authorId, fileBytes, notes, dbPath, dataDir } = input;
+  const semver = normalizeSemver(input.semver);
   const db = getDb(dbPath);
 
   const softmod = db
@@ -445,7 +467,8 @@ export async function addSoftmodVersion(
   if (existingHash) {
     throw new DuplicateSoftmodHashError(
       existingHash.softmodId,
-      existingHash.version,
+      existingHash.versionId,
+      existingHash.semver,
     );
   }
 
@@ -457,7 +480,7 @@ export async function addSoftmodVersion(
   }
   assertSafeSoftmodId(softmodId);
 
-  const versionId = crypto.randomUUID();
+  const versionId = newId();
   const now = new Date().toISOString();
   const summaryJson = JSON.stringify(manifest.raw);
 
@@ -467,7 +490,7 @@ export async function addSoftmodVersion(
   try {
     db.transaction(
       (tx) => {
-        // Re-read inside the write lock so concurrent uploads get distinct versions.
+        // Re-read inside the write lock so concurrent uploads see a consistent version set.
         const current = tx
           .select()
           .from(softmods)
@@ -480,19 +503,31 @@ export async function addSoftmodVersion(
           throw new ForbiddenSoftmodError();
         }
 
-        const nextVersion = current.latestVersion + 1;
+        const existingRows = tx
+          .select()
+          .from(softmodVersions)
+          .where(eq(softmodVersions.softmodId, softmodId))
+          .all();
+        const dupSemver = existingRows.find((r) => r.semver === semver);
+        if (dupSemver) {
+          throw new DuplicateSoftmodSemverError(
+            softmodId,
+            dupSemver.id,
+            dupSemver.semver,
+          );
+        }
+
         const { originalPath } = softmodVersionPaths(
           dataDir,
           softmodId,
-          nextVersion,
+          versionId,
         );
 
         tx.insert(softmodVersions)
           .values({
             id: versionId,
             softmodId,
-            version: nextVersion,
-            packageVersion: manifest.version,
+            semver,
             notes: notes ?? null,
             contentHash,
             originalPath,
@@ -501,13 +536,19 @@ export async function addSoftmodVersion(
           })
           .run();
 
+        const latest = pickLatestBySemver([
+          ...existingRows,
+          { id: versionId, semver },
+        ])!;
+
         tx.update(softmods)
           .set({
             title: manifest.name || current.title,
             modAuthor: manifest.author || null,
             description: manifest.description,
             website: manifest.website,
-            latestVersion: nextVersion,
+            latestSemver: latest.semver,
+            latestVersionId: latest.id,
             updatedAt: now,
           })
           .where(eq(softmods.id, softmodId))
@@ -524,7 +565,11 @@ export async function addSoftmodVersion(
     if (isUniqueConstraintError(err)) {
       const dupHash = findSoftmodByHash(contentHash, { dbPath });
       if (dupHash) {
-        throw new DuplicateSoftmodHashError(dupHash.softmodId, dupHash.version);
+        throw new DuplicateSoftmodHashError(
+          dupHash.softmodId,
+          dupHash.versionId,
+          dupHash.semver,
+        );
       }
     }
     throw err;
@@ -569,7 +614,7 @@ export async function deleteSoftmod(
 
 export async function getSoftmodVersionBytes(
   softmodId: string,
-  version: number,
+  versionId: string,
   options?: SoftmodServiceOptions,
 ): Promise<{ bytes: Uint8Array; contentType: string } | null> {
   const db = getDb(options?.dbPath);
@@ -579,7 +624,7 @@ export async function getSoftmodVersionBytes(
     .where(
       and(
         eq(softmodVersions.softmodId, softmodId),
-        eq(softmodVersions.version, version),
+        eq(softmodVersions.id, versionId),
       ),
     )
     .get();

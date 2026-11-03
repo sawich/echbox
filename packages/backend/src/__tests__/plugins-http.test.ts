@@ -97,7 +97,7 @@ describe("Plugin HTTP routes", () => {
     title: string,
     fileBytes: Uint8Array,
     cookie: string,
-    extra?: { description?: string; notes?: string },
+    extra?: { description?: string; notes?: string; semver?: string },
   ) {
     const form = new FormData();
     form.append(
@@ -106,6 +106,7 @@ describe("Plugin HTTP routes", () => {
     );
     form.append("gameId", gameId);
     form.append("title", title);
+    form.append("semver", extra?.semver ?? "1.0.0");
     if (extra?.description != null) {
       form.append("description", extra.description);
     }
@@ -149,11 +150,18 @@ describe("Plugin HTTP routes", () => {
       new Request("http://localhost/api/plugins"),
     );
     const listBody = (await listRes.json()) as {
-      plugins: { id: string; downloadUrl: string }[];
+      plugins: {
+        id: string;
+        downloadUrl: string;
+        latestSemver: string;
+        latestVersionId: string;
+      }[];
     };
     expect(listBody.plugins).toHaveLength(1);
-    expect(listBody.plugins[0]!.downloadUrl).toBe(
-      `/api/plugins/${created.id}/versions/1/download`,
+    const item = listBody.plugins[0]!;
+    expect(item.latestSemver).toBe("1.0.0");
+    expect(item.downloadUrl).toBe(
+      `/api/plugins/${created.id}/versions/${item.latestVersionId}/download`,
     );
   });
 
@@ -162,18 +170,23 @@ describe("Plugin HTTP routes", () => {
 
     const res1 = await createPluginViaHttp("One", fileBytes, authorCookie);
     expect(res1.status).toBe(201);
-    const created = (await res1.json()) as { id: string };
+    const created = (await res1.json()) as {
+      id: string;
+      latestVersionId: string;
+    };
 
     const res2 = await createPluginViaHttp("Two", fileBytes, otherCookie);
     expect(res2.status).toBe(409);
     const conflictBody = (await res2.json()) as {
       pluginId: string;
-      version: number;
+      versionId: string;
+      semver: string;
       code: string;
     };
     expect(conflictBody.code).toBe("CONFLICT");
     expect(conflictBody.pluginId).toBe(created.id);
-    expect(conflictBody.version).toBe(1);
+    expect(conflictBody.versionId).toBe(created.latestVersionId);
+    expect(conflictBody.semver).toBe("1.0.0");
   });
 
   test("PATCH /api/plugins/:id updates title for author and rejects non-author", async () => {
@@ -229,19 +242,27 @@ describe("Plugin HTTP routes", () => {
 
     const createRes = await createPluginViaHttp("Hash Plugin", fileBytes, authorCookie);
     expect(createRes.status).toBe(201);
-    const created = (await createRes.json()) as { id: string };
+    const created = (await createRes.json()) as {
+      id: string;
+      latestVersionId: string;
+    };
 
     const hitRes = await app.handle(
       new Request(`http://localhost/api/plugins/by-hash/${hash}`),
     );
     expect(hitRes.status).toBe(200);
-    const hitBody = (await hitRes.json()) as { pluginId: string; version: number };
+    const hitBody = (await hitRes.json()) as {
+      pluginId: string;
+      versionId: string;
+      semver: string;
+    };
     expect(hitBody.pluginId).toBe(created.id);
-    expect(hitBody.version).toBe(1);
+    expect(hitBody.versionId).toBe(created.latestVersionId);
+    expect(hitBody.semver).toBe("1.0.0");
 
     const dlRes = await app.handle(
       new Request(
-        `http://localhost/api/plugins/${created.id}/versions/1/download`,
+        `http://localhost/api/plugins/${created.id}/versions/${created.latestVersionId}/download`,
       ),
     );
     expect(dlRes.status).toBe(200);
@@ -323,7 +344,10 @@ describe("Plugin HTTP routes", () => {
     const v1Bytes = pluginZip("version-http-v1");
     const createRes = await createPluginViaHttp("Versions", v1Bytes, authorCookie);
     expect(createRes.status).toBe(201);
-    const created = (await createRes.json()) as { id: string };
+    const created = (await createRes.json()) as {
+      id: string;
+      latestVersionId: string;
+    };
 
     const v2Bytes = pluginZip("version-http-v2-extra");
 
@@ -332,6 +356,7 @@ describe("Plugin HTTP routes", () => {
       "file",
       new File([v2Bytes], "v2.zip", { type: "application/zip" }),
     );
+    unauthVerForm.append("semver", "1.1.0");
     const unauthVerRes = await app.handle(
       new Request(`http://localhost/api/plugins/${created.id}/versions`, {
         method: "POST",
@@ -345,6 +370,7 @@ describe("Plugin HTTP routes", () => {
       "file",
       new File([v2Bytes], "v2.zip", { type: "application/zip" }),
     );
+    forbidVerForm.append("semver", "1.1.0");
     const forbidVerRes = await app.handle(
       new Request(`http://localhost/api/plugins/${created.id}/versions`, {
         method: "POST",
@@ -359,6 +385,7 @@ describe("Plugin HTTP routes", () => {
       "file",
       new File([v2Bytes], "v2.zip", { type: "application/zip" }),
     );
+    verForm.append("semver", "1.1.0");
     verForm.append("notes", "Second release");
     const verRes = await app.handle(
       new Request(`http://localhost/api/plugins/${created.id}/versions`, {
@@ -369,18 +396,62 @@ describe("Plugin HTTP routes", () => {
     );
     expect(verRes.status).toBe(200);
     const updated = (await verRes.json()) as {
-      latestVersion: number;
-      versions: { version: number; notes?: string }[];
+      latestSemver: string;
+      latestVersionId: string;
+      versions: { id: string; semver: string; notes?: string }[];
     };
-    expect(updated.latestVersion).toBe(2);
+    expect(updated.latestSemver).toBe("1.1.0");
     expect(updated.versions).toHaveLength(2);
     expect(updated.versions[1]!.notes).toBe("Second release");
+    expect(updated.latestVersionId).toBe(updated.versions[1]!.id);
+    expect(updated.latestVersionId).not.toBe(created.latestVersionId);
+
+    const missingSemverForm = new FormData();
+    missingSemverForm.append(
+      "file",
+      new File([pluginZip("no-semver")], "v3.zip", {
+        type: "application/zip",
+      }),
+    );
+    const missingSemverRes = await app.handle(
+      new Request(`http://localhost/api/plugins/${created.id}/versions`, {
+        method: "POST",
+        headers: { cookie: authorCookie },
+        body: missingSemverForm,
+      }),
+    );
+    expect(missingSemverRes.status).toBeGreaterThanOrEqual(400);
+    expect(missingSemverRes.status).toBeLessThan(500);
+
+    const dupSemverForm = new FormData();
+    dupSemverForm.append(
+      "file",
+      new File([pluginZip("dup-semver-bytes")], "v3.zip", {
+        type: "application/zip",
+      }),
+    );
+    dupSemverForm.append("semver", "1.1.0");
+    const dupSemverRes = await app.handle(
+      new Request(`http://localhost/api/plugins/${created.id}/versions`, {
+        method: "POST",
+        headers: { cookie: authorCookie },
+        body: dupSemverForm,
+      }),
+    );
+    expect(dupSemverRes.status).toBe(409);
+    const dupSemverBody = (await dupSemverRes.json()) as {
+      versionId: string;
+      semver: string;
+    };
+    expect(dupSemverBody.semver).toBe("1.1.0");
+    expect(dupSemverBody.versionId).toBe(updated.latestVersionId);
 
     const dupVerForm = new FormData();
     dupVerForm.append(
       "file",
       new File([v1Bytes], "v1.zip", { type: "application/zip" }),
     );
+    dupVerForm.append("semver", "1.2.0");
     const dupVerRes = await app.handle(
       new Request(`http://localhost/api/plugins/${created.id}/versions`, {
         method: "POST",
@@ -391,10 +462,12 @@ describe("Plugin HTTP routes", () => {
     expect(dupVerRes.status).toBe(409);
     const dupBody = (await dupVerRes.json()) as {
       pluginId: string;
-      version: number;
+      versionId: string;
+      semver: string;
     };
     expect(dupBody.pluginId).toBe(created.id);
-    expect(dupBody.version).toBe(1);
+    expect(dupBody.versionId).toBe(created.latestVersionId);
+    expect(dupBody.semver).toBe("1.0.0");
   });
 
   test("POST /api/plugins requires auth (401)", async () => {
@@ -406,6 +479,7 @@ describe("Plugin HTTP routes", () => {
     );
     form.append("gameId", gameId);
     form.append("title", "No auth");
+    form.append("semver", "1.0.0");
 
     const res = await app.handle(
       new Request("http://localhost/api/plugins", {

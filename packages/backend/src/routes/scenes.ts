@@ -2,6 +2,7 @@ import { Elysia, t } from "elysia";
 import {
   type SceneDetail,
   DuplicateSceneHashError,
+  DuplicateSceneSemverError,
   SceneServiceError,
   addSceneVersion,
   createScene,
@@ -25,7 +26,8 @@ function stripScenePaths<
     originalPath?: string;
     previewPath?: string;
     sceneId?: string;
-    version?: number;
+    versionId?: string;
+    semver?: string;
     contentHash?: string;
   },
 >(scene: T) {
@@ -33,7 +35,8 @@ function stripScenePaths<
     originalPath: _op,
     previewPath: _pp,
     sceneId: _sid,
-    version: _ver,
+    versionId: _vid,
+    semver: _sv,
     contentHash: _ch,
     ...rest
   } = scene;
@@ -57,7 +60,18 @@ function handleServiceError(
       code: err.code,
       sceneId: err.sceneId,
       scene_id: err.scene_id,
-      version: err.version,
+      versionId: err.versionId,
+      semver: err.semver,
+      conflict: err.conflict,
+    };
+  }
+  if (err instanceof DuplicateSceneSemverError) {
+    set.status = 409;
+    return {
+      error: err.message,
+      code: err.code,
+      sceneId: err.sceneId,
+      semver: err.semver,
       conflict: err.conflict,
     };
   }
@@ -125,6 +139,7 @@ export const sceneRoutes = new Elysia({ prefix: "/api/scenes" })
           gameId: body.gameId,
           title: body.title,
           slug: body.slug,
+          semver: body.semver,
           notes: body.notes,
           fileBytes,
         });
@@ -140,6 +155,7 @@ export const sceneRoutes = new Elysia({ prefix: "/api/scenes" })
         gameId: t.String(),
         title: t.Optional(t.String()),
         slug: t.Optional(t.String()),
+        semver: t.String(),
         notes: t.Optional(t.String()),
       }),
     },
@@ -200,6 +216,7 @@ export const sceneRoutes = new Elysia({ prefix: "/api/scenes" })
         const added = await addSceneVersion({
           sceneId: params.id,
           authorId: user.id,
+          semver: body.semver,
           notes: body.notes,
           fileBytes,
         });
@@ -214,6 +231,7 @@ export const sceneRoutes = new Elysia({ prefix: "/api/scenes" })
       }),
       body: t.Object({
         file: t.File(),
+        semver: t.String(),
         notes: t.Optional(t.String()),
       }),
     },
@@ -272,16 +290,11 @@ export const sceneRoutes = new Elysia({ prefix: "/api/scenes" })
     },
   )
   .get(
-    "/:id/versions/:version/image",
+    "/:id/versions/:versionId/image",
     async ({ params, query, set }) => {
-      const version = Number(params.version);
-      if (!Number.isInteger(version) || version < 1) {
-        set.status = 404;
-        return new Response("Not found", { status: 404 });
-      }
       const wantOriginal =
         query.original === "1" || query.original === "true";
-      const img = await getSceneVersionImage(params.id, version, {
+      const img = await getSceneVersionImage(params.id, params.versionId, {
         original: wantOriginal,
       });
       if (!img) {
@@ -298,7 +311,7 @@ export const sceneRoutes = new Elysia({ prefix: "/api/scenes" })
     {
       params: t.Object({
         id: t.String(),
-        version: t.String(),
+        versionId: t.String(),
       }),
       query: t.Object({
         original: t.Optional(t.String()),

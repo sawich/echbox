@@ -1,5 +1,5 @@
 import { afterEach, beforeEach, describe, expect, test } from "bun:test";
-import { existsSync, mkdtempSync, rmSync } from "node:fs";
+import { existsSync, mkdtempSync, readdirSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { strToU8, zipSync } from "fflate";
@@ -22,6 +22,9 @@ import {
 import { pluginVersionPaths } from "../storage";
 import { setPluginVote } from "../votes";
 import { seedTestGame } from "../../__tests__/test-game";
+
+const UUID_V7_RE =
+  /^[0-9a-f]{8}-[0-9a-f]{4}-7[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
 
 function pluginZip(payload = "plugin-payload-a"): Uint8Array {
   return zipSync({ "data.txt": strToU8(payload) });
@@ -82,6 +85,7 @@ describe("plugin service", () => {
     const created = await createPlugin({ gameId,
       authorId,
       title: "My Plugin",
+      semver: "1.0.0",
       description: "Does things",
       notes: "First release",
       fileBytes,
@@ -94,18 +98,25 @@ describe("plugin service", () => {
     );
     expect(created.title).toBe("My Plugin");
     expect(created.description).toBe("Does things");
-    expect(created.latestVersion).toBe(1);
+    expect(created.latestSemver).toBe("1.0.0");
     expect(created.versions).toHaveLength(1);
+    const v1 = created.versions[0]!;
+    expect(v1.semver).toBe("1.0.0");
+    expect(created.latestVersionId).toBe(v1.id);
+    expect(v1.id).toMatch(UUID_V7_RE);
+    expect(created.id).toMatch(UUID_V7_RE);
     expect(created.versions[0]!.notes).toBe("First release");
     expect(created.versions[0]!.downloadUrl).toBe(
-      `/api/plugins/${created.id}/versions/1/download`,
+      `/api/plugins/${created.id}/versions/${v1.id}/download`,
     );
+    expect(created.downloadUrl).toBe(v1.downloadUrl);
     expect(created.uploader).toEqual({
       id: authorId,
       username: "plugin_author",
     });
 
-    const paths = pluginVersionPaths(dataDir, created.id, 1);
+    const paths = pluginVersionPaths(dataDir, created.id, v1.id);
+    expect(paths.dir.endsWith(v1.id)).toBe(true);
     expect(existsSync(paths.originalPath)).toBe(true);
     expect(paths.originalPath.endsWith("original.zip")).toBe(true);
     const saved = new Uint8Array(
@@ -123,6 +134,7 @@ describe("plugin service", () => {
     const first = await createPlugin({ gameId,
       authorId,
       title: "First",
+      semver: "1.0.0",
       fileBytes,
       dbPath,
       dataDir,
@@ -133,6 +145,7 @@ describe("plugin service", () => {
       await createPlugin({ gameId,
         authorId: otherUserId,
         title: "Second",
+        semver: "1.0.0",
         fileBytes,
         dbPath,
         dataDir,
@@ -145,13 +158,15 @@ describe("plugin service", () => {
     const conflict = caught as {
       status: number;
       pluginId: string;
-      version: number;
+      versionId: string;
+      semver: string;
       name: string;
     };
     expect(conflict.status).toBe(409);
     expect(conflict.name).toBe("DuplicatePluginHashError");
     expect(conflict.pluginId).toBe(first.id);
-    expect(conflict.version).toBe(1);
+    expect(conflict.versionId).toBe(first.versions[0]!.id);
+    expect(conflict.semver).toBe("1.0.0");
   });
 
   test("patchPlugin updates title and description for author only", async () => {
@@ -159,6 +174,7 @@ describe("plugin service", () => {
     const created = await createPlugin({ gameId,
       authorId,
       title: "Original",
+      semver: "1.0.0",
       description: "Old desc",
       fileBytes,
       dbPath,
@@ -198,6 +214,7 @@ describe("plugin service", () => {
     const created = await createPlugin({ gameId,
       authorId,
       title: "Plugin",
+      semver: "1.0.0",
       fileBytes: v1,
       dbPath,
       dataDir,
@@ -210,6 +227,7 @@ describe("plugin service", () => {
       await addPluginVersion({
         pluginId: created.id,
         authorId: otherUserId,
+        semver: "1.1.0",
         fileBytes: v2,
         dbPath,
         dataDir,
@@ -220,9 +238,9 @@ describe("plugin service", () => {
 
     expect(caught).toBeDefined();
     expect((caught as { status: number }).status).toBe(403);
-    expect(
-      existsSync(pluginVersionPaths(dataDir, created.id, 2).originalPath),
-    ).toBe(false);
+    expect(readdirSync(join(dataDir, "plugins", created.id))).toEqual([
+      created.latestVersionId,
+    ]);
   });
 
   test("getPluginVersionBytes returns stored zip bytes", async () => {
@@ -230,12 +248,13 @@ describe("plugin service", () => {
     const created = await createPlugin({ gameId,
       authorId,
       title: "Dl",
+      semver: "1.0.0",
       fileBytes,
       dbPath,
       dataDir,
     });
 
-    const file = await getPluginVersionBytes(created.id, 1, {
+    const file = await getPluginVersionBytes(created.id, created.latestVersionId, {
       dbPath,
       dataDir,
     });
@@ -253,6 +272,7 @@ describe("plugin service", () => {
     const created = await createPlugin({ gameId,
       authorId,
       title: "Hash",
+      semver: "1.0.0",
       fileBytes,
       dbPath,
       dataDir,
@@ -260,8 +280,121 @@ describe("plugin service", () => {
 
     expect(await findPluginByHash(hash, { dbPath })).toEqual({
       pluginId: created.id,
-      version: 1,
+      versionId: created.latestVersionId,
+      semver: "1.0.0",
     });
+  });
+
+  test("addPluginVersion picks latest by semver, not upload order", async () => {
+    const created = await createPlugin({
+      gameId,
+      authorId,
+      title: "Semver",
+      semver: "2.0.0",
+      fileBytes: pluginZip("two"),
+      dbPath,
+      dataDir,
+    });
+    const v2Id = created.latestVersionId;
+
+    const afterLower = await addPluginVersion({
+      pluginId: created.id,
+      authorId,
+      semver: "1.5.0",
+      fileBytes: pluginZip("one-five"),
+      dbPath,
+      dataDir,
+    });
+    expect(afterLower.latestSemver).toBe("2.0.0");
+    expect(afterLower.latestVersionId).toBe(v2Id);
+    expect(afterLower.versions.map((v) => v.semver)).toEqual([
+      "1.5.0",
+      "2.0.0",
+    ]);
+
+    const afterHigher = await addPluginVersion({
+      pluginId: created.id,
+      authorId,
+      semver: "2.1.0",
+      fileBytes: pluginZip("two-one"),
+      dbPath,
+      dataDir,
+    });
+    expect(afterHigher.latestSemver).toBe("2.1.0");
+    const newest = afterHigher.versions.find((v) => v.semver === "2.1.0")!;
+    expect(afterHigher.latestVersionId).toBe(newest.id);
+    expect(afterHigher.downloadUrl).toBe(newest.downloadUrl);
+    expect(newest.id).toMatch(UUID_V7_RE);
+    expect(afterHigher.versionCount).toBe(3);
+
+    const [item] = await listPlugins({ dbPath, dataDir });
+    expect(item!.latestSemver).toBe("2.1.0");
+    expect(item!.latestVersionId).toBe(newest.id);
+  });
+
+  test("duplicate semver on addPluginVersion throws 409 with versionId + semver", async () => {
+    const created = await createPlugin({
+      gameId,
+      authorId,
+      title: "Dup semver",
+      semver: "1.0.0",
+      fileBytes: pluginZip("a"),
+      dbPath,
+      dataDir,
+    });
+
+    let caught: unknown;
+    try {
+      await addPluginVersion({
+        pluginId: created.id,
+        authorId,
+        semver: "v1.0.0",
+        fileBytes: pluginZip("b"),
+        dbPath,
+        dataDir,
+      });
+    } catch (err) {
+      caught = err;
+    }
+    const conflict = caught as {
+      status: number;
+      name: string;
+      versionId: string;
+      semver: string;
+    };
+    expect(conflict.status).toBe(409);
+    expect(conflict.name).toBe("DuplicatePluginSemverError");
+    expect(conflict.semver).toBe("1.0.0");
+    expect(conflict.versionId).toBe(created.latestVersionId);
+    expect(readdirSync(join(dataDir, "plugins", created.id))).toEqual([
+      created.latestVersionId,
+    ]);
+  });
+
+  test("create/addVersion reject missing or invalid semver", async () => {
+    for (const semver of ["", "   ", "not-a-version"]) {
+      await expect(
+        createPlugin({
+          gameId,
+          authorId,
+          title: "Bad",
+          semver,
+          fileBytes: pluginZip("bad"),
+          dbPath,
+          dataDir,
+        }),
+      ).rejects.toMatchObject({ status: 400 });
+    }
+    await expect(
+      createPlugin({
+        gameId,
+        authorId,
+        title: "Missing",
+        fileBytes: pluginZip("missing"),
+        dbPath,
+        dataDir,
+      } as unknown as Parameters<typeof createPlugin>[0]),
+    ).rejects.toMatchObject({ status: 400 });
   });
 
   test("deletePlugin removes DB rows and files for author only", async () => {
@@ -269,11 +402,16 @@ describe("plugin service", () => {
     const created = await createPlugin({ gameId,
       authorId,
       title: "Del",
+      semver: "1.0.0",
       fileBytes,
       dbPath,
       dataDir,
     });
-    const paths = pluginVersionPaths(dataDir, created.id, 1);
+    const paths = pluginVersionPaths(
+      dataDir,
+      created.id,
+      created.latestVersionId,
+    );
     expect(existsSync(paths.originalPath)).toBe(true);
 
     setPluginVote({

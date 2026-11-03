@@ -2,7 +2,8 @@
 import type { CardVoteValue } from '@echbox/shared'
 
 type PluginVersion = {
-  version: number
+  id: string
+  semver: string
   createdAt: string
   downloadUrl: string
   contentHash: string
@@ -15,7 +16,8 @@ type PluginDetail = {
   authorId: string
   title: string
   description: string | null
-  latestVersion: number
+  latestSemver: string
+  latestVersionId: string
   createdAt: string
   updatedAt: string
   uploader: { id: string, username: string }
@@ -49,7 +51,7 @@ const { data, error, status, refresh } = await useAsyncData(
   { watch: [id] },
 )
 
-const selectedVersion = ref<number | null>(null)
+const selectedVersion = ref<string | null>(null)
 const editTitle = ref('')
 const editDescription = ref('')
 
@@ -57,7 +59,7 @@ watch(
   data,
   (plugin) => {
     if (!plugin) return
-    selectedVersion.value = plugin.latestVersion
+    selectedVersion.value = plugin.latestVersionId
     editTitle.value = plugin.title
     editDescription.value = plugin.description ?? ''
   },
@@ -128,8 +130,8 @@ async function submitVote(vote: CardVoteValue | null) {
 const active = computed(() => {
   const plugin = data.value
   if (!plugin) return null
-  const version = selectedVersion.value ?? plugin.latestVersion
-  return plugin.versions.find(v => v.version === version) ?? plugin.versions.at(-1) ?? null
+  const versionId = selectedVersion.value ?? plugin.latestVersionId
+  return plugin.versions.find(v => v.id === versionId) ?? plugin.versions.at(-1) ?? null
 })
 
 const activeDownloadHref = computed(() =>
@@ -176,6 +178,7 @@ async function saveMetadata() {
 
 const versionFile = ref<File | null>(null)
 const versionNotes = ref('')
+const semver = useSemverInput()
 const uploadingVersion = ref(false)
 const versionError = ref<string | null>(null)
 const versionDuplicateHit = ref<UploadDuplicateHit | null>(null)
@@ -187,7 +190,7 @@ function onVersionFileChange(file: File | null | undefined) {
 }
 
 async function submitNewVersion() {
-  if (!versionFile.value || uploadingVersion.value) return
+  if (!versionFile.value || uploadingVersion.value || !semver.canonical.value) return
   uploadingVersion.value = true
   versionError.value = null
   versionDuplicateHit.value = null
@@ -195,6 +198,7 @@ async function submitNewVersion() {
   try {
     const form = new FormData()
     form.append('file', versionFile.value)
+    form.append('semver', semver.canonical.value)
     if (versionNotes.value.trim()) {
       form.append('notes', versionNotes.value.trim())
     }
@@ -217,9 +221,10 @@ async function submitNewVersion() {
 
     versionFile.value = null
     versionNotes.value = ''
+    semver.reset()
     await refresh()
-    if (payload?.latestVersion) {
-      selectedVersion.value = payload.latestVersion
+    if (payload?.latestVersionId) {
+      selectedVersion.value = payload.latestVersionId
     }
   }
   catch (e) {
@@ -346,6 +351,7 @@ async function handleDelete() {
             <VersionList
               v-model="selectedVersion"
               :versions="data.versions"
+              :latest-version-id="data.latestVersionId"
             />
           </SectionCard>
 
@@ -397,7 +403,7 @@ async function handleDelete() {
                 class="space-y-3"
                 @submit.prevent="submitNewVersion"
               >
-                <UFormField :label="`Publish v${data.latestVersion + 1}`">
+                <UFormField label="Publish new version">
                   <UFileUpload
                     :model-value="versionFile"
                     accept=".zip,application/zip"
@@ -409,6 +415,18 @@ async function handleDelete() {
                     @update:model-value="onVersionFileChange"
                   />
                 </UFormField>
+                <UFormField
+                  label="Version"
+                  required
+                  :error="semver.raw.value.trim() ? semver.error.value ?? undefined : undefined"
+                  help="Semantic version, e.g. 1.0.0"
+                >
+                  <UInput
+                    v-model="semver.raw.value"
+                    placeholder="1.0.0"
+                    class="w-full font-mono"
+                  />
+                </UFormField>
                 <UInput
                   v-model="versionNotes"
                   placeholder="What changed? (optional)"
@@ -417,7 +435,7 @@ async function handleDelete() {
                 <DuplicateNotice
                   v-if="versionDuplicateHit"
                   :to="`/plugins/${versionDuplicateHit.id}`"
-                  :label="`plugin ${versionDuplicateHit.id}${versionDuplicateHit.version ? ` (v${versionDuplicateHit.version})` : ''}`"
+                  :label="`plugin ${versionDuplicateHit.id}${versionDuplicateHit.semver ? ` (v${versionDuplicateHit.semver})` : ''}`"
                   lead="This file already exists as"
                 />
                 <UAlert
@@ -433,9 +451,9 @@ async function handleDelete() {
                   variant="soft"
                   icon="i-lucide-upload"
                   :loading="uploadingVersion"
-                  :disabled="!versionFile || uploadingVersion"
+                  :disabled="!versionFile || !semver.valid.value || uploadingVersion"
                 >
-                  Upload v{{ data.latestVersion + 1 }}
+                  Publish new version
                 </UButton>
               </form>
 
@@ -460,7 +478,7 @@ async function handleDelete() {
               icon="i-lucide-download"
               block
             >
-              Download v{{ active?.version ?? data.latestVersion }}
+              Download v{{ active?.semver ?? data.latestSemver }}
             </UButton>
             <div class="space-y-2">
               <CardVoteControls

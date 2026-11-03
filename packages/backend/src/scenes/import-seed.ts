@@ -1,8 +1,14 @@
+import { compareSemver } from "@echbox/shared";
 import { eq } from "drizzle-orm";
 import { getDb } from "../db/client";
 import { users } from "../db/schema";
 import { sha256Hex } from "../cards/hash";
-import { loadSeed, resolveFixture, type SeedCard } from "../gallery/seed";
+import {
+  loadSeed,
+  resolveFixture,
+  seedVersionSemver,
+  type SeedCard,
+} from "../gallery/seed";
 import {
   addSceneVersion,
   createScene,
@@ -85,7 +91,9 @@ export async function importSeedScenes(
   let skipped = 0;
 
   for (const card of sceneSeedCards()) {
-    const versions = [...card.versions].sort((a, b) => a.version - b.version);
+    const versions = [...card.versions].sort((a, b) =>
+      compareSemver(seedVersionSemver(a), seedVersionSemver(b)),
+    );
     let sceneId: string | null = null;
 
     for (const ver of versions) {
@@ -102,12 +110,15 @@ export async function importSeedScenes(
       const title = card.title?.trim() || undefined;
       const notes = ver.notes;
 
-      if (ver.version === 1 || sceneId === null) {
+      const semver = seedVersionSemver(ver);
+
+      if (sceneId === null) {
         const created = await createScene({
           authorId: ECHBOX_SYSTEM_USER.id,
           gameId,
           title,
           slug: card.slug,
+          semver,
           fileBytes,
           notes,
           dbPath,
@@ -119,6 +130,7 @@ export async function importSeedScenes(
         await addSceneVersion({
           sceneId,
           authorId: ECHBOX_SYSTEM_USER.id,
+          semver,
           fileBytes,
           notes,
           dbPath,

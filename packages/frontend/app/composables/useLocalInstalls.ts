@@ -4,7 +4,8 @@ export type ContentKind = 'cards' | 'plugins' | 'scenes' | 'softmods'
 
 export type ContentInstallRow = {
   id: string
-  version: number
+  versionId: string
+  semver: string
   title: string
   contentHash?: string | null
   installedAt: string

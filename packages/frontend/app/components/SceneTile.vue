@@ -16,7 +16,7 @@ defineProps<{
     :subtitle="scene.slug"
     :aspect-class="galleryAspect('scene')"
     kind="scene"
-    :version="scene.versionCount > 1 ? scene.latestVersion : null"
+    :semver="scene.versionCount > 1 ? scene.latestSemver : null"
     :likes="scene.likes ?? 0"
     :dislikes="scene.dislikes ?? 0"
   />

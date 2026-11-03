@@ -50,7 +50,8 @@ async function toggleInstall(scene: SceneListItem) {
     } else {
       await installContent(props.gameId, 'scenes', {
         id: scene.id,
-        version: scene.latestVersion,
+        versionId: scene.latestVersionId,
+        semver: scene.latestSemver,
         title: scene.title,
         contentHash: null,
         installedAt: new Date().toISOString(),
@@ -91,12 +92,14 @@ const uploadTitle = ref('')
 const uploadNotes = ref('')
 const uploadBusy = ref(false)
 const uploadError = ref<string | null>(null)
-const duplicateHit = ref<{ sceneId: string, version: number } | null>(null)
+const semver = useSemverInput()
+const duplicateHit = ref<{ sceneId: string, semver: string } | null>(null)
 
 function resetUploadForm() {
   uploadFile.value = null
   uploadTitle.value = ''
   uploadNotes.value = ''
+  semver.reset()
   uploadError.value = null
   duplicateHit.value = null
 }
@@ -124,7 +127,7 @@ async function onFileSelected(file: File | null | undefined) {
     const hash = await computeSha256Hex(file)
     const { data: hit, status: hitStatus } = await api.api.scenes['by-hash']({ hash }).get()
     if (hitStatus === 200 && hit && 'sceneId' in hit) {
-      duplicateHit.value = { sceneId: hit.sceneId, version: hit.version }
+      duplicateHit.value = { sceneId: hit.sceneId, semver: hit.semver }
     }
   }
   catch {
@@ -133,7 +136,7 @@ async function onFileSelected(file: File | null | undefined) {
 }
 
 async function submitUpload() {
-  if (!uploadFile.value || uploadBusy.value) return
+  if (!uploadFile.value || uploadBusy.value || !semver.canonical.value) return
   uploadBusy.value = true
   uploadError.value = null
   duplicateHit.value = null
@@ -147,6 +150,7 @@ async function submitUpload() {
     const form = new FormData()
     form.append('file', uploadFile.value)
     form.append('gameId', props.gameId)
+    form.append('semver', semver.canonical.value)
     if (uploadTitle.value.trim()) {
       form.append('title', uploadTitle.value.trim())
     }
@@ -164,7 +168,7 @@ async function submitUpload() {
     if (!res.ok) {
       const dup = parseUploadDuplicatePayload(payload)
       if (res.status === 409 && dup) {
-        duplicateHit.value = { sceneId: dup.id, version: dup.version ?? 1 }
+        duplicateHit.value = { sceneId: dup.id, semver: dup.semver ?? '' }
       }
       uploadError.value = (payload?.error as string | undefined) || `Upload failed (${res.status})`
       return
@@ -241,6 +245,19 @@ async function submitUpload() {
               </UFormField>
 
               <UFormField
+                label="Version"
+                required
+                :error="semver.raw.value.trim() ? semver.error.value ?? undefined : undefined"
+                help="Semantic version, e.g. 1.0.0"
+              >
+                <UInput
+                  v-model="semver.raw.value"
+                  placeholder="1.0.0"
+                  class="w-full font-mono"
+                />
+              </UFormField>
+
+              <UFormField
                 label="Version notes"
                 hint="Optional"
               >
@@ -254,7 +271,7 @@ async function submitUpload() {
               <DuplicateNotice
                 v-if="duplicateHit"
                 :to="`/scenes/${duplicateHit.sceneId}`"
-                :label="`scene ${duplicateHit.sceneId} (v${duplicateHit.version})`"
+                :label="`scene ${duplicateHit.sceneId} (v${duplicateHit.semver})`"
                 lead="This exact scene file already exists in"
                 @navigate="showUpload = false"
               />
@@ -285,7 +302,7 @@ async function submitUpload() {
                 color="primary"
                 icon="i-lucide-check"
                 :loading="uploadBusy"
-                :disabled="!uploadFile || uploadBusy || Boolean(duplicateHit)"
+                :disabled="!uploadFile || !semver.valid.value || uploadBusy || Boolean(duplicateHit)"
               >
                 Publish scene
               </UButton>

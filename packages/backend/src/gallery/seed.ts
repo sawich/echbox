@@ -5,6 +5,8 @@ import seedJson from "./seed.json";
 
 export type SeedVersion = {
   version: number;
+  /** Optional explicit semver; defaults to `${version}.0.0`. */
+  semver?: string;
   createdAt: string;
   fixture: string;
   notes?: string;
@@ -17,6 +19,10 @@ export type SeedCard = {
   title: string | null;
   versions: SeedVersion[];
 };
+
+export function seedVersionSemver(ver: SeedVersion): string {
+  return ver.semver ?? `${ver.version}.0.0`;
+}
 
 const FIXTURES_ROOT = join(import.meta.dir, "../../fixtures");
 

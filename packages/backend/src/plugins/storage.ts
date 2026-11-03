@@ -25,6 +25,12 @@ export function assertSafePluginId(pluginId: string): void {
   }
 }
 
+export function assertSafeVersionId(versionId: string): void {
+  if (!isSafeStorageId(versionId)) {
+    throw new BadPluginError("Invalid version id");
+  }
+}
+
 /** Per-plugin directory, guaranteed to live strictly under the plugins root. */
 export function getPluginDir(pluginId: string, dataDir?: string): string {
   assertSafePluginId(pluginId);
@@ -35,9 +41,10 @@ export function getPluginDir(pluginId: string, dataDir?: string): string {
 export function pluginVersionPaths(
   dataDir: string | undefined,
   pluginId: string,
-  version: number,
+  versionId: string,
 ): { dir: string; originalPath: string } {
-  const dir = join(getPluginDir(pluginId, dataDir), `v${version}`);
+  assertSafeVersionId(versionId);
+  const dir = join(getPluginDir(pluginId, dataDir), versionId);
   return {
     dir,
     originalPath: join(dir, "original.zip"),

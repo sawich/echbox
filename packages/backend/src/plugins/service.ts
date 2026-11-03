@@ -1,4 +1,5 @@
-import { and, asc, desc, eq } from "drizzle-orm";
+import { compareSemver, parseSemver, pickLatestBySemver } from "@echbox/shared";
+import { and, desc, eq } from "drizzle-orm";
 import { sha256Hex } from "../cards/hash";
 import { assertNonEmptyZip } from "../common/zip";
 import {
@@ -7,10 +8,12 @@ import {
   stageUpload,
 } from "../common/staging";
 import { getDb } from "../db/client";
+import { newId } from "../id";
 import { pluginVersions, pluginVotes, plugins, users } from "../db/schema";
 import {
   BadPluginError,
   DuplicatePluginHashError,
+  DuplicatePluginSemverError,
   ForbiddenPluginError,
   PluginNotFoundError,
 } from "./errors";
@@ -31,6 +34,7 @@ import {
 export {
   BadPluginError,
   DuplicatePluginHashError,
+  DuplicatePluginSemverError,
   ForbiddenPluginError,
   PluginNotFoundError,
   PluginServiceError,
@@ -47,7 +51,9 @@ export type PluginUploader = {
 };
 
 export type PluginVersionDetail = {
-  version: number;
+  id: string;
+  versionId: string;
+  semver: string;
   createdAt: string;
   downloadUrl: string;
   contentHash: string;
@@ -62,7 +68,8 @@ export type PluginDetail = PluginVoteCounts & {
   authorId: string;
   title: string;
   description: string | null;
-  latestVersion: number;
+  latestSemver: string;
+  latestVersionId: string;
   createdAt: string;
   updatedAt: string;
   uploader: PluginUploader;
@@ -77,7 +84,8 @@ export type PluginListItem = PluginVoteCounts & {
   authorId: string;
   title: string;
   description: string | null;
-  latestVersion: number;
+  latestSemver: string;
+  latestVersionId: string;
   versionCount: number;
   downloadUrl: string;
   uploader: PluginUploader;
@@ -97,6 +105,7 @@ export type CreatePluginInput = PluginServiceOptions & {
   gameId: string;
   title: string;
   description?: string;
+  semver: string;
   notes?: string;
   fileBytes: Uint8Array;
 };
@@ -104,6 +113,7 @@ export type CreatePluginInput = PluginServiceOptions & {
 export type AddPluginVersionInput = PluginServiceOptions & {
   pluginId: string;
   authorId: string;
+  semver: string;
   fileBytes: Uint8Array;
   notes?: string;
 };
@@ -122,8 +132,19 @@ export type DeletePluginInput = PluginServiceOptions & {
 
 const EMPTY_SUMMARY_JSON = "{}";
 
-function downloadUrl(pluginId: string, version: number): string {
-  return `/api/plugins/${pluginId}/versions/${version}/download`;
+function downloadUrl(pluginId: string, versionId: string): string {
+  return `/api/plugins/${pluginId}/versions/${versionId}/download`;
+}
+
+function normalizeSemver(input: unknown): string {
+  if (typeof input !== "string" || !input.trim()) {
+    throw new BadPluginError("Plugin semver is required");
+  }
+  try {
+    return parseSemver(input);
+  } catch {
+    throw new BadPluginError(`Invalid semver: ${input}`);
+  }
 }
 
 function normalizeTitle(title: string): string {
@@ -147,7 +168,7 @@ function validateArchive(fileBytes: Uint8Array): void {
 export function findPluginByHash(
   hash: string,
   options?: PluginServiceOptions,
-): { pluginId: string; version: number } | null {
+): { pluginId: string; versionId: string; semver: string } | null {
   const normalized = hash.trim().toLowerCase();
   if (!normalized) return null;
 
@@ -155,7 +176,8 @@ export function findPluginByHash(
   const row = db
     .select({
       pluginId: pluginVersions.pluginId,
-      version: pluginVersions.version,
+      versionId: pluginVersions.id,
+      semver: pluginVersions.semver,
     })
     .from(pluginVersions)
     .where(eq(pluginVersions.contentHash, normalized))
@@ -164,7 +186,8 @@ export function findPluginByHash(
   if (!row) return null;
   return {
     pluginId: row.pluginId,
-    version: row.version,
+    versionId: row.versionId,
+    semver: row.semver,
   };
 }
 
@@ -192,9 +215,11 @@ function mapVersionRow(
   v: typeof pluginVersions.$inferSelect,
 ): PluginVersionDetail {
   return {
-    version: v.version,
+    id: v.id,
+    versionId: v.id,
+    semver: v.semver,
     createdAt: v.createdAt,
-    downloadUrl: downloadUrl(pluginId, v.version),
+    downloadUrl: downloadUrl(pluginId, v.id),
     contentHash: v.contentHash,
     originalPath: v.originalPath,
     summary: JSON.parse(v.summaryJson) as Record<string, unknown>,
@@ -215,8 +240,8 @@ export async function getPlugin(
     .select()
     .from(pluginVersions)
     .where(eq(pluginVersions.pluginId, id))
-    .orderBy(asc(pluginVersions.version))
     .all();
+  versionRows.sort((a, b) => compareSemver(a.semver, b.semver));
 
   const versions = versionRows.map((v) => mapVersionRow(id, v));
   const votes = getPluginVoteCounts(id, options?.viewerUserId, options?.dbPath);
@@ -227,11 +252,12 @@ export async function getPlugin(
     authorId: plugin.authorId,
     title: plugin.title,
     description: plugin.description,
-    latestVersion: plugin.latestVersion,
+    latestSemver: plugin.latestSemver,
+    latestVersionId: plugin.latestVersionId,
     createdAt: plugin.createdAt,
     updatedAt: plugin.updatedAt,
     uploader: loadUploader(db, plugin.authorId),
-    downloadUrl: downloadUrl(plugin.id, plugin.latestVersion),
+    downloadUrl: downloadUrl(plugin.id, plugin.latestVersionId),
     versionCount: versions.length || 1,
     ...votes,
     versions,
@@ -286,9 +312,10 @@ export async function listPlugins(
       authorId: plugin.authorId,
       title: plugin.title,
       description: plugin.description,
-      latestVersion: plugin.latestVersion,
+      latestSemver: plugin.latestSemver,
+      latestVersionId: plugin.latestVersionId,
       versionCount: versions.length || 1,
-      downloadUrl: downloadUrl(plugin.id, plugin.latestVersion),
+      downloadUrl: downloadUrl(plugin.id, plugin.latestVersionId),
       uploader: loadUploader(db, plugin.authorId),
       ...votes,
     });
@@ -300,8 +327,17 @@ export async function listPlugins(
 export async function createPlugin(
   input: CreatePluginInput,
 ): Promise<PluginDetail> {
-  const { authorId, gameId, title, description, notes, fileBytes, dbPath, dataDir } =
-    input;
+  const {
+    authorId,
+    gameId,
+    title,
+    description,
+    notes,
+    fileBytes,
+    dbPath,
+    dataDir,
+  } = input;
+  const semver = normalizeSemver(input.semver);
 
   assertGameExists(gameId, { dbPath });
 
@@ -313,15 +349,15 @@ export async function createPlugin(
   if (existingHash) {
     throw new DuplicatePluginHashError(
       existingHash.pluginId,
-      existingHash.version,
+      existingHash.versionId,
+      existingHash.semver,
     );
   }
 
-  const pluginId = crypto.randomUUID();
-  const version = 1;
-  const versionId = crypto.randomUUID();
+  const pluginId = newId();
+  const versionId = newId();
   const now = new Date().toISOString();
-  const { originalPath } = pluginVersionPaths(dataDir, pluginId, version);
+  const { originalPath } = pluginVersionPaths(dataDir, pluginId, versionId);
 
   const db = getDb(dbPath);
   const stagedPath = await stageUpload(getPluginsRoot(dataDir), fileBytes);
@@ -337,7 +373,8 @@ export async function createPlugin(
             authorId,
             title: normalizedTitle,
             description: description?.trim() || null,
-            latestVersion: version,
+            latestSemver: semver,
+            latestVersionId: versionId,
             createdAt: now,
             updatedAt: now,
           })
@@ -347,7 +384,7 @@ export async function createPlugin(
           .values({
             id: versionId,
             pluginId,
-            version,
+            semver,
             notes: notes ?? null,
             contentHash,
             originalPath,
@@ -367,7 +404,11 @@ export async function createPlugin(
     if (isUniqueConstraintError(err)) {
       const dupHash = findPluginByHash(contentHash, { dbPath });
       if (dupHash) {
-        throw new DuplicatePluginHashError(dupHash.pluginId, dupHash.version);
+        throw new DuplicatePluginHashError(
+          dupHash.pluginId,
+          dupHash.versionId,
+          dupHash.semver,
+        );
       }
     }
     throw err;
@@ -381,6 +422,7 @@ export async function addPluginVersion(
   input: AddPluginVersionInput,
 ): Promise<PluginDetail> {
   const { pluginId, authorId, fileBytes, notes, dbPath, dataDir } = input;
+  const semver = normalizeSemver(input.semver);
   const db = getDb(dbPath);
 
   const plugin = db.select().from(plugins).where(eq(plugins.id, pluginId)).get();
@@ -400,11 +442,12 @@ export async function addPluginVersion(
   if (existingHash) {
     throw new DuplicatePluginHashError(
       existingHash.pluginId,
-      existingHash.version,
+      existingHash.versionId,
+      existingHash.semver,
     );
   }
 
-  const versionId = crypto.randomUUID();
+  const versionId = newId();
   const now = new Date().toISOString();
 
   const stagedPath = await stageUpload(getPluginsRoot(dataDir), fileBytes);
@@ -413,7 +456,7 @@ export async function addPluginVersion(
   try {
     db.transaction(
       (tx) => {
-        // Re-read inside the write lock so concurrent uploads get distinct versions.
+        // Re-read inside the write lock so concurrent uploads see a consistent version set.
         const current = tx
           .select()
           .from(plugins)
@@ -426,18 +469,31 @@ export async function addPluginVersion(
           throw new ForbiddenPluginError();
         }
 
-        const nextVersion = current.latestVersion + 1;
+        const existingRows = tx
+          .select()
+          .from(pluginVersions)
+          .where(eq(pluginVersions.pluginId, pluginId))
+          .all();
+        const dupSemver = existingRows.find((r) => r.semver === semver);
+        if (dupSemver) {
+          throw new DuplicatePluginSemverError(
+            pluginId,
+            dupSemver.id,
+            dupSemver.semver,
+          );
+        }
+
         const { originalPath } = pluginVersionPaths(
           dataDir,
           pluginId,
-          nextVersion,
+          versionId,
         );
 
         tx.insert(pluginVersions)
           .values({
             id: versionId,
             pluginId,
-            version: nextVersion,
+            semver,
             notes: notes ?? null,
             contentHash,
             originalPath,
@@ -446,9 +502,15 @@ export async function addPluginVersion(
           })
           .run();
 
+        const latest = pickLatestBySemver([
+          ...existingRows,
+          { id: versionId, semver },
+        ])!;
+
         tx.update(plugins)
           .set({
-            latestVersion: nextVersion,
+            latestSemver: latest.semver,
+            latestVersionId: latest.id,
             updatedAt: now,
           })
           .where(eq(plugins.id, pluginId))
@@ -465,7 +527,11 @@ export async function addPluginVersion(
     if (isUniqueConstraintError(err)) {
       const dupHash = findPluginByHash(contentHash, { dbPath });
       if (dupHash) {
-        throw new DuplicatePluginHashError(dupHash.pluginId, dupHash.version);
+        throw new DuplicatePluginHashError(
+          dupHash.pluginId,
+          dupHash.versionId,
+          dupHash.semver,
+        );
       }
     }
     throw err;
@@ -546,7 +612,7 @@ export async function deletePlugin(
 
 export async function getPluginVersionBytes(
   pluginId: string,
-  version: number,
+  versionId: string,
   options?: PluginServiceOptions,
 ): Promise<{ bytes: Uint8Array; contentType: string } | null> {
   const db = getDb(options?.dbPath);
@@ -556,7 +622,7 @@ export async function getPluginVersionBytes(
     .where(
       and(
         eq(pluginVersions.pluginId, pluginId),
-        eq(pluginVersions.version, version),
+        eq(pluginVersions.id, versionId),
       ),
     )
     .get();

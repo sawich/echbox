@@ -33,14 +33,14 @@ const { data, error, status, refresh } = await useAsyncData(
   { watch: [id] },
 )
 
-const selectedVersion = ref<number | null>(null)
+const selectedVersion = ref<string | null>(null)
 const editTitle = ref('')
 
 watch(
   data,
   (card) => {
     if (!card) return
-    selectedVersion.value = card.latestVersion
+    selectedVersion.value = card.latestVersionId
     editTitle.value = card.title
   },
   { immediate: true },
@@ -122,8 +122,8 @@ async function submitVote(vote: CardVoteValue | null) {
 const active = computed(() => {
   const card = data.value
   if (!card) return null
-  const version = selectedVersion.value ?? card.latestVersion
-  return card.versions.find(v => v.version === version) ?? card.versions.at(-1) ?? null
+  const versionId = selectedVersion.value ?? card.latestVersionId
+  return card.versions.find(v => v.id === versionId) ?? card.versions.at(-1) ?? null
 })
 
 const imageSrc = computed(() => {
@@ -169,6 +169,7 @@ async function saveTitle() {
 // Author state: upload new version
 const versionFile = ref<File | null>(null)
 const versionNotes = ref('')
+const semver = useSemverInput()
 const uploadingVersion = ref(false)
 const versionError = ref<string | null>(null)
 
@@ -178,13 +179,14 @@ function onVersionFileChange(file: File | null | undefined) {
 }
 
 async function submitNewVersion() {
-  if (!versionFile.value || uploadingVersion.value) return
+  if (!versionFile.value || uploadingVersion.value || !semver.canonical.value) return
   uploadingVersion.value = true
   versionError.value = null
 
   try {
     const form = new FormData()
     form.append('file', versionFile.value)
+    form.append('semver', semver.canonical.value)
     if (versionNotes.value.trim()) {
       form.append('notes', versionNotes.value.trim())
     }
@@ -203,9 +205,10 @@ async function submitNewVersion() {
 
     versionFile.value = null
     versionNotes.value = ''
+    semver.reset()
     await refresh()
-    if (payload?.version) {
-      selectedVersion.value = payload.version
+    if (payload?.latestVersionId) {
+      selectedVersion.value = payload.latestVersionId
     }
   }
   catch (e) {
@@ -387,6 +390,7 @@ async function handleDeleteCard() {
           <VersionList
             v-model="selectedVersion"
             :versions="data.versions"
+            :latest-version-id="data.latestVersionId"
           />
         </SectionCard>
 
@@ -430,7 +434,7 @@ async function handleDeleteCard() {
               class="space-y-3"
               @submit.prevent="submitNewVersion"
             >
-              <UFormField :label="`Publish v${data.latestVersion + 1}`">
+              <UFormField label="Publish new version">
                 <UFileUpload
                   :model-value="versionFile"
                   accept="image/png"
@@ -440,6 +444,18 @@ async function handleDeleteCard() {
                   layout="list"
                   class="w-full"
                   @update:model-value="onVersionFileChange"
+                />
+              </UFormField>
+              <UFormField
+                label="Version"
+                required
+                :error="semver.raw.value.trim() ? semver.error.value ?? undefined : undefined"
+                help="Semantic version, e.g. 1.0.0"
+              >
+                <UInput
+                  v-model="semver.raw.value"
+                  placeholder="1.0.0"
+                  class="w-full font-mono"
                 />
               </UFormField>
               <UInput
@@ -460,9 +476,9 @@ async function handleDeleteCard() {
                 variant="soft"
                 icon="i-lucide-upload"
                 :loading="uploadingVersion"
-                :disabled="!versionFile || uploadingVersion"
+                :disabled="!versionFile || !semver.valid.value || uploadingVersion"
               >
-                Upload v{{ data.latestVersion + 1 }}
+                Publish new version
               </UButton>
             </form>
 
@@ -476,7 +492,7 @@ async function handleDeleteCard() {
         </SectionCard>
 
         <JsonPanel
-          :title="`Card data · v${active?.version ?? data.latestVersion}`"
+          :title="`Card data · v${active?.semver ?? data.latestSemver}`"
           :value="active?.summary ?? {}"
         />
       </div>

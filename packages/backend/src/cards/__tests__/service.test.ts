@@ -71,7 +71,9 @@ describe("character card service", () => {
 
   test("createCard stores original PNG, WebP preview, and DB rows", async () => {
     const fileBytes = await fixtureBytes("chara", "kk_chara.png");
-    const created = await createCard({ gameId,
+    const created = await createCard({
+      gameId,
+      semver: "1.0.0",
       authorId,
       title: "Heroine Card",
       fileBytes,
@@ -80,12 +82,14 @@ describe("character card service", () => {
 
     expect(created.id).toBeString();
     expect(created.title).toBe("Heroine Card");
-    expect(created.latestVersion).toBe(1);
+    expect(created.latestSemver).toBe("1.0.0");
+    expect(created.latestVersionId).toBe(created.versions[0]!.id);
     expect(created.versions).toHaveLength(1);
-    expect(created.versions[0]!.version).toBe(1);
+    expect(created.versions[0]!.semver).toBe("1.0.0");
     expect(created.versions[0]!.notes).toBe("Initial upload");
 
-    const paths = getVersionPaths(created.id, 1, dataDir);
+    const paths = getVersionPaths(created.id, created.latestVersionId, dataDir);
+    expect(paths.versionDir.endsWith(created.latestVersionId)).toBe(true);
     expect(existsSync(paths.originalPath)).toBe(true);
     expect(existsSync(paths.previewPath)).toBe(true);
 
@@ -106,7 +110,8 @@ describe("character card service", () => {
     expect(list).toHaveLength(1);
     expect(list[0]!.id).toBe(created.id);
     expect(list[0]!.title).toBe("Heroine Card");
-    expect(list[0]!.latestVersion).toBe(1);
+    expect(list[0]!.latestSemver).toBe("1.0.0");
+    expect(list[0]!.latestVersionId).toBe(created.latestVersionId);
     expect(list[0]!.versionCount).toBe(1);
 
     const fetched = await getCard(created.id);
@@ -119,12 +124,16 @@ describe("character card service", () => {
     const firstBytes = await fixtureBytes("chara", "kk_chara.png");
     const secondBytes = await fixtureBytes("chara", "kk_mod_chara.png");
 
-    const first = await createCard({ gameId,
+    const first = await createCard({
+      gameId,
+      semver: "1.0.0",
       authorId,
       title: "First Character",
       fileBytes: firstBytes,
     });
-    const second = await createCard({ gameId,
+    const second = await createCard({
+      gameId,
+      semver: "1.0.0",
       authorId: otherUserId,
       title: "Second Character",
       fileBytes: secondBytes,
@@ -137,14 +146,18 @@ describe("character card service", () => {
 
   test("second createCard with same file throws 409 conflict with cardId and version", async () => {
     const fileBytes = await fixtureBytes("chara", "kk_chara.png");
-    const first = await createCard({ gameId,
+    const first = await createCard({
+      gameId,
+      semver: "1.0.0",
       authorId,
       fileBytes,
     });
 
     let caught: unknown;
     try {
-      await createCard({ gameId,
+      await createCard({
+      gameId,
+      semver: "1.0.0",
         authorId: otherUserId,
         fileBytes,
       });
@@ -156,11 +169,13 @@ describe("character card service", () => {
     const conflict = caught as {
       status: number;
       cardId: string;
-      version: number;
+      versionId: string;
+      semver: string;
     };
     expect(conflict.status).toBe(409);
     expect(conflict.cardId).toBe(first.id);
-    expect(conflict.version).toBe(1);
+    expect(conflict.versionId).toBe(first.latestVersionId);
+    expect(conflict.semver).toBe("1.0.0");
 
     const list = await listCharacters();
     expect(list).toHaveLength(1);
@@ -170,7 +185,9 @@ describe("character card service", () => {
     const v1Bytes = await fixtureBytes("chara", "kk_chara.png");
     const v2Bytes = await fixtureBytes("chara", "kk_mod_chara.png");
 
-    const card = await createCard({ gameId,
+    const card = await createCard({
+      gameId,
+      semver: "1.0.0",
       authorId,
       title: "Evolving Card",
       fileBytes: v1Bytes,
@@ -178,17 +195,19 @@ describe("character card service", () => {
 
     const updated = await addVersion({
       cardId: card.id,
+      semver: "2.0.0",
       authorId,
       fileBytes: v2Bytes,
       notes: "Added mod data",
     });
 
-    expect(updated.latestVersion).toBe(2);
+    expect(updated.latestSemver).toBe("2.0.0");
+    expect(updated.latestVersionId).toBe(updated.versions[1]!.id);
     expect(updated.versions).toHaveLength(2);
-    expect(updated.versions[1]!.version).toBe(2);
+    expect(updated.versions[1]!.semver).toBe("2.0.0");
     expect(updated.versions[1]!.notes).toBe("Added mod data");
 
-    const v2Paths = getVersionPaths(card.id, 2, dataDir);
+    const v2Paths = getVersionPaths(card.id, updated.latestVersionId, dataDir);
     expect(existsSync(v2Paths.originalPath)).toBe(true);
     expect(existsSync(v2Paths.previewPath)).toBe(true);
 
@@ -197,6 +216,7 @@ describe("character card service", () => {
     try {
       await addVersion({
         cardId: card.id,
+        semver: "2.0.0",
         authorId,
         fileBytes: v1Bytes,
       });
@@ -208,18 +228,22 @@ describe("character card service", () => {
     const conflict = caught as {
       status: number;
       cardId: string;
-      version: number;
+      versionId: string;
+      semver: string;
     };
     expect(conflict.status).toBe(409);
     expect(conflict.cardId).toBe(card.id);
-    expect(conflict.version).toBe(1);
+    expect(conflict.versionId).toBe(card.latestVersionId);
+    expect(conflict.semver).toBe("1.0.0");
   });
 
   test("addVersion as non-author throws 403", async () => {
     const v1Bytes = await fixtureBytes("chara", "kk_chara.png");
     const v2Bytes = await fixtureBytes("chara", "kk_mod_chara.png");
 
-    const card = await createCard({ gameId,
+    const card = await createCard({
+      gameId,
+      semver: "1.0.0",
       authorId,
       fileBytes: v1Bytes,
     });
@@ -228,6 +252,7 @@ describe("character card service", () => {
     try {
       await addVersion({
         cardId: card.id,
+        semver: "2.0.0",
         authorId: otherUserId,
         fileBytes: v2Bytes,
       });
@@ -237,25 +262,105 @@ describe("character card service", () => {
 
     expect(caught).toBeDefined();
     expect((caught as { status: number }).status).toBe(403);
-    expect(existsSync(getVersionPaths(card.id, 2, dataDir).originalPath)).toBe(
-      false,
-    );
+    expect(
+      existsSync(getVersionPaths(card.id, "unused-version-id", dataDir).originalPath),
+    ).toBe(false);
+    expect((await getCard(card.id))!.versions).toHaveLength(1);
   });
 
-  test("findByHash returns cardId and version when present, null otherwise", async () => {
+  test("addVersion rejects duplicate semver on same card with 409 DUPLICATE_SEMVER", async () => {
+    const card = await createCard({
+      gameId,
+      authorId,
+      semver: "1.0.0",
+      fileBytes: await fixtureBytes("chara", "kk_chara.png"),
+    });
+
+    let caught: unknown;
+    try {
+      await addVersion({
+        cardId: card.id,
+        authorId,
+        semver: "v1.0.0",
+        fileBytes: await fixtureBytes("chara", "kk_mod_chara.png"),
+      });
+    } catch (err) {
+      caught = err;
+    }
+    const err = caught as { status: number; code: string; semver: string };
+    expect(err.status).toBe(409);
+    expect(err.code).toBe("DUPLICATE_SEMVER");
+    expect(err.semver).toBe("1.0.0");
+  });
+
+  test("createCard and addVersion reject missing or invalid semver with 400", async () => {
+    const bytes = await fixtureBytes("chara", "kk_chara.png");
+    for (const bad of ["", "   ", "not-a-version"]) {
+      let caught: unknown;
+      try {
+        await createCard({ gameId, authorId, semver: bad, fileBytes: bytes });
+      } catch (err) {
+        caught = err;
+      }
+      expect((caught as { status: number }).status).toBe(400);
+    }
+    expect(await listCharacters()).toHaveLength(0);
+
+    const card = await createCard({
+      gameId,
+      authorId,
+      semver: "1.0.0",
+      fileBytes: bytes,
+    });
+    let caught: unknown;
+    try {
+      await addVersion({
+        cardId: card.id,
+        authorId,
+        semver: "nope",
+        fileBytes: await fixtureBytes("chara", "kk_mod_chara.png"),
+      });
+    } catch (err) {
+      caught = err;
+    }
+    expect((caught as { status: number }).status).toBe(400);
+  });
+
+  test("latest is chosen by semver, not insertion order", async () => {
+    const card = await createCard({
+      gameId,
+      authorId,
+      semver: "2.0.0",
+      fileBytes: await fixtureBytes("chara", "kk_chara.png"),
+    });
+    const updated = await addVersion({
+      cardId: card.id,
+      authorId,
+      semver: "1.5.0",
+      fileBytes: await fixtureBytes("chara", "kk_mod_chara.png"),
+    });
+    expect(updated.latestSemver).toBe("2.0.0");
+    expect(updated.latestVersionId).toBe(card.latestVersionId);
+    expect(updated.versions.map((v) => v.semver)).toEqual(["1.5.0", "2.0.0"]);
+  });
+
+  test("findByHash returns cardId, versionId and semver when present, null otherwise", async () => {
     const v1Bytes = await fixtureBytes("chara", "kk_chara.png");
     const hash = sha256Hex(v1Bytes);
 
     expect(await findByHash(hash)).toBeNull();
 
-    const card = await createCard({ gameId,
+    const card = await createCard({
+      gameId,
+      semver: "1.0.0",
       authorId,
       fileBytes: v1Bytes,
     });
 
     expect(await findByHash(hash)).toEqual({
       cardId: card.id,
-      version: 1,
+      versionId: card.latestVersionId,
+      semver: "1.0.0",
     });
   });
 
@@ -264,7 +369,9 @@ describe("character card service", () => {
 
     let caught: unknown;
     try {
-      await createCard({ gameId,
+      await createCard({
+      gameId,
+      semver: "1.0.0",
         authorId,
         fileBytes: badBytes,
       });
@@ -280,7 +387,9 @@ describe("character card service", () => {
     const coordBytes = await fixtureBytes("coordinate", "kk_coordinate.png");
     let coordCaught: unknown;
     try {
-      await createCard({ gameId,
+      await createCard({
+      gameId,
+      semver: "1.0.0",
         authorId,
         fileBytes: coordBytes,
       });
@@ -294,7 +403,9 @@ describe("character card service", () => {
 
   test("patchCard updates metadata for author and throws 403 for other user", async () => {
     const v1Bytes = await fixtureBytes("chara", "kk_chara.png");
-    const card = await createCard({ gameId,
+    const card = await createCard({
+      gameId,
+      semver: "1.0.0",
       authorId,
       title: "Before Title",
       fileBytes: v1Bytes,
@@ -327,12 +438,14 @@ describe("character card service", () => {
 
   test("deleteCard throws 403 for other user and removes DB + files for author", async () => {
     const v1Bytes = await fixtureBytes("chara", "kk_chara.png");
-    const card = await createCard({ gameId,
+    const card = await createCard({
+      gameId,
+      semver: "1.0.0",
       authorId,
       fileBytes: v1Bytes,
     });
 
-    const paths = getVersionPaths(card.id, 1, dataDir);
+    const paths = getVersionPaths(card.id, card.latestVersionId, dataDir);
     expect(existsSync(paths.originalPath)).toBe(true);
 
     let forbidden: unknown;

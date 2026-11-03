@@ -5,7 +5,8 @@ export const CardTypeSchema = z.enum(["character", "scene"]);
 export type CardType = z.infer<typeof CardTypeSchema>;
 
 export const CardVersionDetailSchema = z.object({
-  version: z.number().int().positive(),
+  id: z.string().min(1),
+  semver: z.string().min(1),
   createdAt: z.iso.datetime(),
   notes: z.string().optional(),
   imageUrl: z.string().min(1),
@@ -18,7 +19,8 @@ export const CardListItemSchema = z.object({
   type: CardTypeSchema,
   slug: z.string().min(1),
   title: z.string().min(1),
-  latestVersion: z.number().int().positive(),
+  latestSemver: z.string().min(1),
+  latestVersionId: z.string().min(1),
   versionCount: z.number().int().positive(),
   imageUrl: z.string().min(1),
   summary: z.record(z.string(), z.unknown()),
@@ -43,7 +45,8 @@ export const CardDetailSchema = z.object({
   type: CardTypeSchema,
   slug: z.string().min(1),
   title: z.string().min(1),
-  latestVersion: z.number().int().positive(),
+  latestSemver: z.string().min(1),
+  latestVersionId: z.string().min(1),
   versions: z.array(CardVersionDetailSchema).min(1),
 });
 export type CardDetail = z.infer<typeof CardDetailSchema>;

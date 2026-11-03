@@ -27,6 +27,12 @@ export function assertSafeSoftmodId(softmodId: string): void {
   }
 }
 
+export function assertSafeVersionId(versionId: string): void {
+  if (!isSafeStorageId(versionId)) {
+    throw new BadSoftmodError("Invalid version id");
+  }
+}
+
 /** Per-softmod directory, guaranteed to live strictly under the softmods root. */
 export function getSoftmodDir(softmodId: string, dataDir?: string): string {
   assertSafeSoftmodId(softmodId);
@@ -37,9 +43,10 @@ export function getSoftmodDir(softmodId: string, dataDir?: string): string {
 export function softmodVersionPaths(
   dataDir: string | undefined,
   softmodId: string,
-  version: number,
+  versionId: string,
 ): { dir: string; originalPath: string } {
-  const dir = join(getSoftmodDir(softmodId, dataDir), `v${version}`);
+  assertSafeVersionId(versionId);
+  const dir = join(getSoftmodDir(softmodId, dataDir), versionId);
   return {
     dir,
     originalPath: join(dir, "original.zipmod"),

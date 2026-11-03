@@ -62,7 +62,15 @@ describe("plugin archive validation and storage hardening", () => {
     ];
     for (const fileBytes of bad) {
       await expect(
-        createPlugin({ gameId, authorId, title: "P", fileBytes, dbPath, dataDir }),
+        createPlugin({
+          gameId,
+          authorId,
+          title: "P",
+          semver: "1.0.0",
+          fileBytes,
+          dbPath,
+          dataDir,
+        }),
       ).rejects.toBeInstanceOf(BadPluginError);
     }
     expect(existsSync(join(dataDir, "plugins"))).toBe(false);
@@ -72,6 +80,7 @@ describe("plugin archive validation and storage hardening", () => {
     const created = await createPlugin({ gameId,
       authorId,
       title: "P",
+      semver: "1.0.0",
       fileBytes: pluginZip("v1"),
       dbPath,
       dataDir,
@@ -81,6 +90,7 @@ describe("plugin archive validation and storage hardening", () => {
         addPluginVersion({
           pluginId: created.id,
           authorId,
+          semver: "1.0.1",
           fileBytes,
           dbPath,
           dataDir,
@@ -98,8 +108,8 @@ describe("plugin archive validation and storage hardening", () => {
   test("concurrent identical uploads: one wins, loser maps to duplicate-hash", async () => {
     const bytes = pluginZip("same");
     const results = await Promise.allSettled([
-      createPlugin({ gameId, authorId, title: "A", fileBytes: bytes, dbPath, dataDir }),
-      createPlugin({ gameId, authorId, title: "B", fileBytes: bytes, dbPath, dataDir }),
+      createPlugin({ gameId, authorId, title: "A", semver: "1.0.0", fileBytes: bytes, dbPath, dataDir }),
+      createPlugin({ gameId, authorId, title: "B", semver: "1.0.0", fileBytes: bytes, dbPath, dataDir }),
     ]);
     expect(results.filter((r) => r.status === "fulfilled")).toHaveLength(1);
     const bad = results.find((r) => r.status === "rejected") as PromiseRejectedResult;
@@ -107,19 +117,21 @@ describe("plugin archive validation and storage hardening", () => {
     expect(readdirSync(join(dataDir, "plugins", ".staging"))).toEqual([]);
   });
 
-  test("concurrent version uploads get distinct versions and intact files", async () => {
+  test("concurrent version uploads get distinct semvers and intact files", async () => {
     const created = await createPlugin({ gameId,
       authorId,
       title: "P",
+      semver: "1.0.0",
       fileBytes: pluginZip("v1"),
       dbPath,
       dataDir,
     });
     await Promise.all(
-      ["a", "b", "c"].map((p) =>
+      ["a", "b", "c"].map((p, i) =>
         addPluginVersion({
           pluginId: created.id,
           authorId,
+          semver: `1.0.${i + 1}`,
           fileBytes: pluginZip(p),
           dbPath,
           dataDir,
@@ -127,7 +139,15 @@ describe("plugin archive validation and storage hardening", () => {
       ),
     );
     const detail = (await getPlugin(created.id, { dbPath, dataDir }))!;
-    expect(detail.versions.map((v) => v.version)).toEqual([1, 2, 3, 4]);
+    expect(detail.versions.map((v) => v.semver)).toEqual([
+      "1.0.0",
+      "1.0.1",
+      "1.0.2",
+      "1.0.3",
+    ]);
+    expect(new Set(detail.versions.map((v) => v.id)).size).toBe(4);
+    expect(detail.latestSemver).toBe("1.0.3");
+    expect(detail.latestVersionId).toBe(detail.versions[3]!.id);
     for (const v of detail.versions) {
       const stored = new Uint8Array(await Bun.file(v.originalPath).arrayBuffer());
       expect(sha256Hex(stored)).toBe(v.contentHash);

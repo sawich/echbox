@@ -59,12 +59,15 @@ describe("card votes", () => {
       ])
       .run();
 
+    gameId = seedTestGame(authorId, { dbPath }).id;
+
     authorCookie = (await createSession(authorId, dbPath)).cookie.split(";")[0]!;
     voterCookie = (await createSession(voterId, dbPath)).cookie.split(";")[0]!;
 
     const fileBytes = await fixtureBytes("chara", "kk_chara.png");
     const form = new FormData();
     form.append("gameId", gameId);
+    form.append("semver", "1.0.0");
     form.append(
       "file",
       new File([fileBytes], "kk_chara.png", { type: "image/png" }),
@@ -254,6 +257,7 @@ describe("card votes", () => {
     const fileBytes = await fixtureBytes("chara", "kk_chara.png");
     const form = new FormData();
     form.append("gameId", gameId);
+    form.append("semver", "1.0.0");
     form.append(
       "file",
       new File([fileBytes], "kk_chara.png", { type: "image/png" }),
