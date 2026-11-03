@@ -61,7 +61,10 @@ watch(
     libraryInstanceId.value = null
     if (!gameId || !isDesktop.value) return
     const instances = await listInstalledInstances()
-    libraryInstanceId.value = instances.find(i => i.gameId === gameId)?.instanceId ?? null
+    const match = instances
+      .filter(i => i.gameId === gameId)
+      .sort((a, b) => a.createdAt.localeCompare(b.createdAt))[0]
+    libraryInstanceId.value = match?.instanceId ?? null
   },
   { immediate: true },
 )

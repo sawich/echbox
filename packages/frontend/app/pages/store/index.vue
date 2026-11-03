@@ -1,15 +1,16 @@
 <script setup lang="ts">
 import type { GameListItem } from '@echbox/shared'
+import type { GameInstance } from '~/composables/useLocalInstalls'
 
 const api = useApi()
 const config = useRuntimeConfig()
 const apiUrl = computed(() => String(config.public.apiUrl).replace(/\/$/, ''))
 const { isAdmin } = useAuth()
-const { isDesktop, listInstalledGames, installGame } = useLocalInstalls()
+const { isDesktop, listInstalledInstances, installGame } = useLocalInstalls()
 const { extractFromPath, pickExe, listenDragDrop } = useExeIcon()
 const router = useRouter()
 
-const installed = ref<Set<string>>(new Set())
+const instances = ref<GameInstance[]>([])
 const busyId = ref<string | null>(null)
 const actionError = ref<string | null>(null)
 
@@ -152,12 +153,22 @@ function openEdit(game: GameListItem) {
   showEdit.value = true
 }
 
+function instancesForGame(gameId: string): GameInstance[] {
+  return instances.value
+    .filter(i => i.gameId === gameId)
+    .sort((a, b) => a.createdAt.localeCompare(b.createdAt))
+}
+
+function installCount(gameId: string): number {
+  return instancesForGame(gameId).length
+}
+
 async function refreshInstalled() {
   if (!isDesktop.value) {
-    installed.value = new Set()
+    instances.value = []
     return
   }
-  installed.value = new Set(await listInstalledGames())
+  instances.value = await listInstalledInstances()
 }
 
 onMounted(() => {
@@ -172,8 +183,9 @@ async function onInstall(game: GameListItem) {
   busyId.value = game.id
   actionError.value = null
   try {
-    await installGame(game.id)
+    const created = await installGame(game.id)
     await refreshInstalled()
+    await router.push(`/library/${created.instanceId}`)
   }
   catch (err) {
     actionError.value = err instanceof Error ? err.message : 'Install failed'
@@ -184,7 +196,9 @@ async function onInstall(game: GameListItem) {
 }
 
 async function onOpen(game: GameListItem) {
-  await router.push(`/library/${game.id}`)
+  const first = instancesForGame(game.id)[0]
+  if (!first) return
+  await router.push(`/library/${first.instanceId}`)
 }
 
 async function submitCreate() {
@@ -590,16 +604,24 @@ const editPreviewSrc = computed(() => {
             </p>
           </div>
         </div>
-        <div class="mt-auto flex flex-wrap gap-2">
+        <div class="mt-auto flex flex-wrap items-center gap-2">
           <UButton
-            v-if="installed.has(game.id)"
+            v-if="installCount(game.id) > 0"
             color="primary"
+            variant="outline"
             @click="onOpen(game)"
           >
             Open in Library
+            <UBadge
+              color="primary"
+              variant="solid"
+              size="sm"
+              class="ms-1.5"
+            >
+              {{ installCount(game.id) }}
+            </UBadge>
           </UButton>
           <UButton
-            v-else
             color="primary"
             :loading="busyId === game.id"
             :disabled="!isDesktop"
