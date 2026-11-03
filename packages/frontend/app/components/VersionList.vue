@@ -59,14 +59,19 @@ function confirmDelete(versionId: string, event: Event) {
       :key="ver.id"
     >
       <div
-        class="group relative flex w-full items-start gap-3 rounded-[var(--radius-md)] px-3 py-2.5 transition-colors"
-        :class="selected === ver.id
-          ? 'bg-[color-mix(in_oklab,var(--ed-primary)_10%,transparent)]'
-          : 'hover:bg-[var(--ed-surface-container-high)]'"
+        class="group relative rounded-[var(--radius-md)] transition-colors"
+        :class="[
+          selected === ver.id
+            ? 'bg-[color-mix(in_oklab,var(--ed-primary)_10%,transparent)]'
+            : 'hover:bg-[var(--ed-surface-container-high)]',
+          deletable
+            ? confirmId === ver.id ? 'pr-36' : 'pr-10'
+            : '',
+        ]"
       >
         <button
           type="button"
-          class="flex min-w-0 flex-1 items-start gap-3 text-left"
+          class="flex w-full items-start gap-3 px-3 py-2.5 text-left"
           :aria-current="selected === ver.id ? 'true' : undefined"
           @click="selected = ver.id"
         >
@@ -76,7 +81,7 @@ function confirmDelete(versionId: string, event: Event) {
               ? 'bg-[var(--ed-primary)] ring-[color-mix(in_oklab,var(--ed-primary)_20%,transparent)]'
               : 'bg-[var(--ed-outline)] ring-transparent'"
           />
-          <span class="min-w-0 flex-1 space-y-0.5">
+          <span class="flex min-w-0 flex-1 flex-col gap-0.5">
             <span class="flex flex-wrap items-center gap-2">
               <span
                 class="font-mono text-sm font-medium"
@@ -98,14 +103,14 @@ function confirmDelete(versionId: string, event: Event) {
             </span>
             <span
               v-if="ver.notes"
-              class="block text-sm text-pretty text-muted"
+              class="text-sm text-pretty text-muted"
             >{{ ver.notes }}</span>
           </span>
         </button>
 
         <div
           v-if="deletable"
-          class="shrink-0 self-center"
+          class="absolute inset-y-0 right-1.5 flex items-center"
         >
           <div
             v-if="confirmId === ver.id"
