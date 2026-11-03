@@ -162,6 +162,7 @@ const activeDownloadHref = computed(() =>
   active.value ? `${apiUrl.value}${active.value.downloadUrl}` : '',
 )
 
+const showVersionUpload = ref(false)
 const versionFile = ref<File | null>(null)
 const versionNotes = ref('')
 const semver = useSemverInput()
@@ -169,6 +170,18 @@ const uploadingVersion = ref(false)
 const versionError = ref<string | null>(null)
 const versionDuplicateHit = ref<UploadDuplicateHit | null>(null)
 const deletingVersionId = ref<string | null>(null)
+
+function resetVersionUploadForm() {
+  versionFile.value = null
+  versionNotes.value = ''
+  semver.reset()
+  versionError.value = null
+  versionDuplicateHit.value = null
+}
+
+watch(showVersionUpload, (open) => {
+  if (!open) resetVersionUploadForm()
+})
 
 function onVersionFileChange(file: File | null | undefined) {
   versionFile.value = file ?? null
@@ -234,9 +247,7 @@ async function submitNewVersion() {
       return
     }
 
-    versionFile.value = null
-    versionNotes.value = ''
-    semver.reset()
+    showVersionUpload.value = false
     await refresh()
     if (payload?.latestVersionId) {
       selectedVersion.value = payload.latestVersionId
@@ -385,68 +396,103 @@ async function handleDelete() {
             v-if="isAuthor"
             eyebrow="Author controls"
             title="Manage softmod"
-            description="Title and manifest metadata come from the package. Upload a new .zipmod to publish another version."
+            description="Title and manifest metadata come from the package."
             icon="i-lucide-settings-2"
           >
             <div class="space-y-6">
-              <form
-                class="space-y-3"
-                @submit.prevent="submitNewVersion"
+              <UModal
+                v-model:open="showVersionUpload"
+                title="Publish new version"
+                description="Drop a new .zipmod to publish another version of this softmod."
+                :ui="{ content: 'sm:max-w-lg' }"
               >
-                <UFormField label="Publish new version">
-                  <UFileUpload
-                    :model-value="versionFile"
-                    accept=".zipmod"
-                    icon="i-lucide-file-archive"
-                    label="Drop the new .zipmod here"
-                    description="or click to browse"
-                    layout="list"
-                    class="w-full"
-                    @update:model-value="onVersionFileChange"
-                  />
-                </UFormField>
-                <UFormField
-                  label="Version"
-                  required
-                  :error="semver.fieldError.value"
-                  help="Semantic version, e.g. 1.0.0"
-                >
-                  <UInput
-                    v-model="semver.raw.value"
-                    placeholder="1.0.0"
-                    @blur="semver.markTried()"
-                    class="w-full font-mono"
-                  />
-                </UFormField>
-                <UInput
-                  v-model="versionNotes"
-                  placeholder="What changed? (optional)"
-                  class="w-full"
-                />
-                <DuplicateNotice
-                  v-if="versionDuplicateHit"
-                  :to="`/softmods/${versionDuplicateHit.id}`"
-                  :label="versionDuplicateHit.semver ? `version ${versionDuplicateHit.semver}` : 'existing upload'"
-                  lead="This file already exists as"
-                />
-                <UAlert
-                  v-if="versionError"
-                  color="error"
-                  variant="subtle"
-                  icon="i-lucide-circle-alert"
-                  :title="versionError"
-                />
                 <UButton
-                  type="submit"
                   color="primary"
                   variant="soft"
                   icon="i-lucide-upload"
-                  :loading="uploadingVersion"
-                  :disabled="!versionFile || uploadingVersion"
                 >
                   Publish new version
                 </UButton>
-              </form>
+
+                <template #body>
+                  <form
+                    id="softmod-version-upload-form"
+                    class="grid gap-5"
+                    @submit.prevent="submitNewVersion"
+                  >
+                    <UFileUpload
+                      :model-value="versionFile"
+                      accept=".zipmod"
+                      icon="i-lucide-file-archive"
+                      label="Drop the new .zipmod here"
+                      description="or click to browse · .zipmod only"
+                      layout="list"
+                      class="min-h-40"
+                      @update:model-value="onVersionFileChange"
+                    />
+                    <UFormField
+                      label="Version"
+                      required
+                      :error="semver.fieldError.value"
+                      help="Semantic version, e.g. 1.0.0"
+                    >
+                      <UInput
+                        v-model="semver.raw.value"
+                        placeholder="1.0.0"
+                        @blur="semver.markTried()"
+                        class="w-full font-mono"
+                      />
+                    </UFormField>
+                    <UFormField
+                      label="Version notes"
+                      hint="Optional"
+                    >
+                      <UInput
+                        v-model="versionNotes"
+                        placeholder="What changed?"
+                        class="w-full"
+                      />
+                    </UFormField>
+                    <DuplicateNotice
+                      v-if="versionDuplicateHit"
+                      :to="`/softmods/${versionDuplicateHit.id}`"
+                      :label="versionDuplicateHit.semver ? `version ${versionDuplicateHit.semver}` : 'existing upload'"
+                      lead="This file already exists as"
+                      @navigate="showVersionUpload = false"
+                    />
+                    <UAlert
+                      v-if="versionError"
+                      color="error"
+                      variant="subtle"
+                      icon="i-lucide-circle-alert"
+                      :title="versionError"
+                    />
+                  </form>
+                </template>
+
+                <template #footer="{ close }">
+                  <div class="flex w-full justify-end gap-2">
+                    <UButton
+                      type="button"
+                      variant="ghost"
+                      color="neutral"
+                      @click="close()"
+                    >
+                      Cancel
+                    </UButton>
+                    <UButton
+                      type="submit"
+                      form="softmod-version-upload-form"
+                      color="primary"
+                      icon="i-lucide-check"
+                      :loading="uploadingVersion"
+                      :disabled="!versionFile || uploadingVersion || Boolean(versionDuplicateHit)"
+                    >
+                      Publish version
+                    </UButton>
+                  </div>
+                </template>
+              </UModal>
 
               <DangerZone
                 subject="this softmod"
