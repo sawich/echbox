@@ -12,17 +12,27 @@ export {
 } from "./schemas/health";
 
 export {
+  ContentKindSchema,
+  GameContentKindSchema,
   GameIconUrlsSchema,
   GameListItemSchema,
   GameDetailSchema,
   GameListResponseSchema,
   CreateGameBodySchema,
+  type ContentKind,
+  type GameContentKind,
   type GameIconUrls,
   type GameListItem,
   type GameDetail,
   type GameListResponse,
   type CreateGameBody,
 } from "./schemas/games";
+
+export {
+  BadContentPathError,
+  normalizeContentRelPath,
+  parseContentKindsInput,
+} from "./content-path";
 
 export {
   EchoBodySchema,

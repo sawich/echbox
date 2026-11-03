@@ -1,5 +1,20 @@
 import { z } from "zod";
 
+export const ContentKindSchema = z.enum([
+  "cards",
+  "clothes",
+  "scenes",
+  "plugins",
+  "softmods",
+]);
+export type ContentKind = z.infer<typeof ContentKindSchema>;
+
+export const GameContentKindSchema = z.object({
+  kind: ContentKindSchema,
+  relPath: z.string().nullable(),
+});
+export type GameContentKind = z.infer<typeof GameContentKindSchema>;
+
 export const GameIconUrlsSchema = z.object({
   "32": z.string().min(1),
   "64": z.string().min(1),
@@ -17,6 +32,7 @@ export const GameListItemSchema = z.object({
   createdAt: z.iso.datetime(),
   updatedAt: z.iso.datetime(),
   iconUrls: GameIconUrlsSchema,
+  contentKinds: z.array(GameContentKindSchema),
 });
 export type GameListItem = z.infer<typeof GameListItemSchema>;
 
@@ -32,5 +48,13 @@ export const CreateGameBodySchema = z.object({
   title: z.string().min(1),
   slug: z.string().min(1).optional(),
   description: z.string().nullable().optional(),
+  contentKinds: z
+    .array(
+      z.object({
+        kind: ContentKindSchema,
+        relPath: z.string().nullable().optional(),
+      }),
+    )
+    .optional(),
 });
 export type CreateGameBody = z.infer<typeof CreateGameBodySchema>;
