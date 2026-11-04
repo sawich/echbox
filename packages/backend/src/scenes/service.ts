@@ -20,10 +20,14 @@ import {
   SceneNotFoundError,
 } from "./errors";
 import {
+  loadContentOriginal,
+  storeContentOriginal,
+  type ContentBlobOptions,
+} from "../proxy/content-blob-service";
+import {
   getVersionPaths,
   removeSceneFiles,
   removeVersionFiles,
-  writeOriginalPng,
 } from "./storage";
 import { assertGameSupportsKind } from "../games/service";
 import {
@@ -41,14 +45,11 @@ export {
   SceneServiceError,
 } from "./errors";
 
-export type SceneServiceOptions = {
-  dbPath?: string;
-  dataDir?: string;
-};
+export type SceneServiceOptions = ContentBlobOptions;
 
 export type SceneVersionDetail = CardDetail["versions"][number] & {
   contentHash: string;
-  originalPath: string;
+  originalPath: string | null;
   previewPath: string;
 };
 
@@ -345,7 +346,7 @@ export async function createScene(
     versionId: string;
     semver: string;
     contentHash: string;
-    originalPath: string;
+    originalPath: string | null;
     previewPath: string;
   }
 > {
@@ -376,7 +377,7 @@ export async function createScene(
     ? slugify(slug, sceneId)
     : slugify(resolvedTitle, sceneId);
 
-  const { originalPath, previewPath } = getVersionPaths(
+  const { previewPath } = getVersionPaths(
     sceneId,
     versionId,
     dataDir,
@@ -388,7 +389,12 @@ export async function createScene(
   }
 
   await writeWebpPreview(previewSource, previewPath);
-  await writeOriginalPng(fileBytes, originalPath);
+  await storeContentOriginal(contentHash, fileBytes, {
+    dbPath,
+    dataDir,
+    transport: input.transport,
+    telegramChatId: input.telegramChatId,
+  });
 
   const db = getDb(dbPath);
   const summaryJson = JSON.stringify(ks.summary());
@@ -415,7 +421,7 @@ export async function createScene(
         semver,
         notes: notes ?? null,
         contentHash,
-        originalPath,
+        originalPath: null,
         previewPath,
         summaryJson,
         createdAt: now,
@@ -430,7 +436,7 @@ export async function createScene(
     versionId,
     semver,
     contentHash,
-    originalPath,
+    originalPath: null,
     previewPath,
   };
 }
@@ -443,7 +449,7 @@ export async function addSceneVersion(
     versionId: string;
     semver: string;
     contentHash: string;
-    originalPath: string;
+    originalPath: string | null;
     previewPath: string;
   }
 > {
@@ -494,7 +500,7 @@ export async function addSceneVersion(
   const versionId = newId();
   const now = new Date().toISOString();
 
-  const { originalPath, previewPath } = getVersionPaths(
+  const { previewPath } = getVersionPaths(
     sceneId,
     versionId,
     dataDir,
@@ -506,7 +512,12 @@ export async function addSceneVersion(
   }
 
   await writeWebpPreview(previewSource, previewPath);
-  await writeOriginalPng(fileBytes, originalPath);
+  await storeContentOriginal(contentHash, fileBytes, {
+    dbPath,
+    dataDir,
+    transport: input.transport,
+    telegramChatId: input.telegramChatId,
+  });
 
   const summaryJson = JSON.stringify(ks.summary());
 
@@ -518,7 +529,7 @@ export async function addSceneVersion(
         semver,
         notes: notes ?? null,
         contentHash,
-        originalPath,
+        originalPath: null,
         previewPath,
         summaryJson,
         createdAt: now,
@@ -549,7 +560,7 @@ export async function addSceneVersion(
     versionId,
     semver,
     contentHash,
-    originalPath,
+    originalPath: null,
     previewPath,
   };
 }
@@ -748,13 +759,26 @@ export async function getSceneVersionImage(
 
   if (!row) return null;
 
-  const filePath = options?.original ? row.originalPath : row.previewPath;
-  const file = Bun.file(filePath);
+  if (options?.original) {
+    const bytes = await loadContentOriginal(row.contentHash, row.originalPath, {
+      dbPath: options?.dbPath,
+      dataDir: options?.dataDir,
+      transport: options?.transport,
+      telegramChatId: options?.telegramChatId,
+    });
+    if (!bytes) return null;
+    return {
+      bytes,
+      contentType: "image/png",
+    };
+  }
+
+  const file = Bun.file(row.previewPath);
   if (!(await file.exists())) return null;
 
   return {
     bytes: new Uint8Array(await file.arrayBuffer()),
-    contentType: options?.original ? "image/png" : "image/webp",
+    contentType: "image/webp",
   };
 }
 

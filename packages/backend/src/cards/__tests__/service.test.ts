@@ -14,11 +14,13 @@ import {
   deleteVersion,
   findByHash,
   getCard,
+  getVersionImage,
   listCharacters,
   patchCard,
 } from "../service";
 import { getVersionPaths } from "../storage";
 import { seedTestGame } from "../../__tests__/test-game";
+import { findContentBlob } from "../../proxy/blob-store";
 
 describe("character card service", () => {
   let tempDir: string;
@@ -91,13 +93,19 @@ describe("character card service", () => {
 
     const paths = getVersionPaths(created.id, created.latestVersionId, dataDir);
     expect(paths.versionDir.endsWith(created.latestVersionId)).toBe(true);
-    expect(existsSync(paths.originalPath)).toBe(true);
+    expect(existsSync(paths.originalPath)).toBe(false);
     expect(existsSync(paths.previewPath)).toBe(true);
+    expect(findContentBlob(sha256Hex(fileBytes), dbPath)).toEqual({
+      chunkCount: 1,
+    });
 
-    const savedOriginal = new Uint8Array(
-      await Bun.file(paths.originalPath).arrayBuffer(),
+    const savedOriginal = await getVersionImage(
+      created.id,
+      created.latestVersionId,
+      { dbPath, dataDir, original: true },
     );
-    expect(Buffer.from(savedOriginal).equals(Buffer.from(fileBytes))).toBe(
+    expect(savedOriginal).not.toBeNull();
+    expect(Buffer.from(savedOriginal!.bytes).equals(Buffer.from(fileBytes))).toBe(
       true,
     );
 
@@ -209,7 +217,7 @@ describe("character card service", () => {
     expect(updated.versions[1]!.notes).toBe("Added mod data");
 
     const v2Paths = getVersionPaths(card.id, updated.latestVersionId, dataDir);
-    expect(existsSync(v2Paths.originalPath)).toBe(true);
+    expect(existsSync(v2Paths.originalPath)).toBe(false);
     expect(existsSync(v2Paths.previewPath)).toBe(true);
 
     // Re-uploading v1Bytes as a new version must 409
@@ -557,7 +565,7 @@ describe("character card service", () => {
     });
 
     const paths = getVersionPaths(card.id, card.latestVersionId, dataDir);
-    expect(existsSync(paths.originalPath)).toBe(true);
+    expect(existsSync(paths.originalPath)).toBe(false);
 
     let forbidden: unknown;
     try {
@@ -569,7 +577,7 @@ describe("character card service", () => {
       forbidden = err;
     }
     expect((forbidden as { status: number }).status).toBe(403);
-    expect(existsSync(paths.originalPath)).toBe(true);
+    expect(existsSync(paths.originalPath)).toBe(false);
 
     await deleteCard({
       cardId: card.id,

@@ -13,6 +13,7 @@ import {
   createPlugin,
   DuplicatePluginHashError,
   getPlugin,
+  getPluginVersionBytes,
 } from "../service";
 import { getPluginDir } from "../storage";
 import { seedTestGame } from "../../__tests__/test-game";
@@ -149,8 +150,21 @@ describe("plugin archive validation and storage hardening", () => {
     expect(detail.latestSemver).toBe("1.0.3");
     expect(detail.latestVersionId).toBe(detail.versions[3]!.id);
     for (const v of detail.versions) {
-      const stored = new Uint8Array(await Bun.file(v.originalPath).arrayBuffer());
-      expect(sha256Hex(stored)).toBe(v.contentHash);
+      const label =
+        v.semver === "1.0.0"
+          ? "v1"
+          : v.semver === "1.0.1"
+            ? "a"
+            : v.semver === "1.0.2"
+              ? "b"
+              : "c";
+      const file = await getPluginVersionBytes(created.id, v.id, {
+        dbPath,
+        dataDir,
+      });
+      expect(file).not.toBeNull();
+      expect(sha256Hex(file!.bytes)).toBe(v.contentHash);
+      expect(sha256Hex(file!.bytes)).toBe(sha256Hex(pluginZip(label)));
     }
   });
 });

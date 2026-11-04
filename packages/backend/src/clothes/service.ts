@@ -20,10 +20,14 @@ import {
   ClothesNotFoundError,
 } from "./errors";
 import {
+  loadContentOriginal,
+  storeContentOriginal,
+  type ContentBlobOptions,
+} from "../proxy/content-blob-service";
+import {
   getVersionPaths,
   removeClothesFiles,
   removeVersionFiles,
-  writeOriginalPng,
 } from "./storage";
 import { assertGameSupportsKind } from "../games/service";
 import {
@@ -41,14 +45,11 @@ export {
   ClothesServiceError,
 } from "./errors";
 
-export type ClothesServiceOptions = {
-  dbPath?: string;
-  dataDir?: string;
-};
+export type ClothesServiceOptions = ContentBlobOptions;
 
 export type ClothesVersionDetail = CardDetail["versions"][number] & {
   contentHash: string;
-  originalPath: string;
+  originalPath: string | null;
   previewPath: string;
 };
 
@@ -335,7 +336,7 @@ export async function createClothes(
     versionId: string;
     semver: string;
     contentHash: string;
-    originalPath: string;
+    originalPath: string | null;
     previewPath: string;
   }
 > {
@@ -368,7 +369,7 @@ export async function createClothes(
     ? slugify(slug, clothesId)
     : slugify(resolvedTitle, clothesId);
 
-  const { originalPath, previewPath } = getVersionPaths(
+  const { previewPath } = getVersionPaths(
     clothesId,
     versionId,
     dataDir,
@@ -380,7 +381,12 @@ export async function createClothes(
   }
 
   await writeWebpPreview(previewSource, previewPath);
-  await writeOriginalPng(fileBytes, originalPath);
+  await storeContentOriginal(contentHash, fileBytes, {
+    dbPath,
+    dataDir,
+    transport: input.transport,
+    telegramChatId: input.telegramChatId,
+  });
 
   const db = getDb(dbPath);
   const summaryJson = JSON.stringify(summary);
@@ -407,7 +413,7 @@ export async function createClothes(
         semver,
         notes: notes ?? null,
         contentHash,
-        originalPath,
+        originalPath: null,
         previewPath,
         summaryJson,
         createdAt: now,
@@ -422,7 +428,7 @@ export async function createClothes(
     versionId,
     semver,
     contentHash,
-    originalPath,
+    originalPath: null,
     previewPath,
   };
 }
@@ -435,7 +441,7 @@ export async function addClothesVersion(
     versionId: string;
     semver: string;
     contentHash: string;
-    originalPath: string;
+    originalPath: string | null;
     previewPath: string;
   }
 > {
@@ -486,7 +492,7 @@ export async function addClothesVersion(
   const versionId = newId();
   const now = new Date().toISOString();
 
-  const { originalPath, previewPath } = getVersionPaths(
+  const { previewPath } = getVersionPaths(
     clothesId,
     versionId,
     dataDir,
@@ -498,7 +504,12 @@ export async function addClothesVersion(
   }
 
   await writeWebpPreview(previewSource, previewPath);
-  await writeOriginalPng(fileBytes, originalPath);
+  await storeContentOriginal(contentHash, fileBytes, {
+    dbPath,
+    dataDir,
+    transport: input.transport,
+    telegramChatId: input.telegramChatId,
+  });
 
   const summaryJson = JSON.stringify(ks.summary());
 
@@ -510,7 +521,7 @@ export async function addClothesVersion(
         semver,
         notes: notes ?? null,
         contentHash,
-        originalPath,
+        originalPath: null,
         previewPath,
         summaryJson,
         createdAt: now,
@@ -541,7 +552,7 @@ export async function addClothesVersion(
     versionId,
     semver,
     contentHash,
-    originalPath,
+    originalPath: null,
     previewPath,
   };
 }
@@ -740,13 +751,26 @@ export async function getClothesVersionImage(
 
   if (!row) return null;
 
-  const filePath = options?.original ? row.originalPath : row.previewPath;
-  const file = Bun.file(filePath);
+  if (options?.original) {
+    const bytes = await loadContentOriginal(row.contentHash, row.originalPath, {
+      dbPath: options?.dbPath,
+      dataDir: options?.dataDir,
+      transport: options?.transport,
+      telegramChatId: options?.telegramChatId,
+    });
+    if (!bytes) return null;
+    return {
+      bytes,
+      contentType: "image/png",
+    };
+  }
+
+  const file = Bun.file(row.previewPath);
   if (!(await file.exists())) return null;
 
   return {
     bytes: new Uint8Array(await file.arrayBuffer()),
-    contentType: options?.original ? "image/png" : "image/webp",
+    contentType: "image/webp",
   };
 }
 

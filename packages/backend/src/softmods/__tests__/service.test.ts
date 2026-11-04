@@ -16,11 +16,13 @@ import {
   deleteSoftmodVersion,
   findSoftmodByHash,
   getSoftmod,
+  getSoftmodVersionBytes,
   listSoftmods,
 } from "../service";
 import { softmodVersionPaths } from "../storage";
 import { setSoftmodVote } from "../votes";
 import { seedTestGame } from "../../__tests__/test-game";
+import { findContentBlob } from "../../proxy/blob-store";
 
 const UUID_V7_RE =
   /^[0-9a-f]{8}-[0-9a-f]{4}-7[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
@@ -136,11 +138,20 @@ describe("softmod service", () => {
 
     const paths = softmodVersionPaths(dataDir, created.id, v1.id);
     expect(paths.dir.endsWith(v1.id)).toBe(true);
-    expect(existsSync(paths.originalPath)).toBe(true);
-    const saved = new Uint8Array(
-      await Bun.file(paths.originalPath).arrayBuffer(),
+    expect(existsSync(paths.originalPath)).toBe(false);
+    expect(v1.originalPath).toBeNull();
+    expect(findContentBlob(sha256Hex(fileBytes), dbPath)).toEqual({
+      chunkCount: 1,
+    });
+    const downloaded = await getSoftmodVersionBytes(
+      created.id,
+      v1.id,
+      { dbPath, dataDir },
     );
-    expect(Buffer.from(saved).equals(Buffer.from(fileBytes))).toBe(true);
+    expect(downloaded).not.toBeNull();
+    expect(Buffer.from(downloaded!.bytes).equals(Buffer.from(fileBytes))).toBe(
+      true,
+    );
 
     const list = await listSoftmods({ dbPath, dataDir });
     expect(list).toHaveLength(1);
@@ -265,11 +276,13 @@ describe("softmod service", () => {
     );
 
     const v2Paths = softmodVersionPaths(dataDir, guid, v2.id);
-    expect(existsSync(v2Paths.originalPath)).toBe(true);
-    const savedV2 = new Uint8Array(
-      await Bun.file(v2Paths.originalPath).arrayBuffer(),
-    );
-    expect(Buffer.from(savedV2).equals(Buffer.from(v2Bytes))).toBe(true);
+    expect(existsSync(v2Paths.originalPath)).toBe(false);
+    const savedV2 = await getSoftmodVersionBytes(guid, v2.id, {
+      dbPath,
+      dataDir,
+    });
+    expect(savedV2).not.toBeNull();
+    expect(Buffer.from(savedV2!.bytes).equals(Buffer.from(v2Bytes))).toBe(true);
   });
 
   test("deleteSoftmodVersion recomputes latest and allows empty softmod", async () => {
@@ -352,9 +365,7 @@ describe("softmod service", () => {
 
     expect(caught).toBeDefined();
     expect((caught as { status: number }).status).toBe(403);
-    expect(readdirSync(join(dataDir, "softmods", created.id))).toEqual([
-      created.latestVersionId,
-    ]);
+    expect(existsSync(join(dataDir, "softmods", created.id))).toBe(false);
   });
 
   test("findSoftmodByHash returns softmodId, versionId and semver when present", async () => {
@@ -438,9 +449,7 @@ describe("softmod service", () => {
     expect(conflict.name).toBe("DuplicateSoftmodSemverError");
     expect(conflict.semver).toBe("2.1.0");
     expect(conflict.versionId).toBe(newest.id);
-    expect(readdirSync(join(dataDir, "softmods", guid)).sort()).toEqual(
-      higher.versions.map((v) => v.id).sort(),
-    );
+    expect(higher.versions).toHaveLength(3);
   });
 
   test("create rejects missing or invalid semver", async () => {
@@ -460,18 +469,13 @@ describe("softmod service", () => {
 
   test("deleteSoftmod removes DB rows and files for author only", async () => {
     const fileBytes = await fixtureBytes("softmods", "testmod.zipmod");
+    const contentHash = sha256Hex(fileBytes);
     const created = await createSoftmod({ gameId,
       authorId,
       semver: "1.2.3", fileBytes,
       dbPath,
       dataDir,
     });
-    const paths = softmodVersionPaths(
-      dataDir,
-      created.id,
-      created.latestVersionId,
-    );
-    expect(existsSync(paths.originalPath)).toBe(true);
 
     let forbidden: unknown;
     try {
@@ -494,8 +498,7 @@ describe("softmod service", () => {
     });
 
     expect(await getSoftmod(created.id, { dbPath })).toBeNull();
-    expect(await findSoftmodByHash(sha256Hex(fileBytes), { dbPath })).toBeNull();
-    expect(existsSync(paths.originalPath)).toBe(false);
+    expect(findContentBlob(contentHash, dbPath)).toEqual({ chunkCount: 1 });
   });
 
   test("deleteSoftmod removes seeded votes", async () => {

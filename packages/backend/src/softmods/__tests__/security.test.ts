@@ -22,6 +22,7 @@ import {
   deleteSoftmod,
   DuplicateSoftmodHashError,
   getSoftmod,
+  getSoftmodVersionBytes,
   SoftmodGuidConflictError,
 } from "../service";
 import { getSoftmodDir, removeSoftmodFiles } from "../storage";
@@ -102,7 +103,7 @@ describe("softmod storage hardening", () => {
         deleteSoftmod({ softmodId: id, authorId, dbPath, dataDir }),
       ).rejects.toThrow();
     }
-    expect(existsSync(join(dataDir, "softmods", created.id))).toBe(true);
+    expect(await getSoftmod(created.id, { dbPath })).not.toBeNull();
     expect(existsSync(dataDir)).toBe(true);
   });
 
@@ -166,8 +167,13 @@ describe("softmod storage hardening", () => {
       .from(softmodVersions)
       .where(eq(softmodVersions.softmodId, "com.race.guid"))
       .get()!;
-    const stored = new Uint8Array(await Bun.file(row.originalPath).arrayBuffer());
-    expect(sha256Hex(stored)).toBe(row.contentHash);
+    const file = await getSoftmodVersionBytes(
+      "com.race.guid",
+      row.id,
+      { dbPath, dataDir },
+    );
+    expect(file).not.toBeNull();
+    expect(sha256Hex(file!.bytes)).toBe(row.contentHash);
     // No leaked staging files.
     expect(readdirSync(join(dataDir, "softmods", ".staging"))).toEqual([]);
   });
@@ -215,8 +221,12 @@ describe("softmod storage hardening", () => {
     expect(new Set(detail.versions.map((v) => v.id)).size).toBe(4);
     expect(detail.latestSemver).toBe("1.0.3");
     for (const v of detail.versions) {
-      const stored = new Uint8Array(await Bun.file(v.originalPath).arrayBuffer());
-      expect(sha256Hex(stored)).toBe(v.contentHash);
+      const file = await getSoftmodVersionBytes(created.id, v.id, {
+        dbPath,
+        dataDir,
+      });
+      expect(file).not.toBeNull();
+      expect(sha256Hex(file!.bytes)).toBe(v.contentHash);
     }
   });
 

@@ -25,10 +25,14 @@ import {
 import { sha256Hex } from "./hash";
 import { writeWebpPreview } from "./preview";
 import {
+  loadContentOriginal,
+  storeContentOriginal,
+  type ContentBlobOptions,
+} from "../proxy/content-blob-service";
+import {
   getVersionPaths,
   removeCardFiles,
   removeVersionFiles,
-  writeOriginalPng,
 } from "./storage";
 import { assertGameSupportsKind } from "../games/service";
 import {
@@ -46,14 +50,11 @@ export {
   ForbiddenCardError,
 } from "./errors";
 
-export type CardServiceOptions = {
-  dbPath?: string;
-  dataDir?: string;
-};
+export type CardServiceOptions = ContentBlobOptions;
 
 export type CharacterCardVersionDetail = CardDetail["versions"][number] & {
   contentHash: string;
-  originalPath: string;
+  originalPath: string | null;
   previewPath: string;
 };
 
@@ -343,7 +344,7 @@ export async function createCard(
     versionId: string;
     semver: string;
     contentHash: string;
-    originalPath: string;
+    originalPath: string | null;
     previewPath: string;
   }
 > {
@@ -374,7 +375,7 @@ export async function createCard(
     ? slugify(slug, cardId)
     : slugify(resolvedTitle, cardId);
 
-  const { originalPath, previewPath } = getVersionPaths(
+  const { previewPath } = getVersionPaths(
     cardId,
     versionId,
     dataDir,
@@ -386,7 +387,12 @@ export async function createCard(
   }
 
   await writeWebpPreview(previewSource, previewPath);
-  await writeOriginalPng(fileBytes, originalPath);
+  await storeContentOriginal(contentHash, fileBytes, {
+    dbPath,
+    dataDir,
+    transport: input.transport,
+    telegramChatId: input.telegramChatId,
+  });
 
   const db = getDb(dbPath);
   const summaryJson = JSON.stringify(kc.summary());
@@ -413,7 +419,7 @@ export async function createCard(
         semver,
         notes: notes ?? null,
         contentHash,
-        originalPath,
+        originalPath: null,
         previewPath,
         summaryJson,
         createdAt: now,
@@ -428,7 +434,7 @@ export async function createCard(
     versionId,
     semver,
     contentHash,
-    originalPath,
+    originalPath: null,
     previewPath,
   };
 }
@@ -441,7 +447,7 @@ export async function addVersion(
     versionId: string;
     semver: string;
     contentHash: string;
-    originalPath: string;
+    originalPath: string | null;
     previewPath: string;
   }
 > {
@@ -492,7 +498,7 @@ export async function addVersion(
   const versionId = newId();
   const now = new Date().toISOString();
 
-  const { originalPath, previewPath } = getVersionPaths(
+  const { previewPath } = getVersionPaths(
     cardId,
     versionId,
     dataDir,
@@ -504,7 +510,12 @@ export async function addVersion(
   }
 
   await writeWebpPreview(previewSource, previewPath);
-  await writeOriginalPng(fileBytes, originalPath);
+  await storeContentOriginal(contentHash, fileBytes, {
+    dbPath,
+    dataDir,
+    transport: input.transport,
+    telegramChatId: input.telegramChatId,
+  });
 
   const summaryJson = JSON.stringify(kc.summary());
 
@@ -516,7 +527,7 @@ export async function addVersion(
         semver,
         notes: notes ?? null,
         contentHash,
-        originalPath,
+        originalPath: null,
         previewPath,
         summaryJson,
         createdAt: now,
@@ -550,7 +561,7 @@ export async function addVersion(
     versionId,
     semver,
     contentHash,
-    originalPath,
+    originalPath: null,
     previewPath,
   };
 }
@@ -756,13 +767,26 @@ export async function getVersionImage(
 
   if (!row) return null;
 
-  const filePath = options?.original ? row.originalPath : row.previewPath;
-  const file = Bun.file(filePath);
+  if (options?.original) {
+    const bytes = await loadContentOriginal(row.contentHash, row.originalPath, {
+      dbPath: options?.dbPath,
+      dataDir: options?.dataDir,
+      transport: options?.transport,
+      telegramChatId: options?.telegramChatId,
+    });
+    if (!bytes) return null;
+    return {
+      bytes,
+      contentType: "image/png",
+    };
+  }
+
+  const file = Bun.file(row.previewPath);
   if (!(await file.exists())) return null;
 
   return {
     bytes: new Uint8Array(await file.arrayBuffer()),
-    contentType: options?.original ? "image/png" : "image/webp",
+    contentType: "image/webp",
   };
 }
 

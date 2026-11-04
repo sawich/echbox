@@ -20,13 +20,15 @@ import {
 } from "./errors";
 import { parseSoftmodManifest } from "./manifest";
 import {
+  loadContentOriginal,
+  storeContentOriginal,
+  type ContentBlobOptions,
+} from "../proxy/content-blob-service";
+import {
   assertSafeSoftmodId,
   getSoftmodsRoot,
-  placeStagedZipmod,
-  removePlacedFile,
   removeSoftmodFiles,
   removeSoftmodVersionFiles,
-  softmodVersionPaths,
 } from "./storage";
 import { assertGameSupportsKind } from "../games/service";
 import {
@@ -45,10 +47,7 @@ export {
   SoftmodServiceError,
 } from "./errors";
 
-export type SoftmodServiceOptions = {
-  dbPath?: string;
-  dataDir?: string;
-};
+export type SoftmodServiceOptions = ContentBlobOptions;
 
 export type SoftmodUploader = {
   id: string;
@@ -62,7 +61,7 @@ export type SoftmodVersionDetail = {
   createdAt: string;
   downloadUrl: string;
   contentHash: string;
-  originalPath: string;
+  originalPath: string | null;
   summary: Record<string, unknown>;
   notes?: string;
 };
@@ -376,15 +375,19 @@ export async function createSoftmod(
 
   const versionId = newId();
   const now = new Date().toISOString();
-  const { originalPath } = softmodVersionPaths(dataDir, softmodId, versionId);
   const summaryJson = JSON.stringify(manifest.raw);
 
-  // Stage bytes first; the final path is only written inside the DB
-  // transaction, so a losing concurrent upload never overwrites live files.
   const stagedPath = await stageUpload(getSoftmodsRoot(dataDir), fileBytes);
-  let placed = false;
+  const blobOptions: ContentBlobOptions = {
+    dbPath,
+    dataDir,
+    transport: input.transport,
+    telegramChatId: input.telegramChatId,
+  };
 
   try {
+    await storeContentOriginal(contentHash, fileBytes, blobOptions);
+
     db.transaction(
       (tx) => {
         tx.insert(softmods)
@@ -410,20 +413,16 @@ export async function createSoftmod(
             semver,
             notes: notes ?? null,
             contentHash,
-            originalPath,
+            originalPath: null,
             summaryJson,
             createdAt: now,
           })
           .run();
-
-        placeStagedZipmod(stagedPath, originalPath, dataDir);
-        placed = true;
       },
       { behavior: "immediate" },
     );
   } catch (err) {
     await discardStaged(stagedPath);
-    if (placed) await removePlacedFile(originalPath, dataDir);
     if (isUniqueConstraintError(err)) {
       const dupHash = findSoftmodByHash(contentHash, { dbPath });
       if (dupHash) {
@@ -444,6 +443,8 @@ export async function createSoftmod(
     }
     throw err;
   }
+
+  await discardStaged(stagedPath);
 
   const detail = await getSoftmod(softmodId, { dbPath, dataDir });
   return detail!;
@@ -495,9 +496,16 @@ export async function addSoftmodVersion(
   const summaryJson = JSON.stringify(manifest.raw);
 
   const stagedPath = await stageUpload(getSoftmodsRoot(dataDir), fileBytes);
-  let placedPath: string | null = null;
+  const blobOptions: ContentBlobOptions = {
+    dbPath,
+    dataDir,
+    transport: input.transport,
+    telegramChatId: input.telegramChatId,
+  };
 
   try {
+    await storeContentOriginal(contentHash, fileBytes, blobOptions);
+
     db.transaction(
       (tx) => {
         // Re-read inside the write lock so concurrent uploads see a consistent version set.
@@ -527,12 +535,6 @@ export async function addSoftmodVersion(
           );
         }
 
-        const { originalPath } = softmodVersionPaths(
-          dataDir,
-          softmodId,
-          versionId,
-        );
-
         tx.insert(softmodVersions)
           .values({
             id: versionId,
@@ -540,7 +542,7 @@ export async function addSoftmodVersion(
             semver,
             notes: notes ?? null,
             contentHash,
-            originalPath,
+            originalPath: null,
             summaryJson,
             createdAt: now,
           })
@@ -563,15 +565,11 @@ export async function addSoftmodVersion(
           })
           .where(eq(softmods.id, softmodId))
           .run();
-
-        placeStagedZipmod(stagedPath, originalPath, dataDir);
-        placedPath = originalPath;
       },
       { behavior: "immediate" },
     );
   } catch (err) {
     await discardStaged(stagedPath);
-    if (placedPath) await removePlacedFile(placedPath, dataDir);
     if (isUniqueConstraintError(err)) {
       const dupHash = findSoftmodByHash(contentHash, { dbPath });
       if (dupHash) {
@@ -584,6 +582,8 @@ export async function addSoftmodVersion(
     }
     throw err;
   }
+
+  await discardStaged(stagedPath);
 
   const detail = await getSoftmod(softmodId, { dbPath, dataDir });
   return detail!;
@@ -705,11 +705,16 @@ export async function getSoftmodVersionBytes(
 
   if (!row) return null;
 
-  const file = Bun.file(row.originalPath);
-  if (!(await file.exists())) return null;
+  const bytes = await loadContentOriginal(row.contentHash, row.originalPath, {
+    dbPath: options?.dbPath,
+    dataDir: options?.dataDir,
+    transport: options?.transport,
+    telegramChatId: options?.telegramChatId,
+  });
+  if (!bytes) return null;
 
   return {
-    bytes: new Uint8Array(await file.arrayBuffer()),
+    bytes,
     contentType: "application/zip",
   };
 }

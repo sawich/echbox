@@ -106,7 +106,7 @@ describe("clothes service", () => {
     expect(created.versions[0]!.notes).toBe("Initial upload");
 
     const paths = getVersionPaths(created.id, created.latestVersionId, dataDir);
-    expect(existsSync(paths.originalPath)).toBe(true);
+    expect(existsSync(paths.originalPath)).toBe(false);
     expect(existsSync(paths.previewPath)).toBe(true);
     expect(paths.originalPath).toContain(
       `/clothes/${created.id}/${created.latestVersionId}/`,

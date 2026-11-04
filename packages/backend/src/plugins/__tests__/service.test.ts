@@ -1,5 +1,5 @@
 import { afterEach, beforeEach, describe, expect, test } from "bun:test";
-import { existsSync, mkdtempSync, readdirSync, rmSync } from "node:fs";
+import { existsSync, mkdtempSync, mkdirSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { strToU8, zipSync } from "fflate";
@@ -7,7 +7,7 @@ import { eq } from "drizzle-orm";
 import { sha256Hex } from "../../cards/hash";
 import { getDb } from "../../db/client";
 import { migrateDb } from "../../db/migrate";
-import { pluginVotes, users } from "../../db/schema";
+import { pluginVotes, pluginVersions, plugins, users } from "../../db/schema";
 import { fixtureBytes } from "../../kkloader/__tests__/helpers";
 import {
   addPluginVersion,
@@ -22,6 +22,9 @@ import {
 import { pluginVersionPaths } from "../storage";
 import { setPluginVote } from "../votes";
 import { seedTestGame } from "../../__tests__/test-game";
+import { findContentBlob } from "../../proxy/blob-store";
+import { createFakeTransport } from "../../proxy/__tests__/helpers";
+import type { TelegramTransport } from "../../proxy/blob-store";
 
 const UUID_V7_RE =
   /^[0-9a-f]{8}-[0-9a-f]{4}-7[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
@@ -37,6 +40,10 @@ describe("plugin service", () => {
   let authorId: string;
   let gameId: string;
   let otherUserId: string;
+  let transport: TelegramTransport;
+  const telegramChatId = "-100999";
+
+  const blobOpts = () => ({ dbPath, dataDir, transport, telegramChatId });
 
   beforeEach(() => {
     tempDir = mkdtempSync(join(tmpdir(), "echbox-plugin-svc-"));
@@ -72,6 +79,7 @@ describe("plugin service", () => {
       .run();
 
     gameId = seedTestGame(authorId, { dbPath }).id;
+    transport = createFakeTransport();
   });
 
   afterEach(() => {
@@ -89,8 +97,7 @@ describe("plugin service", () => {
       description: "Does things",
       notes: "First release",
       fileBytes,
-      dbPath,
-      dataDir,
+      ...blobOpts(),
     });
 
     expect(created.id).toMatch(
@@ -115,14 +122,12 @@ describe("plugin service", () => {
       username: "plugin_author",
     });
 
+    expect(created.versions[0]!.originalPath).toBeNull();
     const paths = pluginVersionPaths(dataDir, created.id, v1.id);
-    expect(paths.dir.endsWith(v1.id)).toBe(true);
-    expect(existsSync(paths.originalPath)).toBe(true);
-    expect(paths.originalPath.endsWith("original.zip")).toBe(true);
-    const saved = new Uint8Array(
-      await Bun.file(paths.originalPath).arrayBuffer(),
-    );
-    expect(Buffer.from(saved).equals(Buffer.from(fileBytes))).toBe(true);
+    expect(existsSync(paths.originalPath)).toBe(false);
+    expect(
+      findContentBlob(sha256Hex(fileBytes), dbPath),
+    ).toEqual({ chunkCount: 1 });
 
     const list = await listPlugins({ dbPath, dataDir });
     expect(list).toHaveLength(1);
@@ -136,8 +141,7 @@ describe("plugin service", () => {
       title: "First",
       semver: "1.0.0",
       fileBytes,
-      dbPath,
-      dataDir,
+      ...blobOpts(),
     });
 
     let caught: unknown;
@@ -147,8 +151,7 @@ describe("plugin service", () => {
         title: "Second",
         semver: "1.0.0",
         fileBytes,
-        dbPath,
-        dataDir,
+        ...blobOpts(),
       });
     } catch (err) {
       caught = err;
@@ -177,8 +180,7 @@ describe("plugin service", () => {
       semver: "1.0.0",
       description: "Old desc",
       fileBytes,
-      dbPath,
-      dataDir,
+      ...blobOpts(),
     });
 
     let forbidden: unknown;
@@ -216,8 +218,7 @@ describe("plugin service", () => {
       title: "Plugin",
       semver: "1.0.0",
       fileBytes: v1,
-      dbPath,
-      dataDir,
+      ...blobOpts(),
     });
 
     const v2 = pluginZip("v2-extra-bytes");
@@ -229,8 +230,7 @@ describe("plugin service", () => {
         authorId: otherUserId,
         semver: "1.1.0",
         fileBytes: v2,
-        dbPath,
-        dataDir,
+        ...blobOpts(),
       });
     } catch (err) {
       caught = err;
@@ -238,9 +238,7 @@ describe("plugin service", () => {
 
     expect(caught).toBeDefined();
     expect((caught as { status: number }).status).toBe(403);
-    expect(readdirSync(join(dataDir, "plugins", created.id))).toEqual([
-      created.latestVersionId,
-    ]);
+    expect(existsSync(join(dataDir, "plugins", created.id))).toBe(false);
   });
 
   test("getPluginVersionBytes returns stored zip bytes", async () => {
@@ -250,13 +248,11 @@ describe("plugin service", () => {
       title: "Dl",
       semver: "1.0.0",
       fileBytes,
-      dbPath,
-      dataDir,
+      ...blobOpts(),
     });
 
     const file = await getPluginVersionBytes(created.id, created.latestVersionId, {
-      dbPath,
-      dataDir,
+      ...blobOpts(),
     });
     expect(file).not.toBeNull();
     expect(file!.contentType).toBe("application/zip");
@@ -274,8 +270,7 @@ describe("plugin service", () => {
       title: "Hash",
       semver: "1.0.0",
       fileBytes,
-      dbPath,
-      dataDir,
+      ...blobOpts(),
     });
 
     expect(await findPluginByHash(hash, { dbPath })).toEqual({
@@ -292,8 +287,7 @@ describe("plugin service", () => {
       title: "Semver",
       semver: "2.0.0",
       fileBytes: pluginZip("two"),
-      dbPath,
-      dataDir,
+      ...blobOpts(),
     });
     const v2Id = created.latestVersionId;
 
@@ -302,8 +296,7 @@ describe("plugin service", () => {
       authorId,
       semver: "1.5.0",
       fileBytes: pluginZip("one-five"),
-      dbPath,
-      dataDir,
+      ...blobOpts(),
     });
     expect(afterLower.latestSemver).toBe("2.0.0");
     expect(afterLower.latestVersionId).toBe(v2Id);
@@ -317,8 +310,7 @@ describe("plugin service", () => {
       authorId,
       semver: "2.1.0",
       fileBytes: pluginZip("two-one"),
-      dbPath,
-      dataDir,
+      ...blobOpts(),
     });
     expect(afterHigher.latestSemver).toBe("2.1.0");
     const newest = afterHigher.versions.find((v) => v.semver === "2.1.0")!;
@@ -339,8 +331,7 @@ describe("plugin service", () => {
       title: "Dup semver",
       semver: "1.0.0",
       fileBytes: pluginZip("a"),
-      dbPath,
-      dataDir,
+      ...blobOpts(),
     });
 
     let caught: unknown;
@@ -350,8 +341,7 @@ describe("plugin service", () => {
         authorId,
         semver: "v1.0.0",
         fileBytes: pluginZip("b"),
-        dbPath,
-        dataDir,
+        ...blobOpts(),
       });
     } catch (err) {
       caught = err;
@@ -366,9 +356,7 @@ describe("plugin service", () => {
     expect(conflict.name).toBe("DuplicatePluginSemverError");
     expect(conflict.semver).toBe("1.0.0");
     expect(conflict.versionId).toBe(created.latestVersionId);
-    expect(readdirSync(join(dataDir, "plugins", created.id))).toEqual([
-      created.latestVersionId,
-    ]);
+    expect(existsSync(join(dataDir, "plugins", created.id))).toBe(false);
   });
 
   test("create/addVersion reject missing or invalid semver", async () => {
@@ -380,8 +368,7 @@ describe("plugin service", () => {
           title: "Bad",
           semver,
           fileBytes: pluginZip("bad"),
-          dbPath,
-          dataDir,
+          ...blobOpts(),
         }),
       ).rejects.toMatchObject({ status: 400 });
     }
@@ -391,28 +378,21 @@ describe("plugin service", () => {
         authorId,
         title: "Missing",
         fileBytes: pluginZip("missing"),
-        dbPath,
-        dataDir,
+        ...blobOpts(),
       } as unknown as Parameters<typeof createPlugin>[0]),
     ).rejects.toMatchObject({ status: 400 });
   });
 
   test("deletePlugin removes DB rows and files for author only", async () => {
     const fileBytes = pluginZip("delete-me");
+    const contentHash = sha256Hex(fileBytes);
     const created = await createPlugin({ gameId,
       authorId,
       title: "Del",
       semver: "1.0.0",
       fileBytes,
-      dbPath,
-      dataDir,
+      ...blobOpts(),
     });
-    const paths = pluginVersionPaths(
-      dataDir,
-      created.id,
-      created.latestVersionId,
-    );
-    expect(existsSync(paths.originalPath)).toBe(true);
 
     setPluginVote({
       pluginId: created.id,
@@ -426,23 +406,21 @@ describe("plugin service", () => {
       await deletePlugin({
         pluginId: created.id,
         authorId: otherUserId,
-        dbPath,
-        dataDir,
+        ...blobOpts(),
       });
     } catch (err) {
       forbidden = err;
     }
     expect((forbidden as { status: number }).status).toBe(403);
-    expect(existsSync(paths.originalPath)).toBe(true);
 
     await deletePlugin({
       pluginId: created.id,
       authorId,
-      dbPath,
-      dataDir,
+      ...blobOpts(),
     });
 
     expect(await getPlugin(created.id, { dbPath })).toBeNull();
+    expect(findContentBlob(contentHash, dbPath)).toEqual({ chunkCount: 1 });
     const db = getDb(dbPath);
     expect(
       db
@@ -451,6 +429,48 @@ describe("plugin service", () => {
         .where(eq(pluginVotes.pluginId, created.id))
         .all(),
     ).toHaveLength(0);
-    expect(existsSync(paths.originalPath)).toBe(false);
+  });
+
+  test("legacy disk original_path is served when blob is absent", async () => {
+    const fileBytes = pluginZip("legacy-disk");
+    const contentHash = sha256Hex(fileBytes);
+    const pluginId = crypto.randomUUID();
+    const versionId = crypto.randomUUID();
+    const now = new Date().toISOString();
+    const paths = pluginVersionPaths(dataDir, pluginId, versionId);
+    await Bun.write(paths.originalPath, fileBytes);
+
+    const db = getDb(dbPath);
+    db.insert(plugins)
+      .values({
+        id: pluginId,
+        gameId,
+        authorId,
+        title: "Legacy",
+        description: null,
+        latestSemver: "1.0.0",
+        latestVersionId: versionId,
+        createdAt: now,
+        updatedAt: now,
+      })
+      .run();
+    db.insert(pluginVersions)
+      .values({
+        id: versionId,
+        pluginId,
+        semver: "1.0.0",
+        notes: null,
+        contentHash,
+        originalPath: paths.originalPath,
+        summaryJson: "{}",
+        createdAt: now,
+      })
+      .run();
+
+    expect(findContentBlob(contentHash, dbPath)).toBeNull();
+
+    const file = await getPluginVersionBytes(pluginId, versionId, blobOpts());
+    expect(file).not.toBeNull();
+    expect(Buffer.from(file!.bytes).equals(Buffer.from(fileBytes))).toBe(true);
   });
 });

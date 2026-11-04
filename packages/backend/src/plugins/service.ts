@@ -18,10 +18,12 @@ import {
   PluginNotFoundError,
 } from "./errors";
 import {
+  loadContentOriginal,
+  storeContentOriginal,
+  type ContentBlobOptions,
+} from "../proxy/content-blob-service";
+import {
   getPluginsRoot,
-  placeStagedZip,
-  pluginVersionPaths,
-  removePlacedFile,
   removePluginFiles,
   removePluginVersionFiles,
 } from "./storage";
@@ -41,10 +43,7 @@ export {
   PluginServiceError,
 } from "./errors";
 
-export type PluginServiceOptions = {
-  dbPath?: string;
-  dataDir?: string;
-};
+export type PluginServiceOptions = ContentBlobOptions;
 
 export type PluginUploader = {
   id: string;
@@ -58,7 +57,7 @@ export type PluginVersionDetail = {
   createdAt: string;
   downloadUrl: string;
   contentHash: string;
-  originalPath: string;
+  originalPath: string | null;
   summary: Record<string, unknown>;
   notes?: string;
 };
@@ -365,13 +364,19 @@ export async function createPlugin(
   const pluginId = newId();
   const versionId = newId();
   const now = new Date().toISOString();
-  const { originalPath } = pluginVersionPaths(dataDir, pluginId, versionId);
 
   const db = getDb(dbPath);
   const stagedPath = await stageUpload(getPluginsRoot(dataDir), fileBytes);
-  let placed = false;
+  const blobOptions: ContentBlobOptions = {
+    dbPath,
+    dataDir,
+    transport: input.transport,
+    telegramChatId: input.telegramChatId,
+  };
 
   try {
+    await storeContentOriginal(contentHash, fileBytes, blobOptions);
+
     db.transaction(
       (tx) => {
         tx.insert(plugins)
@@ -395,20 +400,16 @@ export async function createPlugin(
             semver,
             notes: notes ?? null,
             contentHash,
-            originalPath,
+            originalPath: null,
             summaryJson: EMPTY_SUMMARY_JSON,
             createdAt: now,
           })
           .run();
-
-        placeStagedZip(stagedPath, originalPath, dataDir);
-        placed = true;
       },
       { behavior: "immediate" },
     );
   } catch (err) {
     await discardStaged(stagedPath);
-    if (placed) await removePlacedFile(originalPath, dataDir);
     if (isUniqueConstraintError(err)) {
       const dupHash = findPluginByHash(contentHash, { dbPath });
       if (dupHash) {
@@ -421,6 +422,8 @@ export async function createPlugin(
     }
     throw err;
   }
+
+  await discardStaged(stagedPath);
 
   const detail = await getPlugin(pluginId, { dbPath, dataDir });
   return detail!;
@@ -459,9 +462,16 @@ export async function addPluginVersion(
   const now = new Date().toISOString();
 
   const stagedPath = await stageUpload(getPluginsRoot(dataDir), fileBytes);
-  let placedPath: string | null = null;
+  const blobOptions: ContentBlobOptions = {
+    dbPath,
+    dataDir,
+    transport: input.transport,
+    telegramChatId: input.telegramChatId,
+  };
 
   try {
+    await storeContentOriginal(contentHash, fileBytes, blobOptions);
+
     db.transaction(
       (tx) => {
         // Re-read inside the write lock so concurrent uploads see a consistent version set.
@@ -491,12 +501,6 @@ export async function addPluginVersion(
           );
         }
 
-        const { originalPath } = pluginVersionPaths(
-          dataDir,
-          pluginId,
-          versionId,
-        );
-
         tx.insert(pluginVersions)
           .values({
             id: versionId,
@@ -504,7 +508,7 @@ export async function addPluginVersion(
             semver,
             notes: notes ?? null,
             contentHash,
-            originalPath,
+            originalPath: null,
             summaryJson: EMPTY_SUMMARY_JSON,
             createdAt: now,
           })
@@ -523,15 +527,11 @@ export async function addPluginVersion(
           })
           .where(eq(plugins.id, pluginId))
           .run();
-
-        placeStagedZip(stagedPath, originalPath, dataDir);
-        placedPath = originalPath;
       },
       { behavior: "immediate" },
     );
   } catch (err) {
     await discardStaged(stagedPath);
-    if (placedPath) await removePlacedFile(placedPath, dataDir);
     if (isUniqueConstraintError(err)) {
       const dupHash = findPluginByHash(contentHash, { dbPath });
       if (dupHash) {
@@ -544,6 +544,8 @@ export async function addPluginVersion(
     }
     throw err;
   }
+
+  await discardStaged(stagedPath);
 
   const detail = await getPlugin(pluginId, { dbPath, dataDir });
   return detail!;
@@ -697,11 +699,16 @@ export async function getPluginVersionBytes(
 
   if (!row) return null;
 
-  const file = Bun.file(row.originalPath);
-  if (!(await file.exists())) return null;
+  const bytes = await loadContentOriginal(row.contentHash, row.originalPath, {
+    dbPath: options?.dbPath,
+    dataDir: options?.dataDir,
+    transport: options?.transport,
+    telegramChatId: options?.telegramChatId,
+  });
+  if (!bytes) return null;
 
   return {
-    bytes: new Uint8Array(await file.arrayBuffer()),
+    bytes,
     contentType: "application/zip",
   };
 }
