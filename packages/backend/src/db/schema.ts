@@ -60,7 +60,7 @@ export const characterCards = sqliteTable(
     id: text("id").primaryKey(),
     gameId: text("game_id")
       .notNull()
-      .references(() => games.id),
+      .references(() => games.id, { onDelete: "cascade" }),
     authorId: text("author_id")
       .notNull()
       .references(() => users.id),
@@ -83,7 +83,7 @@ export const characterCardVersions = sqliteTable(
     id: text("id").primaryKey(),
     cardId: text("card_id")
       .notNull()
-      .references(() => characterCards.id),
+      .references(() => characterCards.id, { onDelete: "cascade" }),
     semver: text("semver").notNull(),
     notes: text("notes"),
     contentHash: text("content_hash").notNull().unique(),
@@ -107,7 +107,7 @@ export const cardVotes = sqliteTable(
     id: text("id").primaryKey(),
     cardId: text("card_id")
       .notNull()
-      .references(() => characterCards.id),
+      .references(() => characterCards.id, { onDelete: "cascade" }),
     userId: text("user_id")
       .notNull()
       .references(() => users.id),
@@ -130,7 +130,7 @@ export const scenes = sqliteTable(
     id: text("id").primaryKey(),
     gameId: text("game_id")
       .notNull()
-      .references(() => games.id),
+      .references(() => games.id, { onDelete: "cascade" }),
     authorId: text("author_id")
       .notNull()
       .references(() => users.id),
@@ -153,7 +153,7 @@ export const sceneVersions = sqliteTable(
     id: text("id").primaryKey(),
     sceneId: text("scene_id")
       .notNull()
-      .references(() => scenes.id),
+      .references(() => scenes.id, { onDelete: "cascade" }),
     semver: text("semver").notNull(),
     notes: text("notes"),
     contentHash: text("content_hash").notNull().unique(),
@@ -177,7 +177,7 @@ export const sceneVotes = sqliteTable(
     id: text("id").primaryKey(),
     sceneId: text("scene_id")
       .notNull()
-      .references(() => scenes.id),
+      .references(() => scenes.id, { onDelete: "cascade" }),
     userId: text("user_id")
       .notNull()
       .references(() => users.id),
@@ -203,7 +203,7 @@ export const clothes = sqliteTable(
     id: text("id").primaryKey(),
     gameId: text("game_id")
       .notNull()
-      .references(() => games.id),
+      .references(() => games.id, { onDelete: "cascade" }),
     authorId: text("author_id")
       .notNull()
       .references(() => users.id),
@@ -226,7 +226,7 @@ export const clothesVersions = sqliteTable(
     id: text("id").primaryKey(),
     clothesId: text("clothes_id")
       .notNull()
-      .references(() => clothes.id),
+      .references(() => clothes.id, { onDelete: "cascade" }),
     semver: text("semver").notNull(),
     notes: text("notes"),
     contentHash: text("content_hash").notNull().unique(),
@@ -250,7 +250,7 @@ export const clothesVotes = sqliteTable(
     id: text("id").primaryKey(),
     clothesId: text("clothes_id")
       .notNull()
-      .references(() => clothes.id),
+      .references(() => clothes.id, { onDelete: "cascade" }),
     userId: text("user_id")
       .notNull()
       .references(() => users.id),
@@ -276,7 +276,7 @@ export const softmods = sqliteTable(
     id: text("id").primaryKey(),
     gameId: text("game_id")
       .notNull()
-      .references(() => games.id),
+      .references(() => games.id, { onDelete: "cascade" }),
     authorId: text("author_id")
       .notNull()
       .references(() => users.id),
@@ -301,7 +301,7 @@ export const softmodVersions = sqliteTable(
     id: text("id").primaryKey(),
     softmodId: text("softmod_id")
       .notNull()
-      .references(() => softmods.id),
+      .references(() => softmods.id, { onDelete: "cascade" }),
     semver: text("semver").notNull(),
     notes: text("notes"),
     contentHash: text("content_hash").notNull().unique(),
@@ -324,7 +324,7 @@ export const softmodVotes = sqliteTable(
     id: text("id").primaryKey(),
     softmodId: text("softmod_id")
       .notNull()
-      .references(() => softmods.id),
+      .references(() => softmods.id, { onDelete: "cascade" }),
     userId: text("user_id")
       .notNull()
       .references(() => users.id),
@@ -350,7 +350,7 @@ export const plugins = sqliteTable(
     id: text("id").primaryKey(),
     gameId: text("game_id")
       .notNull()
-      .references(() => games.id),
+      .references(() => games.id, { onDelete: "cascade" }),
     authorId: text("author_id")
       .notNull()
       .references(() => users.id),
@@ -373,7 +373,7 @@ export const pluginVersions = sqliteTable(
     id: text("id").primaryKey(),
     pluginId: text("plugin_id")
       .notNull()
-      .references(() => plugins.id),
+      .references(() => plugins.id, { onDelete: "cascade" }),
     semver: text("semver").notNull(),
     notes: text("notes"),
     contentHash: text("content_hash").notNull().unique(),
@@ -396,7 +396,7 @@ export const pluginVotes = sqliteTable(
     id: text("id").primaryKey(),
     pluginId: text("plugin_id")
       .notNull()
-      .references(() => plugins.id),
+      .references(() => plugins.id, { onDelete: "cascade" }),
     userId: text("user_id")
       .notNull()
       .references(() => users.id),
