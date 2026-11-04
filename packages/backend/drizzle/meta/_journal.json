@@ -85,6 +85,13 @@
       "when": 1794044000000,
       "tag": "0011_game_delete_cascade",
       "breakpoints": true
+    },
+    {
+      "idx": 12,
+      "version": "6",
+      "when": 1794045000000,
+      "tag": "0012_content_blobs",
+      "breakpoints": true
     }
   ]
 }

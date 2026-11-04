@@ -54,6 +54,31 @@ export const gameContentKinds = sqliteTable(
   ],
 );
 
+export const contentBlobs = sqliteTable("content_blobs", {
+  contentHash: text("content_hash").primaryKey(),
+  originalByteSize: integer("original_byte_size").notNull(),
+  archiveByteSize: integer("archive_byte_size").notNull(),
+  chunkCount: integer("chunk_count").notNull(),
+  createdAt: text("created_at").notNull(),
+});
+
+export const contentBlobChunks = sqliteTable(
+  "content_blob_chunks",
+  {
+    contentHash: text("content_hash")
+      .notNull()
+      .references(() => contentBlobs.contentHash, { onDelete: "cascade" }),
+    chunkIndex: integer("chunk_index").notNull(),
+    byteSize: integer("byte_size").notNull(),
+    telegramFileId: text("telegram_file_id").notNull(),
+    telegramMessageId: text("telegram_message_id").notNull(),
+    telegramChatId: text("telegram_chat_id").notNull(),
+  },
+  (table) => [
+    primaryKey({ columns: [table.contentHash, table.chunkIndex] }),
+  ],
+);
+
 export const characterCards = sqliteTable(
   "character_cards",
   {
@@ -87,7 +112,7 @@ export const characterCardVersions = sqliteTable(
     semver: text("semver").notNull(),
     notes: text("notes"),
     contentHash: text("content_hash").notNull().unique(),
-    originalPath: text("original_path").notNull(),
+    originalPath: text("original_path"),
     previewPath: text("preview_path").notNull(),
     summaryJson: text("summary_json").notNull(),
     createdAt: text("created_at").notNull(),
@@ -157,7 +182,7 @@ export const sceneVersions = sqliteTable(
     semver: text("semver").notNull(),
     notes: text("notes"),
     contentHash: text("content_hash").notNull().unique(),
-    originalPath: text("original_path").notNull(),
+    originalPath: text("original_path"),
     previewPath: text("preview_path").notNull(),
     summaryJson: text("summary_json").notNull(),
     createdAt: text("created_at").notNull(),
@@ -230,7 +255,7 @@ export const clothesVersions = sqliteTable(
     semver: text("semver").notNull(),
     notes: text("notes"),
     contentHash: text("content_hash").notNull().unique(),
-    originalPath: text("original_path").notNull(),
+    originalPath: text("original_path"),
     previewPath: text("preview_path").notNull(),
     summaryJson: text("summary_json").notNull(),
     createdAt: text("created_at").notNull(),
@@ -305,7 +330,7 @@ export const softmodVersions = sqliteTable(
     semver: text("semver").notNull(),
     notes: text("notes"),
     contentHash: text("content_hash").notNull().unique(),
-    originalPath: text("original_path").notNull(),
+    originalPath: text("original_path"),
     summaryJson: text("summary_json").notNull(),
     createdAt: text("created_at").notNull(),
   },
@@ -377,7 +402,7 @@ export const pluginVersions = sqliteTable(
     semver: text("semver").notNull(),
     notes: text("notes"),
     contentHash: text("content_hash").notNull().unique(),
-    originalPath: text("original_path").notNull(),
+    originalPath: text("original_path"),
     summaryJson: text("summary_json").notNull(),
     createdAt: text("created_at").notNull(),
   },
