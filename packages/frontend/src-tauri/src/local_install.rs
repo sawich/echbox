@@ -74,7 +74,27 @@ pub fn instance_dir(instance_id: &str) -> Result<PathBuf, String> {
 }
 
 fn instance_json_path(instance_id: &str) -> Result<PathBuf, String> {
+    Ok(instance_dir(instance_id)?.join(".echbox").join(INSTANCE_JSON))
+}
+
+/// Pre-relocation path: `games/{id}/instance.json` beside `.echbox/`.
+fn legacy_instance_json_path(instance_id: &str) -> Result<PathBuf, String> {
     Ok(instance_dir(instance_id)?.join(INSTANCE_JSON))
+}
+
+fn migrate_instance_json_if_needed(instance_id: &str) -> Result<(), String> {
+    let new_path = instance_json_path(instance_id)?;
+    if new_path.exists() {
+        return Ok(());
+    }
+    let old_path = legacy_instance_json_path(instance_id)?;
+    if !old_path.exists() {
+        return Ok(());
+    }
+    if let Some(parent) = new_path.parent() {
+        fs::create_dir_all(parent).map_err(|e| e.to_string())?;
+    }
+    fs::rename(&old_path, &new_path).map_err(|e| e.to_string())
 }
 
 pub fn manifest_path(instance_id: &str, kind: &str) -> Result<PathBuf, String> {
@@ -112,11 +132,17 @@ fn write_instance_json(instance: &GameInstance) -> Result<(), String> {
 }
 
 fn read_instance_json(dir_name: &str) -> Result<GameInstance, String> {
+    migrate_instance_json_if_needed(dir_name)?;
     let path = instance_json_path(dir_name)?;
     let text = fs::read_to_string(path).map_err(|e| e.to_string())?;
     let mut instance: GameInstance = serde_json::from_str(&text).map_err(|e| e.to_string())?;
     instance.instance_id = dir_name.to_string();
     Ok(instance)
+}
+
+fn has_instance_json(dir_name: &str) -> Result<bool, String> {
+    Ok(instance_json_path(dir_name)?.exists()
+        || legacy_instance_json_path(dir_name)?.exists())
 }
 
 fn ensure_echbox_stubs(instance_id: &str) -> Result<(), String> {
@@ -138,7 +164,7 @@ fn migrate_legacy_dir(dir_name: &str) -> Result<GameInstance, String> {
     if !echbox.is_dir() {
         return Err("not a legacy install".into());
     }
-    if instance_json_path(dir_name)?.exists() {
+    if has_instance_json(dir_name)? {
         return read_instance_json(dir_name);
     }
     let instance = GameInstance {
@@ -154,8 +180,7 @@ fn migrate_legacy_dir(dir_name: &str) -> Result<GameInstance, String> {
 
 pub fn ensure_instance(instance_id: &str) -> Result<GameInstance, String> {
     validate_instance_id(instance_id)?;
-    let json_path = instance_json_path(instance_id)?;
-    if json_path.exists() {
+    if has_instance_json(instance_id)? {
         return read_instance_json(instance_id);
     }
     let dir = instance_dir(instance_id)?;
@@ -222,7 +247,14 @@ pub fn list_installed_instances() -> Result<Vec<GameInstance>, String> {
         if !path.join(".echbox").is_dir() {
             continue;
         }
-        let instance = if path.join(INSTANCE_JSON).exists() {
+        let has_json = match has_instance_json(&name) {
+            Ok(v) => v,
+            Err(e) => {
+                eprintln!("skipping instance {name:?}: {e}");
+                continue;
+            }
+        };
+        let instance = if has_json {
             match read_instance_json(&name) {
                 Ok(inst) => inst,
                 Err(e) => {
@@ -392,8 +424,9 @@ mod tests {
         with_temp_home(|_home| {
             let good = install_game("good-game", None).unwrap();
             let bad_dir = games_root().join("bad-instance");
-            fs::create_dir_all(bad_dir.join(".echbox")).unwrap();
-            fs::write(bad_dir.join(INSTANCE_JSON), "{ not json").unwrap();
+            let echbox = bad_dir.join(".echbox");
+            fs::create_dir_all(&echbox).unwrap();
+            fs::write(echbox.join(INSTANCE_JSON), "{ not json").unwrap();
             let listed = list_installed_instances().unwrap();
             assert_eq!(listed.len(), 1);
             assert_eq!(listed[0].instance_id, good.instance_id);
@@ -405,12 +438,13 @@ mod tests {
         with_temp_home(|_home| {
             let dir_name = "real-dir-id";
             let base = games_root().join(dir_name);
-            fs::create_dir_all(base.join(".echbox")).unwrap();
+            let echbox = base.join(".echbox");
+            fs::create_dir_all(&echbox).unwrap();
             let wrong_id = "wrong-json-id";
             let body = format!(
                 r#"{{"instanceId":"{wrong_id}","gameId":"g1","label":"","createdAt":"2020-01-01T00:00:00.000Z"}}"#
             );
-            fs::write(base.join(INSTANCE_JSON), body).unwrap();
+            fs::write(echbox.join(INSTANCE_JSON), body).unwrap();
             let listed = list_installed_instances().unwrap();
             assert_eq!(listed.len(), 1);
             assert_eq!(listed[0].instance_id, dir_name);
@@ -422,8 +456,9 @@ mod tests {
     fn install_succeeds_when_sibling_instance_json_corrupt() {
         with_temp_home(|_home| {
             let bad_dir = games_root().join("corrupt-sibling");
-            fs::create_dir_all(bad_dir.join(".echbox")).unwrap();
-            fs::write(bad_dir.join(INSTANCE_JSON), "[]").unwrap();
+            let echbox = bad_dir.join(".echbox");
+            fs::create_dir_all(&echbox).unwrap();
+            fs::write(echbox.join(INSTANCE_JSON), "[]").unwrap();
             let inst = install_game("fresh", None).unwrap();
             assert_eq!(inst.game_id, "fresh");
             let listed = list_installed_instances().unwrap();
@@ -436,16 +471,18 @@ mod tests {
     fn list_sorts_mixed_epoch_ms_and_rfc3339_created_at() {
         with_temp_home(|_home| {
             let older_dir = games_root().join("older-ms");
-            fs::create_dir_all(older_dir.join(".echbox")).unwrap();
+            let older_echbox = older_dir.join(".echbox");
+            fs::create_dir_all(&older_echbox).unwrap();
             fs::write(
-                older_dir.join(INSTANCE_JSON),
+                older_echbox.join(INSTANCE_JSON),
                 r#"{"instanceId":"older-ms","gameId":"g","label":"","createdAt":"1000"}"#,
             )
             .unwrap();
             let newer_dir = games_root().join("newer-iso");
-            fs::create_dir_all(newer_dir.join(".echbox")).unwrap();
+            let newer_echbox = newer_dir.join(".echbox");
+            fs::create_dir_all(&newer_echbox).unwrap();
             fs::write(
-                newer_dir.join(INSTANCE_JSON),
+                newer_echbox.join(INSTANCE_JSON),
                 r#"{"instanceId":"newer-iso","gameId":"g","label":"","createdAt":"2026-01-01T00:00:00.000Z"}"#,
             )
             .unwrap();
@@ -453,6 +490,22 @@ mod tests {
             assert_eq!(listed.len(), 2);
             assert_eq!(listed[0].instance_id, "older-ms");
             assert_eq!(listed[1].instance_id, "newer-iso");
+        });
+    }
+
+    #[test]
+    fn relocates_sibling_instance_json_into_echbox() {
+        with_temp_home(|_home| {
+            let id = "reloc-me";
+            let base = games_root().join(id);
+            fs::create_dir_all(base.join(".echbox")).unwrap();
+            let body = r#"{"instanceId":"reloc-me","gameId":"g","label":"","createdAt":"2020-01-01T00:00:00.000Z"}"#;
+            fs::write(base.join(INSTANCE_JSON), body).unwrap();
+            let listed = list_installed_instances().unwrap();
+            assert_eq!(listed.len(), 1);
+            assert_eq!(listed[0].instance_id, id);
+            assert!(instance_json_path(id).unwrap().exists());
+            assert!(!legacy_instance_json_path(id).unwrap().exists());
         });
     }
 

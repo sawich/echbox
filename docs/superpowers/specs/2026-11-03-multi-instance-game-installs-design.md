@@ -29,8 +29,8 @@ Allow several local installs of the same catalog game so users can keep separate
 
 ```
 ~/.echbox/games/{instanceId}/
-  instance.json          # { instanceId, gameId, label, createdAt }
   .echbox/
+    instance.json        # { instanceId, gameId, label, createdAt }
     cards.jsonl
     plugins.jsonl
     scenes.jsonl
@@ -47,7 +47,8 @@ Allow several local installs of the same catalog game so users can keep separate
 
 On read/list (and once on install-related commands):
 
-- If `games/{dir}/.echbox/` exists and `instance.json` is missing → treat as legacy instance with `instanceId = dir`, `gameId = dir`, `label` from catalog title when UI has it (Rust may use empty/`gameId`), then write `instance.json` so the tree is canonical.
+- If `games/{dir}/.echbox/` exists and `instance.json` is missing → treat as legacy instance with `instanceId = dir`, `gameId = dir`, `label` from catalog title when UI has it (Rust may use empty/`gameId`), then write `.echbox/instance.json` so the tree is canonical.
+- If `games/{dir}/instance.json` exists beside `.echbox/` (pre-relocation) → move it to `.echbox/instance.json` on read/list.
 
 ## Tauri / composable surface
 

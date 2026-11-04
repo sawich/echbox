@@ -12,7 +12,7 @@
 
 ## Global Constraints
 
-- Layout: `~/.echbox/games/{instanceId}/instance.json` + `.echbox/{cards,plugins,scenes,clothes,softmods}.jsonl`
+- Layout: `~/.echbox/games/{instanceId}/.echbox/instance.json` + `.echbox/{cards,plugins,scenes,clothes,softmods}.jsonl`
 - `GameInstance`: `{ instanceId, gameId, label, createdAt }` camelCase JSON
 - `install_game(gameId)` **always** creates a new instance (never no-ops on existing)
 - Labels: first instance of a `gameId` gets `""`; additional get `"#2"`, `"#3"`, …
@@ -85,7 +85,7 @@ Run: `cd packages/frontend/src-tauri && cargo test local_install -- --nocapture`
 
 - [ ] **Step 3: Implement instance layout + APIs**
 
-Use `uuid` crate already in workspace if present; otherwise `Uuid::new_v4()` via available dep or generate with a small helper. Write `instance.json` beside `.echbox/`. `install_content` must **not** call catalog-id `install_game`; ensure instance dir exists via `ensure_instance`.
+Use `uuid` crate already in workspace if present; otherwise `Uuid::new_v4()` via available dep or generate with a small helper. Write `instance.json` inside `.echbox/`. `install_content` must **not** call catalog-id `install_game`; ensure instance dir exists via `ensure_instance`.
 
 - [ ] **Step 4: Run tests — expect PASS**
 
