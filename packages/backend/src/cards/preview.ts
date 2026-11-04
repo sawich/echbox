@@ -2,7 +2,7 @@ import { mkdir } from "node:fs/promises";
 import { dirname } from "node:path";
 
 const MAX_EDGE = 512;
-const WEBP_QUALITY = 80;
+export const WEBP_QUALITY = 40;
 
 export async function writeWebpPreview(
   sourcePngOrImageBytes: Uint8Array,
