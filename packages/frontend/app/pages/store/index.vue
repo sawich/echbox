@@ -82,6 +82,11 @@ const editExePath = ref<string | null>(null)
 const editIconBusy = ref(false)
 const editDropActive = ref(false)
 
+const showDelete = ref(false)
+const deleteGame = ref<GameListItem | null>(null)
+const deleteBusy = ref(false)
+const deleteError = ref<string | null>(null)
+
 const canCreateGame = computed(() => isAdmin.value && isDesktop.value)
 
 const { data, error, status, refresh } = await useAsyncData('store-games', async () => {
@@ -197,6 +202,46 @@ function openEdit(game: GameListItem) {
   editExePath.value = null
   revokeUrl(editIconPreview)
   showEdit.value = true
+}
+
+function openDelete(game: GameListItem) {
+  deleteGame.value = game
+  deleteError.value = null
+  showDelete.value = true
+}
+
+watch(showDelete, (open) => {
+  if (!open) {
+    deleteGame.value = null
+    deleteError.value = null
+    deleteBusy.value = false
+  }
+})
+
+async function confirmDelete() {
+  const game = deleteGame.value
+  if (!game || deleteBusy.value) return
+  deleteBusy.value = true
+  deleteError.value = null
+  try {
+    const { error: err } = await api.api.games({ id: game.id }).delete(
+      undefined,
+      { fetch: { credentials: 'include' } },
+    )
+    if (err) {
+      const val = err.value as { error?: string } | undefined
+      deleteError.value = val?.error || `Failed to delete game (${err.status})`
+      return
+    }
+    showDelete.value = false
+    await refresh()
+  }
+  catch (e) {
+    deleteError.value = e instanceof Error ? e.message : 'Failed to delete game'
+  }
+  finally {
+    deleteBusy.value = false
+  }
 }
 
 function instancesForGame(gameId: string): GameInstance[] {
@@ -598,6 +643,47 @@ const editPreviewSrc = computed(() => {
 
     <UModal
       v-if="isAdmin"
+      v-model:open="showDelete"
+      title="Delete game"
+      :description="deleteGame
+        ? `This removes ${deleteGame.title} from the store, including its cards, clothes, scenes, plugins, and softmods. Local installs stay.`
+        : undefined"
+      :ui="{ content: 'sm:max-w-md' }"
+    >
+      <span class="hidden" />
+      <template #body>
+        <UAlert
+          v-if="deleteError"
+          color="error"
+          variant="subtle"
+          :title="deleteError"
+        />
+      </template>
+      <template #footer="{ close }">
+        <div class="flex w-full justify-end gap-2">
+          <UButton
+            color="neutral"
+            variant="ghost"
+            :disabled="deleteBusy"
+            @click="close()"
+          >
+            Cancel
+          </UButton>
+          <UButton
+            color="error"
+            icon="i-lucide-trash-2"
+            :loading="deleteBusy"
+            :disabled="deleteBusy"
+            @click="confirmDelete"
+          >
+            Delete forever
+          </UButton>
+        </div>
+      </template>
+    </UModal>
+
+    <UModal
+      v-if="isAdmin"
       v-model:open="showEdit"
       title="Edit game"
       description="Update catalog metadata. Icon replace is optional and requires the desktop app."
@@ -832,6 +918,15 @@ const editPreviewSrc = computed(() => {
             @click="openEdit(game)"
           >
             Edit
+          </UButton>
+          <UButton
+            v-if="isAdmin"
+            color="error"
+            variant="outline"
+            icon="i-lucide-trash-2"
+            @click="openDelete(game)"
+          >
+            Delete
           </UButton>
         </div>
       </article>
