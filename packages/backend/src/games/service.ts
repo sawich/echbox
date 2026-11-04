@@ -4,17 +4,9 @@ import {
   type ContentKind,
   type GameContentKind,
 } from "@echbox/shared";
-import { and, count, desc, eq, ne } from "drizzle-orm";
+import { and, desc, eq, ne } from "drizzle-orm";
 import { getDb } from "../db/client";
-import {
-  characterCards,
-  clothes,
-  gameContentKinds,
-  games,
-  plugins,
-  scenes,
-  softmods,
-} from "../db/schema";
+import { gameContentKinds, games } from "../db/schema";
 import {
   BadGameError,
   GameConflictError,
@@ -249,55 +241,11 @@ export function patchGame(input: PatchGameInput): GameRecord {
   return getGame(existing.id, { dbPath: input.dbPath })!;
 }
 
-function contentCountForGame(gameId: string, dbPath?: string): number {
-  const db = getDb(dbPath);
-  const cards = db
-    .select({ n: count() })
-    .from(characterCards)
-    .where(eq(characterCards.gameId, gameId))
-    .get()?.n;
-  const sceneN = db
-    .select({ n: count() })
-    .from(scenes)
-    .where(eq(scenes.gameId, gameId))
-    .get()?.n;
-  const clothesN = db
-    .select({ n: count() })
-    .from(clothes)
-    .where(eq(clothes.gameId, gameId))
-    .get()?.n;
-  const pluginN = db
-    .select({ n: count() })
-    .from(plugins)
-    .where(eq(plugins.gameId, gameId))
-    .get()?.n;
-  const softmodN = db
-    .select({ n: count() })
-    .from(softmods)
-    .where(eq(softmods.gameId, gameId))
-    .get()?.n;
-  return (
-    (cards ?? 0) +
-    (sceneN ?? 0) +
-    (clothesN ?? 0) +
-    (pluginN ?? 0) +
-    (softmodN ?? 0)
-  );
-}
-
 export function deleteGame(id: string, options?: GameServiceOptions): void {
   const db = getDb(options?.dbPath);
   const existing = db.select().from(games).where(eq(games.id, id)).get();
   if (!existing) {
     throw new GameNotFoundError();
-  }
-
-  const refs = contentCountForGame(id, options?.dbPath);
-  if (refs > 0) {
-    throw new GameConflictError(
-      "Game still has content; remove content before deleting",
-      "game_has_content",
-    );
   }
 
   db.delete(games).where(eq(games.id, id)).run();

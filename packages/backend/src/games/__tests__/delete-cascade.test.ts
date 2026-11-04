@@ -25,7 +25,8 @@ import {
   softmods,
   users,
 } from "../../db/schema";
-import { createGame } from "../service";
+import { gameIconsDir } from "../icons";
+import { createGame, deleteGame, GameNotFoundError } from "../service";
 
 type Db = ReturnType<typeof getDb>;
 
@@ -375,5 +376,27 @@ describe("game delete cascade", () => {
       expect(db.select().from(table).all()).toHaveLength(1);
     }
     for (const path of goneFiles) expect(existsSync(path)).toBe(true);
+  });
+
+  test("deleteGame removes the icon directory and leaves the content file", async () => {
+    const game = createGame({
+      title: "Icons",
+      createdByUserId: userId,
+      dbPath,
+      contentKinds: [{ kind: "cards", relPath: null }],
+    });
+    const db = getDb(dbPath);
+    const [file] = await seedAllKinds(db, game.id, userId, dataDir);
+    const icon = join(gameIconsDir(game.id, dataDir), "32.webp");
+    mkdirSync(dirname(icon), { recursive: true });
+    await Bun.write(icon, new Uint8Array([1, 2, 3]));
+
+    deleteGame(game.id, { dbPath, dataDir });
+
+    expect(existsSync(icon)).toBe(false);
+    expect(existsSync(file!)).toBe(true);
+    expect(() => deleteGame(game.id, { dbPath, dataDir })).toThrow(
+      GameNotFoundError,
+    );
   });
 });

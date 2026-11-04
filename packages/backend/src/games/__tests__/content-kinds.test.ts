@@ -8,7 +8,6 @@ import { migrateDb } from "../../db/migrate";
 import { clothes, games, users } from "../../db/schema";
 import {
   BadGameError,
-  GameConflictError,
   assertGameSupportsKind,
   createGame,
   deleteGame,
@@ -140,7 +139,7 @@ describe("game content kinds", () => {
     expect(rows).toHaveLength(0);
   });
 
-  test("deleteGame blocked when only clothes remain", () => {
+  test("deleteGame removes game when only clothes remain", () => {
     const game = createGame({
       title: "Clothes only",
       createdByUserId: userId,
@@ -162,8 +161,16 @@ describe("game content kinds", () => {
         updatedAt: now,
       })
       .run();
-    expect(() => deleteGame(game.id, { dbPath, dataDir })).toThrow(
-      GameConflictError,
-    );
+    deleteGame(game.id, { dbPath, dataDir });
+    expect(
+      getDb(dbPath).select().from(games).where(eq(games.id, game.id)).all(),
+    ).toHaveLength(0);
+    expect(
+      getDb(dbPath)
+        .select()
+        .from(clothes)
+        .where(eq(clothes.gameId, game.id))
+        .all(),
+    ).toHaveLength(0);
   });
 });

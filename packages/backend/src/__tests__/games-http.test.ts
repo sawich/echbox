@@ -7,7 +7,7 @@ import { createSession } from "../auth/session";
 import { getDb } from "../db/client";
 import { migrateDb } from "../db/migrate";
 import { users } from "../db/schema";
-import { createGame } from "../games/service";
+import { createGame, getGame } from "../games/service";
 import { gameIconsDir, iconSourcePath, iconWebpPath } from "../games/icons";
 import { createPlugin } from "../plugins/service";
 import { strToU8, zipSync } from "fflate";
@@ -219,7 +219,7 @@ describe("Games HTTP routes", () => {
     expect(denied.status).toBe(403);
   });
 
-  test("delete blocked while content exists", async () => {
+  test("admin delete removes the game and plugin rows and leaves the zip", async () => {
     const game = createGame({
       title: "Honey Select 2",
       createdByUserId: adminId,
@@ -227,7 +227,7 @@ describe("Games HTTP routes", () => {
       contentKinds: [{ kind: "plugins", relPath: null }],
     });
 
-    await createPlugin({
+    const plugin = await createPlugin({
       authorId: userId,
       gameId: game.id,
       title: "Content",
@@ -236,6 +236,16 @@ describe("Games HTTP routes", () => {
       dbPath,
       dataDir,
     });
+    const zipPath = plugin.versions[0]!.originalPath;
+
+    const denied = await app.handle(
+      new Request(`http://localhost/api/games/${game.id}`, {
+        method: "DELETE",
+        headers: { cookie: userCookie },
+      }),
+    );
+    expect(denied.status).toBe(403);
+    expect(getGame(game.id, { dbPath })).not.toBeNull();
 
     const res = await app.handle(
       new Request(`http://localhost/api/games/${game.id}`, {
@@ -243,7 +253,34 @@ describe("Games HTTP routes", () => {
         headers: { cookie: adminCookie },
       }),
     );
-    expect(res.status).toBe(409);
+    expect(res.status).toBe(204);
+    expect(getGame(game.id, { dbPath })).toBeNull();
+    expect(existsSync(zipPath)).toBe(true);
+
+    const missing = await app.handle(
+      new Request(`http://localhost/api/games/${game.id}`, {
+        method: "DELETE",
+        headers: { cookie: adminCookie },
+      }),
+    );
+    expect(missing.status).toBe(404);
+  });
+
+  test("admin delete of a game with no content returns 204", async () => {
+    const game = createGame({
+      title: "Empty game",
+      createdByUserId: adminId,
+      dbPath,
+    });
+
+    const res = await app.handle(
+      new Request(`http://localhost/api/games/${game.id}`, {
+        method: "DELETE",
+        headers: { cookie: adminCookie },
+      }),
+    );
+    expect(res.status).toBe(204);
+    expect(getGame(game.id, { dbPath })).toBeNull();
   });
 
   test("create game with contentKinds JSON field", async () => {
