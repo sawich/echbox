@@ -1,4 +1,5 @@
 import {
+  findContentBlob,
   getContentBlobBytes,
   putContentBlob,
   type TelegramTransport,
@@ -27,6 +28,20 @@ export function setContentBlobTestDefaults(
   defaults: { transport: TelegramTransport; chatId: string } | null,
 ): void {
   testBlobDefaults = defaults;
+}
+
+function resolveTransportForDownload(
+  options?: ContentBlobOptions,
+): { transport: TelegramTransport } {
+  if (options?.transport) {
+    return { transport: options.transport };
+  }
+  if (testBlobDefaults) {
+    return { transport: testBlobDefaults.transport };
+  }
+  return {
+    transport: createBotApiTransport(getTelegramBotToken()),
+  };
 }
 
 function resolveTransportAndChat(
@@ -69,15 +84,18 @@ export async function loadContentOriginal(
   legacyOriginalPath: string | null | undefined,
   options?: ContentBlobOptions,
 ): Promise<Uint8Array | null> {
-  const { transport } = resolveTransportAndChat(options);
-  const fromBlob = await getContentBlobBytes(contentHash, {
-    dbPath: options?.dbPath,
-    dataDir: options?.dataDir,
-    transport,
-  });
-  if (fromBlob) {
-    return fromBlob;
+  if (findContentBlob(contentHash, options?.dbPath)) {
+    const { transport } = resolveTransportForDownload(options);
+    const fromBlob = await getContentBlobBytes(contentHash, {
+      dbPath: options?.dbPath,
+      dataDir: options?.dataDir,
+      transport,
+    });
+    if (fromBlob) {
+      return fromBlob;
+    }
   }
+
   if (legacyOriginalPath) {
     const file = Bun.file(legacyOriginalPath);
     if (await file.exists()) {

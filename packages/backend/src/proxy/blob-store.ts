@@ -1,4 +1,7 @@
+import { open } from "node:fs/promises";
+import { join } from "node:path";
 import { asc, eq } from "drizzle-orm";
+import { isUniqueConstraintError } from "../common/staging";
 import { getDb } from "../db/client";
 import {
   contentBlobChunks,
@@ -14,16 +17,6 @@ function chunkFilename(contentHash: string, chunkIndex: number): string {
   return `${contentHash}.${chunkIndex}.zip.part`;
 }
 
-function concatBytes(parts: Uint8Array[]): Uint8Array {
-  const total = parts.reduce((sum, part) => sum + part.length, 0);
-  const merged = new Uint8Array(total);
-  let offset = 0;
-  for (const part of parts) {
-    merged.set(part, offset);
-    offset += part.length;
-  }
-  return merged;
-}
 
 export function findContentBlob(
   contentHash: string,
@@ -80,30 +73,40 @@ export async function putContentBlob(input: {
   }
 
   const createdAt = new Date().toISOString();
-  db.transaction((tx) => {
-    tx.insert(contentBlobs)
-      .values({
-        contentHash: input.contentHash,
-        originalByteSize: input.original.length,
-        archiveByteSize: archive.length,
-        chunkCount: chunks.length,
-        createdAt,
-      })
-      .run();
-
-    tx.insert(contentBlobChunks)
-      .values(
-        uploaded.map((chunk) => ({
+  try {
+    db.transaction((tx) => {
+      tx.insert(contentBlobs)
+        .values({
           contentHash: input.contentHash,
-          chunkIndex: chunk.chunkIndex,
-          byteSize: chunk.byteSize,
-          telegramFileId: chunk.fileId,
-          telegramMessageId: chunk.messageId,
-          telegramChatId: input.chatId,
-        })),
-      )
-      .run();
-  });
+          originalByteSize: input.original.length,
+          archiveByteSize: archive.length,
+          chunkCount: chunks.length,
+          createdAt,
+        })
+        .run();
+
+      tx.insert(contentBlobChunks)
+        .values(
+          uploaded.map((chunk) => ({
+            contentHash: input.contentHash,
+            chunkIndex: chunk.chunkIndex,
+            byteSize: chunk.byteSize,
+            telegramFileId: chunk.fileId,
+            telegramMessageId: chunk.messageId,
+            telegramChatId: input.chatId,
+          })),
+        )
+        .run();
+    });
+  } catch (err) {
+    if (
+      isUniqueConstraintError(err) &&
+      findContentBlob(input.contentHash, input.dbPath)
+    ) {
+      return;
+    }
+    throw err;
+  }
 }
 
 export async function getContentBlobBytes(
@@ -131,12 +134,25 @@ export async function getContentBlobBytes(
     .orderBy(asc(contentBlobChunks.chunkIndex))
     .all();
 
-  return withProxyTempDir(async () => {
-    const parts: Uint8Array[] = [];
-    for (const row of chunkRows) {
-      parts.push(await options.transport.downloadFile(row.telegramFileId));
+  return withProxyTempDir(async (dir) => {
+    const archivePath = join(dir, "archive.zip");
+    const handle = await open(archivePath, "w");
+    try {
+      for (const row of chunkRows) {
+        const partPath = join(dir, `chunk-${row.chunkIndex}.part`);
+        const part = await options.transport.downloadFile(row.telegramFileId);
+        if (part.length !== row.byteSize) {
+          throw new Error(
+            `chunk ${row.chunkIndex} size mismatch: expected ${row.byteSize}, got ${part.length}`,
+          );
+        }
+        await Bun.write(partPath, part);
+        await handle.write(part);
+      }
+    } finally {
+      await handle.close();
     }
-    const archive = concatBytes(parts);
+    const archive = new Uint8Array(await Bun.file(archivePath).arrayBuffer());
     return unpackOriginal(archive);
   }, options.dataDir);
 }

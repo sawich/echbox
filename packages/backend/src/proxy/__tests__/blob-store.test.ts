@@ -146,6 +146,69 @@ describe("content blob store", () => {
     expect(got).toEqual(original);
   });
 
+  test("concurrent put of same new hash completes without throw", async () => {
+    const original = new TextEncoder().encode("race");
+    const contentHash = "e".repeat(64);
+    const transport = createFakeTransport();
+
+    await Promise.all([
+      putContentBlob({
+        contentHash,
+        original,
+        dbPath,
+        dataDir,
+        transport,
+        chatId,
+      }),
+      putContentBlob({
+        contentHash,
+        original,
+        dbPath,
+        dataDir,
+        transport,
+        chatId,
+      }),
+    ]);
+
+    expect(findContentBlob(contentHash, dbPath)).toEqual({ chunkCount: 1 });
+  });
+
+  test("get writes each chunk to a part file in temp dir", async () => {
+    const original = incompressibleOriginal(CHUNK_SIZE_BYTES + 4096);
+    const contentHash = "f".repeat(64);
+    const transport = createFakeTransport();
+
+    await putContentBlob({
+      contentHash,
+      original,
+      dbPath,
+      dataDir,
+      transport,
+      chatId,
+    });
+
+    const writtenPaths: string[] = [];
+    const origWrite = Bun.write.bind(Bun);
+    Bun.write = (async (path, data) => {
+      writtenPaths.push(String(path));
+      return origWrite(path, data);
+    }) as typeof Bun.write;
+
+    try {
+      const got = await getContentBlobBytes(contentHash, {
+        dbPath,
+        dataDir,
+        transport,
+      });
+      expect(got).toEqual(original);
+    } finally {
+      Bun.write = origWrite;
+    }
+
+    expect(writtenPaths.some((p) => p.endsWith("chunk-0.part"))).toBe(true);
+    expect(writtenPaths.some((p) => p.endsWith("chunk-1.part"))).toBe(true);
+  });
+
   test("if sendDocument throws on chunk 2, findContentBlob is null", async () => {
     const original = incompressibleOriginal(CHUNK_SIZE_BYTES + 4096);
     const contentHash = "d".repeat(64);
