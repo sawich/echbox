@@ -540,20 +540,36 @@ async function handleDeleteCard() {
             </div>
           </div>
 
-          <div
-            v-if="data.type === 'character'"
-            class="space-y-2 border-t border-default pt-4"
-          >
-            <CardVoteControls
-              :likes="data.likes ?? 0"
-              :dislikes="data.dislikes ?? 0"
-              :my-vote="data.myVote ?? null"
-              :interactive="canVote"
-              :busy="voteBusy"
-              @vote="submitVote"
-            />
+          <div class="space-y-2 border-t border-default pt-4">
+            <div class="flex flex-wrap items-center justify-between gap-x-4 gap-y-3">
+              <UButton
+                :color="isInstalled ? 'neutral' : 'primary'"
+                :variant="isInstalled ? 'outline' : 'solid'"
+                :icon="isInstalled ? 'i-lucide-folder-minus' : 'i-lucide-download'"
+                :loading="installBusy"
+                :disabled="installDisabled"
+                @click="toggleInstall"
+              >
+                {{ installLabel }}
+              </UButton>
+              <CardVoteControls
+                v-if="data.type === 'character'"
+                :likes="data.likes ?? 0"
+                :dislikes="data.dislikes ?? 0"
+                :my-vote="data.myVote ?? null"
+                :interactive="canVote"
+                :busy="voteBusy"
+                @vote="submitVote"
+              />
+            </div>
             <p
-              v-if="!user"
+              v-if="installHelp"
+              class="text-sm text-muted"
+            >
+              {{ installHelp }}
+            </p>
+            <p
+              v-if="data.type === 'character' && !user"
               class="text-sm text-muted"
             >
               <button
@@ -570,25 +586,6 @@ async function handleDeleteCard() {
               class="text-sm text-error"
             >
               {{ voteError }}
-            </p>
-          </div>
-
-          <div class="space-y-2 border-t border-default pt-4">
-            <UButton
-              :color="isInstalled ? 'neutral' : 'primary'"
-              :variant="isInstalled ? 'outline' : 'solid'"
-              :icon="isInstalled ? 'i-lucide-folder-minus' : 'i-lucide-download'"
-              :loading="installBusy"
-              :disabled="installDisabled"
-              @click="toggleInstall"
-            >
-              {{ installLabel }}
-            </UButton>
-            <p
-              v-if="installHelp"
-              class="text-sm text-muted"
-            >
-              {{ installHelp }}
             </p>
             <UAlert
               v-if="installError"

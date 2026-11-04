@@ -1,6 +1,5 @@
 <script setup lang="ts">
 import type { CardVoteValue } from '@echbox/shared'
-import { approvalPercent } from '~/utils/format'
 
 const props = withDefaults(defineProps<{
   likes: number
@@ -20,8 +19,6 @@ const emit = defineEmits<{
   vote: [value: CardVoteValue | null]
 }>()
 
-const approval = computed(() => approvalPercent(props.likes, props.dislikes))
-
 function onVote(value: CardVoteValue) {
   if (!props.interactive || props.busy) return
   emit('vote', props.myVote === value ? null : value)
@@ -29,9 +26,9 @@ function onVote(value: CardVoteValue) {
 </script>
 
 <template>
-  <div class="flex flex-wrap items-center gap-x-4 gap-y-2">
+  <div class="flex flex-wrap items-center justify-end gap-x-4 gap-y-2">
     <div
-      class="inline-flex items-center rounded-[var(--radius-md)] border border-[var(--ed-outline-variant)] bg-[var(--ed-surface-container-high)] p-0.5"
+      class="inline-flex shrink-0 items-center rounded-[var(--radius-md)] border border-[var(--ed-outline-variant)] bg-[var(--ed-surface-container-high)] p-0.5"
       role="group"
       aria-label="Rate"
     >
@@ -60,19 +57,6 @@ function onVote(value: CardVoteValue) {
       >
         {{ dislikes }}
       </UButton>
-    </div>
-
-    <div
-      v-if="approval !== null"
-      class="flex items-center gap-2 text-xs text-muted"
-    >
-      <div class="h-1.5 w-24 overflow-hidden rounded-full bg-[var(--ed-surface-container-highest)]">
-        <div
-          class="h-full rounded-full bg-gradient-to-r from-[var(--ed-primary)] to-[var(--ed-secondary)] transition-[width] duration-500"
-          :style="{ width: `${approval}%` }"
-        />
-      </div>
-      <span class="tabular-nums">{{ approval }}% liked</span>
     </div>
   </div>
 </template>
