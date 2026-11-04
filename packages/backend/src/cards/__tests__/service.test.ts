@@ -21,6 +21,10 @@ import {
 import { getVersionPaths } from "../storage";
 import { seedTestGame } from "../../__tests__/test-game";
 import { findContentBlob } from "../../proxy/blob-store";
+import {
+  plantCardVersionWithBlob,
+  plantLegacyCardVersionOnDisk,
+} from "../../__tests__/image-content-blob-helpers";
 
 describe("character card service", () => {
   let tempDir: string;
@@ -557,6 +561,7 @@ describe("character card service", () => {
 
   test("deleteCard throws 403 for other user and removes DB + files for author", async () => {
     const v1Bytes = await fixtureBytes("chara", "kk_chara.png");
+    const contentHash = sha256Hex(v1Bytes);
     const card = await createCard({
       gameId,
       semver: "1.0.0",
@@ -585,8 +590,50 @@ describe("character card service", () => {
     });
 
     expect(await getCard(card.id)).toBeNull();
-    expect(await findByHash(sha256Hex(v1Bytes))).toBeNull();
+    expect(await findByHash(contentHash)).toBeNull();
+    expect(findContentBlob(contentHash, dbPath)).toEqual({ chunkCount: 1 });
     expect(existsSync(paths.originalPath)).toBe(false);
     expect(existsSync(paths.previewPath)).toBe(false);
+  });
+
+  test("legacy disk original_path is served when blob is absent", async () => {
+    const db = getDb(dbPath);
+    const planted = await plantLegacyCardVersionOnDisk(db, {
+      gameId,
+      authorId,
+      dataDir,
+    });
+
+    expect(findContentBlob(planted.contentHash, dbPath)).toBeNull();
+
+    const file = await getVersionImage(planted.cardId, planted.versionId, {
+      dbPath,
+      dataDir,
+      original: true,
+    });
+    expect(file).not.toBeNull();
+    expect(Buffer.from(file!.bytes).equals(Buffer.from(planted.fileBytes))).toBe(
+      true,
+    );
+  });
+
+  test("deleteCard keeps content blob after catalog row is removed", async () => {
+    const db = getDb(dbPath);
+    const planted = await plantCardVersionWithBlob(db, {
+      gameId,
+      authorId,
+      dbPath,
+      dataDir,
+    });
+
+    await deleteCard({
+      cardId: planted.cardId,
+      authorId,
+    });
+
+    expect(await getCard(planted.cardId)).toBeNull();
+    expect(findContentBlob(planted.contentHash, dbPath)).toEqual({
+      chunkCount: 1,
+    });
   });
 });

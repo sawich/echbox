@@ -14,11 +14,17 @@ import {
   deleteClothesVersion,
   findClothesByHash,
   getClothes,
+  getClothesVersionImage,
   listClothes,
   patchClothes,
 } from "../service";
 import { getVersionPaths } from "../storage";
 import { seedTestGame } from "../../__tests__/test-game";
+import { findContentBlob } from "../../proxy/blob-store";
+import {
+  plantClothesVersionWithBlob,
+  plantLegacyClothesVersionOnDisk,
+} from "../../__tests__/image-content-blob-helpers";
 
 async function altClothesBytes(): Promise<Uint8Array> {
   const bytes = await fixtureBytes("clothes", "kk_clothes.png");
@@ -108,6 +114,26 @@ describe("clothes service", () => {
     const paths = getVersionPaths(created.id, created.latestVersionId, dataDir);
     expect(existsSync(paths.originalPath)).toBe(false);
     expect(existsSync(paths.previewPath)).toBe(true);
+    expect(findContentBlob(sha256Hex(fileBytes), dbPath)).toEqual({
+      chunkCount: 1,
+    });
+
+    const savedOriginal = await getClothesVersionImage(
+      created.id,
+      created.latestVersionId,
+      { dbPath, dataDir, original: true },
+    );
+    expect(savedOriginal).not.toBeNull();
+    expect(Buffer.from(savedOriginal!.bytes).equals(Buffer.from(fileBytes))).toBe(
+      true,
+    );
+
+    const savedPreview = new Uint8Array(
+      await Bun.file(paths.previewPath).arrayBuffer(),
+    );
+    expect(String.fromCharCode(...savedPreview.slice(0, 4))).toBe("RIFF");
+    expect(String.fromCharCode(...savedPreview.slice(8, 12))).toBe("WEBP");
+
     expect(paths.originalPath).toContain(
       `/clothes/${created.id}/${created.latestVersionId}/`,
     );
@@ -441,6 +467,7 @@ describe("clothes service", () => {
       dbPath,
       dataDir,
     });
+    const contentHash = sha256Hex(fileBytes);
 
     let forbidden: unknown;
     try {
@@ -472,5 +499,49 @@ describe("clothes service", () => {
       dataDir,
     });
     expect(await getClothes(item.id, { dbPath, dataDir })).toBeNull();
+    expect(findContentBlob(contentHash, dbPath)).toEqual({ chunkCount: 1 });
+  });
+
+  test("legacy disk original_path is served when blob is absent", async () => {
+    const db = getDb(dbPath);
+    const planted = await plantLegacyClothesVersionOnDisk(db, {
+      gameId,
+      authorId,
+      dataDir,
+    });
+
+    expect(findContentBlob(planted.contentHash, dbPath)).toBeNull();
+
+    const file = await getClothesVersionImage(
+      planted.clothesId,
+      planted.versionId,
+      { dbPath, dataDir, original: true },
+    );
+    expect(file).not.toBeNull();
+    expect(Buffer.from(file!.bytes).equals(Buffer.from(planted.fileBytes))).toBe(
+      true,
+    );
+  });
+
+  test("deleteClothes keeps content blob after catalog row is removed", async () => {
+    const db = getDb(dbPath);
+    const planted = await plantClothesVersionWithBlob(db, {
+      gameId,
+      authorId,
+      dbPath,
+      dataDir,
+    });
+
+    await deleteClothes({
+      clothesId: planted.clothesId,
+      authorId,
+      dbPath,
+      dataDir,
+    });
+
+    expect(await getClothes(planted.clothesId, { dbPath, dataDir })).toBeNull();
+    expect(findContentBlob(planted.contentHash, dbPath)).toEqual({
+      chunkCount: 1,
+    });
   });
 });

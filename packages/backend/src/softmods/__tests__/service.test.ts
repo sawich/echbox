@@ -5,7 +5,7 @@ import { join } from "node:path";
 import { strToU8, zipSync } from "fflate";
 import { getDb } from "../../db/client";
 import { migrateDb } from "../../db/migrate";
-import { softmodVotes, users } from "../../db/schema";
+import { softmodVersions, softmodVotes, softmods, users } from "../../db/schema";
 import { eq } from "drizzle-orm";
 import { fixtureBytes } from "../../kkloader/__tests__/helpers";
 import { sha256Hex } from "../../cards/hash";
@@ -541,5 +541,51 @@ describe("softmod service", () => {
         .where(eq(softmodVotes.softmodId, created.id))
         .all(),
     ).toHaveLength(0);
+  });
+
+  test("legacy disk original_path is served when blob is absent", async () => {
+    const fileBytes = zipmodWithGuid("com.echbox.legacy-disk");
+    const contentHash = sha256Hex(fileBytes);
+    const softmodId = "com.echbox.legacy-disk";
+    const versionId = crypto.randomUUID();
+    const now = new Date().toISOString();
+    const paths = softmodVersionPaths(dataDir, softmodId, versionId);
+    await Bun.write(paths.originalPath, fileBytes);
+
+    const db = getDb(dbPath);
+    db.insert(softmods)
+      .values({
+        id: softmodId,
+        gameId,
+        authorId,
+        title: "Legacy softmod",
+        description: "Legacy disk only",
+        latestSemver: "1.0.0",
+        latestVersionId: versionId,
+        createdAt: now,
+        updatedAt: now,
+      })
+      .run();
+    db.insert(softmodVersions)
+      .values({
+        id: versionId,
+        softmodId,
+        semver: "1.0.0",
+        notes: null,
+        contentHash,
+        originalPath: paths.originalPath,
+        summaryJson: "{}",
+        createdAt: now,
+      })
+      .run();
+
+    expect(findContentBlob(contentHash, dbPath)).toBeNull();
+
+    const file = await getSoftmodVersionBytes(softmodId, versionId, {
+      dbPath,
+      dataDir,
+    });
+    expect(file).not.toBeNull();
+    expect(Buffer.from(file!.bytes).equals(Buffer.from(fileBytes))).toBe(true);
   });
 });
