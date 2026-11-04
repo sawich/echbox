@@ -31,7 +31,7 @@ function onVote(value: CardVoteValue) {
 <template>
   <div class="flex flex-wrap items-center gap-x-4 gap-y-2">
     <div
-      class="inline-flex items-center rounded-full border border-default bg-elevated p-0.5"
+      class="inline-flex items-center rounded-[var(--radius-md)] border border-[var(--ed-outline-variant)] bg-[var(--ed-surface-container-high)] p-0.5"
       role="group"
       aria-label="Rate"
     >

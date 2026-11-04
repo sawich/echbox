@@ -16,6 +16,12 @@ export type ContentInstallRow = {
   title: string
   contentHash?: string | null
   installedAt: string
+  localRelPath?: string | null
+}
+
+export type InstallContentFile = {
+  bytes: Uint8Array
+  relPath?: string | null
 }
 
 function isTauriRuntime(): boolean {
@@ -64,11 +70,19 @@ export function useLocalInstalls() {
     instanceId: string,
     kind: ContentKind,
     row: ContentInstallRow,
+    file: InstallContentFile,
   ): Promise<void> {
     if (!isDesktop.value) {
       throw new Error('Install is only available in the desktop app')
     }
-    await invoke('install_content', { instanceId, kind, row })
+    const relPath = file.relPath?.trim() ? file.relPath.trim() : null
+    await invoke('install_content', {
+      instanceId,
+      kind,
+      row,
+      fileBytes: Array.from(file.bytes),
+      relPath,
+    })
   }
 
   async function uninstallContent(

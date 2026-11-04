@@ -1,6 +1,5 @@
 <script setup lang="ts">
-import type { PluginListItem, SoftmodListItem } from '@echbox/shared'
-import { type CatalogSort, filterCatalog } from '~/utils/catalog'
+import { DEFAULT_PAGE_LIMIT, type CatalogSort, type PluginListItem, type SoftmodListItem } from '@echbox/shared'
 
 const props = defineProps<{
   modKind: 'plugin' | 'softmod'
@@ -8,6 +7,9 @@ const props = defineProps<{
   description: string
   gameId?: string
   instanceId?: string
+  contentRelPath?: string | null
+  /** Small label above the title; defaults to the section name. */
+  eyebrow?: string
 }>()
 
 const api = useApi()
@@ -18,15 +20,17 @@ const router = useRouter()
 const {
   isDesktop,
   listInstalledContent,
-  installContent,
-  uninstallContent,
 } = useLocalInstalls()
+const {
+  runContentInstall,
+  runContentUninstall,
+  isTargetBusy,
+} = useAppTasks()
 
 const contentKind = computed(() =>
   props.modKind === 'plugin' ? 'plugins' as const : 'softmods' as const,
 )
 const installedIds = ref<Set<string>>(new Set())
-const installBusy = ref<string | null>(null)
 const installError = ref<string | null>(null)
 
 async function refreshInstalled() {
@@ -45,30 +49,52 @@ watch(() => [props.gameId, props.modKind, props.instanceId], () => {
   void refreshInstalled()
 })
 
+const page = ref(1)
+const query = ref('')
+const debouncedQuery = refDebounced(query, 250)
+const sort = ref<CatalogSort>('recent')
+
+watch([debouncedQuery, sort, () => props.gameId, () => props.modKind], () => {
+  page.value = 1
+})
+
 const { data, error, status, refresh } = await useAsyncData(
-  () => `catalog-${props.modKind}-${props.gameId ?? 'all'}`,
+  () => `catalog-${props.modKind}-${props.gameId ?? 'all'}-${page.value}-${debouncedQuery.value}-${sort.value}`,
   async () => {
-    const query = props.gameId ? { gameId: props.gameId } : undefined
+    const listQuery = {
+      page: page.value,
+      limit: DEFAULT_PAGE_LIMIT,
+      sort: sort.value,
+      ...(debouncedQuery.value.trim() ? { q: debouncedQuery.value.trim() } : {}),
+      ...(props.gameId ? { gameId: props.gameId } : {}),
+    }
     if (props.modKind === 'plugin') {
       const { data: body, error: err } = await api.api.plugins.get({
-        query,
+        query: listQuery,
         fetch: { credentials: 'include' },
       })
       if (err) throw err
-      return (body?.plugins ?? []) as PluginListItem[]
+      return {
+        items: (body?.plugins ?? []) as PluginListItem[],
+        total: Number(body?.total ?? 0),
+      }
     }
     const { data: body, error: err } = await api.api.softmods.get({
-      query,
+      query: listQuery,
       fetch: { credentials: 'include' },
     })
     if (err) throw err
-    return (body?.softmods ?? []) as SoftmodListItem[]
+    return {
+      items: (body?.softmods ?? []) as SoftmodListItem[],
+      total: Number(body?.total ?? 0),
+    }
   },
-  { watch: [() => props.modKind, () => props.gameId] },
+  { watch: [() => props.modKind, () => props.gameId, page, debouncedQuery, sort] },
 )
 
 async function toggleInstall(item: PluginListItem | SoftmodListItem) {
   if (!props.instanceId) return
+  if (isTargetBusy(item.id)) return
   if (!isDesktop.value) {
     installError.value = 'Install is only available in the desktop app'
     return
@@ -77,20 +103,30 @@ async function toggleInstall(item: PluginListItem | SoftmodListItem) {
     installError.value = 'This item has no versions to install'
     return
   }
-  installBusy.value = item.id
   installError.value = null
   try {
     if (installedIds.value.has(item.id)) {
-      await uninstallContent(props.instanceId, contentKind.value, item.id)
+      await runContentUninstall({
+        instanceId: props.instanceId,
+        kind: contentKind.value,
+        contentId: item.id,
+        title: item.title,
+      })
     }
     else {
-      await installContent(props.instanceId, contentKind.value, {
-        id: item.id,
-        versionId: item.latestVersionId!,
-        semver: item.latestSemver!,
-        title: item.title,
-        contentHash: null,
-        installedAt: new Date().toISOString(),
+      await runContentInstall({
+        instanceId: props.instanceId,
+        kind: contentKind.value,
+        row: {
+          id: item.id,
+          versionId: item.latestVersionId!,
+          semver: item.latestSemver!,
+          title: item.title,
+          contentHash: null,
+          installedAt: new Date().toISOString(),
+        },
+        apiUrl: apiUrl.value,
+        relPath: props.contentRelPath,
       })
     }
     await refreshInstalled()
@@ -98,23 +134,10 @@ async function toggleInstall(item: PluginListItem | SoftmodListItem) {
   catch (err) {
     installError.value = err instanceof Error ? err.message : 'Install failed'
   }
-  finally {
-    installBusy.value = null
-  }
 }
 
-const items = computed<(PluginListItem | SoftmodListItem)[]>(() => data.value ?? [])
-
-const query = ref('')
-const sort = ref<CatalogSort>('recent')
-const visibleItems = computed(() =>
-  filterCatalog(items.value, query.value, sort.value, item => [
-    item.title,
-    item.description,
-    item.uploader.username,
-    'modAuthor' in item ? item.modAuthor : null,
-  ]),
-)
+const items = computed<(PluginListItem | SoftmodListItem)[]>(() => data.value?.items ?? [])
+const total = computed(() => data.value?.total ?? 0)
 
 const showUpload = ref(false)
 const uploadFile = ref<File | null>(null)
@@ -272,13 +295,13 @@ const canSubmitUpload = computed(() => {
 </script>
 
 <template>
-  <main class="mx-auto w-full max-w-5xl space-y-8 px-4 py-8 sm:px-6 sm:py-12">
+  <main class="ed-page-enter mx-auto w-full max-w-5xl space-y-6 px-5 py-6 sm:px-8 sm:py-7">
     <PageHeader
-      eyebrow="Library"
+      :eyebrow="eyebrow ?? 'Library'"
       :icon="modKind === 'plugin' ? 'i-lucide-puzzle' : 'i-lucide-package'"
       :title="title"
       :description="description"
-      :count="status === 'success' ? items.length : null"
+      :count="status === 'success' ? total : null"
     >
       <template #actions>
         <UModal
@@ -291,7 +314,6 @@ const canSubmitUpload = computed(() => {
           <UButton
             icon="i-lucide-plus"
             color="primary"
-            size="lg"
           >
             {{ uploadModalTitle }}
           </UButton>
@@ -409,10 +431,10 @@ const canSubmitUpload = computed(() => {
     </PageHeader>
 
     <CatalogToolbar
-      v-if="status === 'success' && items.length > 0"
+      v-if="status === 'success' && (total > 0 || query.trim())"
       v-model:query="query"
       v-model:sort="sort"
-      :placeholder="`Search ${modKind === 'plugin' ? 'plugins' : 'softmods'} by name, author…`"
+      :placeholder="`Search ${modKind === 'plugin' ? 'plugins' : 'softmods'} by name…`"
     />
 
     <GallerySkeleton
@@ -429,7 +451,7 @@ const canSubmitUpload = computed(() => {
     />
 
     <UEmpty
-      v-else-if="items.length === 0"
+      v-else-if="total === 0 && !query.trim()"
       :icon="modKind === 'plugin' ? 'i-lucide-puzzle' : 'i-lucide-package'"
       title="Nothing published yet"
       :description="user ? 'Be the first to share one.' : 'Sign in to share the first one.'"
@@ -438,7 +460,7 @@ const canSubmitUpload = computed(() => {
     />
 
     <UEmpty
-      v-else-if="visibleItems.length === 0"
+      v-else-if="items.length === 0"
       icon="i-lucide-search-x"
       title="Nothing matches"
       :description="`Nothing matches “${query}”.`"
@@ -456,21 +478,32 @@ const canSubmitUpload = computed(() => {
     />
 
     <div
-      v-else-if="status === 'success' && visibleItems.length > 0"
+      v-else-if="status === 'success' && items.length > 0"
       class="ed-stagger space-y-3"
     >
       <ModRow
-        v-for="item in visibleItems"
+        v-for="item in items"
         :key="item.id"
         :mod-kind="modKind"
         :item="item"
         :api-url="apiUrl"
         :show-install="Boolean(instanceId)"
         :installed="installedIds.has(item.id)"
-        :install-loading="installBusy === item.id"
+        :install-loading="isTargetBusy(item.id)"
         :install-disabled="!isDesktop && !installedIds.has(item.id)"
         :install-label="installedIds.has(item.id) ? 'Uninstall' : (isDesktop ? 'Install' : 'Desktop only')"
         @install="toggleInstall(item)"
+      />
+    </div>
+
+    <div
+      v-if="status === 'success' && total > DEFAULT_PAGE_LIMIT"
+      class="flex justify-center pt-2"
+    >
+      <UPagination
+        v-model:page="page"
+        :total="total"
+        :items-per-page="DEFAULT_PAGE_LIMIT"
       />
     </div>
   </main>

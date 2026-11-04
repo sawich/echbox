@@ -15,7 +15,12 @@ import {
   patchPlugin,
 } from "../plugins/service";
 import { setPluginVote } from "../plugins/votes";
+import {
+  catalogListQueryFields,
+  listOptsFromQuery,
+} from "../common/list-query-schema";
 import { GameServiceError } from "../games/service";
+import { bearerAuthSecurity } from "../openapi";
 import { authDerive } from "./auth";
 
 async function readUpload(file: File): Promise<Uint8Array> {
@@ -71,7 +76,10 @@ function handleServiceError(
   throw err;
 }
 
-export const pluginRoutes = new Elysia({ prefix: "/api/plugins" })
+export const pluginRoutes = new Elysia({
+  prefix: "/api/plugins",
+  tags: ["Plugins"],
+})
   .use(authDerive)
   .get(
     "/by-hash/:hash",
@@ -85,23 +93,31 @@ export const pluginRoutes = new Elysia({ prefix: "/api/plugins" })
     },
     {
       params: t.Object({
-        hash: t.String(),
+        hash: t.String({ description: "SHA-256 hex of the zip bytes" }),
       }),
+      detail: { summary: "Find plugin by content hash" },
     },
   )
   .get(
     "/",
     async ({ query, user }) => {
-      const plugins = await listPlugins({
+      const result = await listPlugins({
         viewerUserId: user?.id ?? null,
-        gameId: query.gameId,
+        ...listOptsFromQuery(query),
       });
-      return { plugins };
+      return {
+        plugins: result.items,
+        total: result.total,
+        page: result.page,
+        limit: result.limit,
+      };
     },
     {
       query: t.Object({
-        gameId: t.Optional(t.String()),
+        gameId: t.Optional(t.String({ description: "Limit to this game id" })),
+        ...catalogListQueryFields,
       }),
+      detail: { summary: "List plugins" },
     },
   )
   .post(
@@ -129,14 +145,21 @@ export const pluginRoutes = new Elysia({ prefix: "/api/plugins" })
       }
     },
     {
-      body: t.Object({
-        file: t.File(),
-        gameId: t.String(),
-        title: t.String(),
-        description: t.Optional(t.String()),
-        semver: t.String({ minLength: 1 }),
-        notes: t.Optional(t.String()),
-      }),
+      body: t.Object(
+        {
+          file: t.File({ description: "Plugin zip" }),
+          gameId: t.String({ description: "Target game id" }),
+          title: t.String({ description: "Required display title" }),
+          description: t.Optional(t.String()),
+          semver: t.String({ minLength: 1, description: "Initial semver" }),
+          notes: t.Optional(t.String()),
+        },
+        { description: "multipart/form-data" },
+      ),
+      detail: {
+        summary: "Upload plugin",
+        security: [...bearerAuthSecurity],
+      },
     },
   )
   .get(
@@ -153,8 +176,9 @@ export const pluginRoutes = new Elysia({ prefix: "/api/plugins" })
     },
     {
       params: t.Object({
-        id: t.String(),
+        id: t.String({ description: "Plugin id" }),
       }),
+      detail: { summary: "Get plugin" },
     },
   )
   .patch(
@@ -184,6 +208,10 @@ export const pluginRoutes = new Elysia({ prefix: "/api/plugins" })
         title: t.Optional(t.String()),
         description: t.Optional(t.String()),
       }),
+      detail: {
+        summary: "Update plugin metadata",
+        security: [...bearerAuthSecurity],
+      },
     },
   )
   .put(
@@ -210,6 +238,10 @@ export const pluginRoutes = new Elysia({ prefix: "/api/plugins" })
       body: t.Object({
         vote: t.Union([t.Literal("like"), t.Literal("dislike"), t.Null()]),
       }),
+      detail: {
+        summary: "Vote on plugin",
+        security: [...bearerAuthSecurity],
+      },
     },
   )
   .post(
@@ -237,11 +269,18 @@ export const pluginRoutes = new Elysia({ prefix: "/api/plugins" })
       params: t.Object({
         id: t.String(),
       }),
-      body: t.Object({
-        file: t.File(),
-        semver: t.String({ minLength: 1 }),
-        notes: t.Optional(t.String()),
-      }),
+      body: t.Object(
+        {
+          file: t.File({ description: "Plugin zip" }),
+          semver: t.String({ minLength: 1 }),
+          notes: t.Optional(t.String()),
+        },
+        { description: "multipart/form-data" },
+      ),
+      detail: {
+        summary: "Add plugin version",
+        security: [...bearerAuthSecurity],
+      },
     },
   )
   .delete(
@@ -264,6 +303,10 @@ export const pluginRoutes = new Elysia({ prefix: "/api/plugins" })
       params: t.Object({
         id: t.String(),
       }),
+      detail: {
+        summary: "Delete plugin",
+        security: [...bearerAuthSecurity],
+      },
     },
   )
   .delete(
@@ -289,6 +332,10 @@ export const pluginRoutes = new Elysia({ prefix: "/api/plugins" })
         id: t.String(),
         versionId: t.String(),
       }),
+      detail: {
+        summary: "Delete plugin version",
+        security: [...bearerAuthSecurity],
+      },
     },
   )
   .get(
@@ -314,5 +361,6 @@ export const pluginRoutes = new Elysia({ prefix: "/api/plugins" })
         id: t.String(),
         versionId: t.String(),
       }),
+      detail: { summary: "Download plugin zip" },
     },
   );

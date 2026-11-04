@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import type { CardDetail, CardVoteValue } from '@echbox/shared'
+import type { CardDetail, CardVoteValue, GameListItem } from '@echbox/shared'
 import { galleryAspect } from '~/utils/gallery'
 
 type CardDetailWithVotes = CardDetail & {
@@ -17,6 +17,16 @@ const api = useApi()
 const config = useRuntimeConfig()
 const apiUrl = computed(() => String(config.public.apiUrl).replace(/\/$/, ''))
 const { user, login } = useAuth()
+const {
+  isDesktop,
+  listInstalledInstances,
+  listInstalledContent,
+} = useLocalInstalls()
+const {
+  runContentInstall,
+  runContentUninstall,
+  isTargetBusy,
+} = useAppTasks()
 
 const id = computed(() => String(route.params.id))
 
@@ -45,6 +55,60 @@ watch(
   },
   { immediate: true },
 )
+
+const libraryInstanceId = ref<string | null>(null)
+const contentRelPath = ref<string | null>(null)
+const isInstalled = ref(false)
+const installError = ref<string | null>(null)
+
+const installBusy = computed(() => isTargetBusy(id.value))
+
+watch(
+  () => data.value?.gameId,
+  async (gameId) => {
+    libraryInstanceId.value = null
+    contentRelPath.value = null
+    isInstalled.value = false
+    if (!gameId || !isDesktop.value) return
+    const instances = await listInstalledInstances()
+    const match = instances
+      .filter(i => i.gameId === gameId)
+      .sort((a, b) => a.createdAt.localeCompare(b.createdAt))[0]
+    libraryInstanceId.value = match?.instanceId ?? null
+
+    try {
+      const { data: game } = await api.api.games({ id: gameId }).get()
+      if (game && !('error' in game)) {
+        const path = (game as GameListItem).contentKinds
+          ?.find(k => k.kind === 'cards')
+          ?.relPath
+          ?.trim()
+        contentRelPath.value = path || null
+      }
+    }
+    catch {
+      contentRelPath.value = null
+    }
+  },
+  { immediate: true },
+)
+
+async function refreshInstalled() {
+  const instanceId = libraryInstanceId.value
+  if (!instanceId || !isDesktop.value) {
+    isInstalled.value = false
+    return
+  }
+  const rows = await listInstalledContent(instanceId, 'cards')
+  isInstalled.value = rows.some(r => r.id === id.value)
+}
+
+watch(libraryInstanceId, () => {
+  void refreshInstalled()
+})
+watch(id, () => {
+  void refreshInstalled()
+})
 
 const isAuthor = computed(() => {
   const card = data.value
@@ -125,6 +189,78 @@ const active = computed(() => {
   const versionId = selectedVersion.value ?? card.latestVersionId
   return card.versions.find(v => v.id === versionId) ?? card.versions.at(-1) ?? null
 })
+
+const installLabel = computed(() => {
+  if (isInstalled.value) return 'Uninstall'
+  if (!isDesktop.value) return 'Desktop only'
+  return 'Install'
+})
+
+const installDisabled = computed(() => {
+  if (installBusy.value) return true
+  if (isInstalled.value) return false
+  if (!isDesktop.value) return true
+  if (!libraryInstanceId.value) return true
+  return !active.value
+})
+
+const installHelp = computed(() => {
+  if (!isDesktop.value) return null
+  if (!libraryInstanceId.value) return 'Install this game in Library first'
+  return null
+})
+
+async function toggleInstall() {
+  const card = data.value
+  const version = active.value
+  const instanceId = libraryInstanceId.value
+  if (!card || installBusy.value) return
+
+  if (!isDesktop.value) {
+    installError.value = 'Install is only available in the desktop app'
+    return
+  }
+  if (!instanceId) {
+    installError.value = 'Install this game in Library first'
+    return
+  }
+  if (!isInstalled.value && !version) {
+    installError.value = 'This card has no versions to install'
+    return
+  }
+
+  installError.value = null
+  try {
+    if (isInstalled.value) {
+      await runContentUninstall({
+        instanceId,
+        kind: 'cards',
+        contentId: card.id,
+        title: card.title,
+      })
+    }
+    else {
+      await runContentInstall({
+        instanceId,
+        kind: 'cards',
+        row: {
+          id: card.id,
+          versionId: version!.id,
+          semver: version!.semver,
+          title: card.title,
+          contentHash: null,
+          installedAt: new Date().toISOString(),
+        },
+        apiUrl: apiUrl.value,
+        relPath: contentRelPath.value,
+      })
+    }
+    await refreshInstalled()
+  }
+  catch (err) {
+    installError.value = err instanceof Error ? err.message : 'Install failed'
+  }
+}
 
 const imageSrc = computed(() => {
   if (!active.value) return ''
@@ -289,7 +425,7 @@ async function handleDeleteCard() {
 </script>
 
 <template>
-  <main class="mx-auto w-full max-w-6xl px-4 py-6 sm:px-6 sm:py-10">
+  <main class="ed-page-enter mx-auto w-full max-w-6xl px-5 py-6 sm:px-8 sm:py-7">
     <UButton
       to="/"
       variant="link"
@@ -319,16 +455,16 @@ async function handleDeleteCard() {
         ? 'lg:grid-cols-[minmax(0,480px)_1fr]'
         : 'lg:grid-cols-[minmax(0,320px)_1fr]'"
     >
-      <aside class="self-start lg:sticky lg:top-24">
+      <aside class="self-start lg:sticky lg:top-6">
         <div class="relative">
           <img
             v-if="imageSrc"
             :src="imageSrc"
             alt=""
             aria-hidden="true"
-            class="absolute inset-0 size-full scale-95 rounded-[var(--radius-2xl)] object-cover opacity-60 blur-3xl saturate-150"
+            class="absolute inset-0 size-full scale-95 rounded-[var(--radius-xl)] object-cover opacity-60 blur-3xl saturate-150"
           >
-          <div class="relative overflow-hidden rounded-[var(--radius-2xl)] border border-default bg-[var(--ed-surface-container-highest)] shadow-[var(--ed-shadow-lift)]">
+          <div class="relative overflow-hidden rounded-[var(--radius-xl)] border border-default bg-[var(--ed-surface-container-highest)] shadow-[var(--ed-shadow-lift)]">
             <img
               v-if="imageSrc"
               :key="imageSrc"
@@ -435,6 +571,32 @@ async function handleDeleteCard() {
             >
               {{ voteError }}
             </p>
+          </div>
+
+          <div class="space-y-2 border-t border-default pt-4">
+            <UButton
+              :color="isInstalled ? 'neutral' : 'primary'"
+              :variant="isInstalled ? 'outline' : 'solid'"
+              :icon="isInstalled ? 'i-lucide-folder-minus' : 'i-lucide-download'"
+              :loading="installBusy"
+              :disabled="installDisabled"
+              @click="toggleInstall"
+            >
+              {{ installLabel }}
+            </UButton>
+            <p
+              v-if="installHelp"
+              class="text-sm text-muted"
+            >
+              {{ installHelp }}
+            </p>
+            <UAlert
+              v-if="installError"
+              color="error"
+              variant="subtle"
+              icon="i-lucide-circle-alert"
+              :title="installError"
+            />
           </div>
         </header>
 

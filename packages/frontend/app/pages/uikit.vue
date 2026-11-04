@@ -13,12 +13,12 @@ function ping() {
 }
 
 const swatches = [
-  { name: 'Primary', token: '--ed-primary', label: 'Ember' },
-  { name: 'Secondary', token: '--ed-secondary', label: 'Iris' },
-  { name: 'Tertiary', token: '--ed-tertiary', label: 'Jade' },
+  { name: 'Primary', token: '--ed-primary', label: 'Glacier' },
+  { name: 'Secondary', token: '--ed-secondary', label: 'Moss' },
+  { name: 'Tertiary', token: '--ed-tertiary', label: 'Moss' },
   { name: 'Error', token: '--ed-error', label: 'Crimson' },
-  { name: 'Surface', token: '--ed-surface-container', label: 'Graphite' },
-  { name: 'Outline', token: '--ed-outline', label: 'Graphite 400' },
+  { name: 'Sidebar', token: '--ed-sidebar', label: 'Chrome' },
+  { name: 'Surface', token: '--ed-surface-container', label: 'Harbor' },
 ]
 
 const demoVote = ref<CardVoteValue | null>('like')
@@ -27,18 +27,31 @@ const demoDislikes = computed(() => 6 + (demoVote.value === 'dislike' ? 1 : 0))
 const demoVersion = ref<string | null>('demo-v2')
 const demoQuery = ref('')
 const demoSort = ref<'recent' | 'top' | 'title'>('recent')
+const demoTab = ref('characters')
+const demoTabs = [
+  { key: 'characters', label: 'Characters', icon: 'i-lucide-user-round' },
+  { key: 'scenes', label: 'Scenes', icon: 'i-lucide-clapperboard' },
+  { key: 'plugins', label: 'Plugins', icon: 'i-lucide-puzzle' },
+]
+const demoNav = ref('library')
+const demoNavItems = [
+  { key: 'library', label: 'Library', icon: 'i-lucide-library' },
+  { key: 'store', label: 'Store', icon: 'i-lucide-store' },
+  { key: 'tasks', label: 'Tasks', icon: 'i-lucide-list-todo', badge: 2 },
+]
 </script>
 
 <template>
-  <main class="mx-auto w-full max-w-5xl space-y-10 px-4 py-8 sm:px-6 sm:py-12">
-    <header class="space-y-4">
+  <main class="ed-page-enter mx-auto w-full max-w-5xl space-y-8 px-5 py-6 sm:px-8 sm:py-7">
+    <header class="space-y-3">
       <EdLabel>echbox · uikit</EdLabel>
       <h1 class="ed-display-lg text-highlighted">
-        Graphite <span class="ed-text-gradient">system</span>
+        Slate <span class="ed-text-gradient">desktop</span>
       </h1>
-      <p class="max-w-xl text-muted">
-        Neutral graphite surfaces, an ember accent and Geist type. Light and dark themes
-        follow the system preference and can be toggled from the header.
+      <p class="max-w-xl text-sm text-muted">
+        Steam-like navy surfaces, a glacier blue accent and moss green for installed
+        states. The sidebar stays vertical at every width and collapses to an icon
+        rail below 768px. Light and dark follow the system; toggle from the sidebar.
       </p>
     </header>
 
@@ -49,7 +62,7 @@ const demoSort = ref<'recent' | 'top' | 'title'>('recent')
         class="ed-card overflow-hidden"
       >
         <div
-          class="h-16 border-b border-default"
+          class="h-14 border-b border-default"
           :style="{ background: `var(${swatch.token})` }"
         />
         <div class="space-y-0.5 p-3">
@@ -62,6 +75,72 @@ const demoSort = ref<'recent' | 'top' | 'title'>('recent')
         </div>
       </div>
     </section>
+
+    <div class="grid gap-5 lg:grid-cols-[15rem_1fr]">
+      <SectionCard
+        title="Sidebar"
+        icon="i-lucide-panel-left"
+        class="p-3!"
+      >
+        <nav
+          class="ed-chrome space-y-0.5"
+          aria-label="Demo navigation"
+        >
+          <button
+            v-for="item in demoNavItems"
+            :key="item.key"
+            type="button"
+            class="ed-nav-item"
+            :class="demoNav === item.key ? 'is-active' : ''"
+            @click="demoNav = item.key"
+          >
+            <UIcon
+              :name="item.icon"
+              class="ed-nav-icon size-4.5"
+            />
+            {{ item.label }}
+            <span
+              v-if="item.badge"
+              class="ml-auto grid min-w-5 place-items-center rounded-full bg-[var(--ed-primary)] px-1.5 text-[10px] font-semibold leading-4 text-[var(--ed-on-primary)]"
+            >
+              {{ item.badge }}
+            </span>
+          </button>
+        </nav>
+      </SectionCard>
+
+      <SectionCard
+        title="Tabs and segments"
+        icon="i-lucide-layout-panel-top"
+      >
+        <div class="space-y-5">
+          <div
+            class="-mx-5 flex gap-5 border-b border-[var(--ed-outline-variant)] px-5"
+            role="tablist"
+          >
+            <button
+              v-for="t in demoTabs"
+              :key="t.key"
+              type="button"
+              role="tab"
+              class="ed-tab"
+              :aria-selected="demoTab === t.key"
+              @click="demoTab = t.key"
+            >
+              <UIcon
+                :name="t.icon"
+                class="size-4"
+              />
+              {{ t.label }}
+            </button>
+          </div>
+          <CatalogToolbar
+            v-model:query="demoQuery"
+            v-model:sort="demoSort"
+          />
+        </div>
+      </SectionCard>
+    </div>
 
     <SectionCard
       title="Actions"
@@ -88,7 +167,7 @@ const demoSort = ref<'recent' | 'top' | 'title'>('recent')
         </UButton>
         <UButton
           color="neutral"
-          variant="soft"
+          variant="outline"
           icon="i-lucide-download"
         >
           Neutral
@@ -128,13 +207,20 @@ const demoSort = ref<'recent' | 'top' | 'title'>('recent')
         >
           Author
         </UBadge>
+        <UBadge
+          color="success"
+          variant="subtle"
+          icon="i-lucide-check"
+        >
+          Installed
+        </UBadge>
         <UBadge color="primary">
           v4
         </UBadge>
       </div>
     </SectionCard>
 
-    <div class="grid gap-6 lg:grid-cols-2">
+    <div class="grid gap-5 lg:grid-cols-2">
       <SectionCard
         title="Rating"
         icon="i-lucide-thumbs-up"
@@ -167,10 +253,6 @@ const demoSort = ref<'recent' | 'top' | 'title'>('recent')
       icon="i-lucide-text-cursor-input"
     >
       <div class="space-y-5">
-        <CatalogToolbar
-          v-model:query="demoQuery"
-          v-model:sort="demoSort"
-        />
         <div class="grid gap-5 sm:grid-cols-2">
           <UFormField
             label="Title"
@@ -202,7 +284,7 @@ const demoSort = ref<'recent' | 'top' | 'title'>('recent')
       </div>
     </SectionCard>
 
-    <div class="grid gap-6 lg:grid-cols-2">
+    <div class="grid gap-5 lg:grid-cols-2">
       <UEmpty
         icon="i-lucide-images"
         title="No cards yet"

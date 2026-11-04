@@ -15,7 +15,12 @@ import {
   patchCard,
 } from "../cards/service";
 import { setCardVote } from "../cards/votes";
+import {
+  catalogListQueryFields,
+  listOptsFromQuery,
+} from "../common/list-query-schema";
 import { GameServiceError } from "../games/service";
+import { bearerAuthSecurity } from "../openapi";
 import { authDerive } from "./auth";
 
 async function readUpload(file: File): Promise<Uint8Array> {
@@ -80,7 +85,10 @@ function handleServiceError(
   throw err;
 }
 
-export const galleryRoutes = new Elysia({ prefix: "/api/kk" })
+export const galleryRoutes = new Elysia({
+  prefix: "/api/kk",
+  tags: ["Cards"],
+})
   .use(authDerive)
   .get(
     "/cards/by-hash/:hash",
@@ -94,32 +102,47 @@ export const galleryRoutes = new Elysia({ prefix: "/api/kk" })
     },
     {
       params: t.Object({
-        hash: t.String(),
+        hash: t.String({ description: "SHA-256 hex of the original PNG bytes" }),
       }),
+      detail: {
+        summary: "Find card by content hash",
+      },
     },
   )
   .get(
     "/cards",
     async ({ query, user }) => {
       const viewerUserId = user?.id ?? null;
-      const gameId = query.gameId;
-      if (query.type === "character") {
-        const cards = await listCharacters({ viewerUserId, gameId });
-        return { cards };
-      }
+      const listOpts = {
+        viewerUserId,
+        ...listOptsFromQuery(query),
+      };
       if (query.type === "scene") {
-        return { cards: [] };
+        return { cards: [], total: 0, page: listOpts.page, limit: listOpts.limit };
       }
-      const cards = await listCharacters({ viewerUserId, gameId });
-      return { cards };
+      const result = await listCharacters(listOpts);
+      return {
+        cards: result.items,
+        total: result.total,
+        page: result.page,
+        limit: result.limit,
+      };
     },
     {
       query: t.Object({
         type: t.Optional(
-          t.Union([t.Literal("character"), t.Literal("scene")]),
+          t.Union([t.Literal("character"), t.Literal("scene")], {
+            description: "Filter by card type (use `character`)",
+          }),
         ),
-        gameId: t.Optional(t.String()),
+        gameId: t.Optional(
+          t.String({ description: "Limit to cards for this game id" }),
+        ),
+        ...catalogListQueryFields,
       }),
+      detail: {
+        summary: "List character cards",
+      },
     },
   )
   .post(
@@ -147,14 +170,30 @@ export const galleryRoutes = new Elysia({ prefix: "/api/kk" })
       }
     },
     {
-      body: t.Object({
-        file: t.File(),
-        gameId: t.String(),
-        title: t.Optional(t.String()),
-        slug: t.Optional(t.String()),
-        semver: t.String(),
-        notes: t.Optional(t.String()),
-      }),
+      body: t.Object(
+        {
+          file: t.File({ description: "Character card PNG (multipart)" }),
+          gameId: t.String({ description: "Target game id from GET /api/games" }),
+          title: t.Optional(
+            t.String({
+              description:
+                "Display title. If omitted/empty, taken from the card PNG name",
+            }),
+          ),
+          slug: t.Optional(t.String({ description: "URL slug (auto from title if omitted)" })),
+          semver: t.String({
+            description: "Initial version semver, e.g. `1.0.0`",
+          }),
+          notes: t.Optional(t.String({ description: "Version notes" })),
+        },
+        { description: "multipart/form-data upload" },
+      ),
+      detail: {
+        summary: "Upload character card",
+        description:
+          "Creates a new card and first version. Auth: Bearer API key or session cookie.",
+        security: [...bearerAuthSecurity],
+      },
     },
   )
   .get(
@@ -171,8 +210,11 @@ export const galleryRoutes = new Elysia({ prefix: "/api/kk" })
     },
     {
       params: t.Object({
-        id: t.String(),
+        id: t.String({ description: "Card id" }),
       }),
+      detail: {
+        summary: "Get character card",
+      },
     },
   )
   .put(
@@ -194,11 +236,17 @@ export const galleryRoutes = new Elysia({ prefix: "/api/kk" })
     },
     {
       params: t.Object({
-        id: t.String(),
+        id: t.String({ description: "Card id" }),
       }),
       body: t.Object({
-        vote: t.Union([t.Literal("like"), t.Literal("dislike"), t.Null()]),
+        vote: t.Union([t.Literal("like"), t.Literal("dislike"), t.Null()], {
+          description: "`like`, `dislike`, or `null` to clear",
+        }),
       }),
+      detail: {
+        summary: "Vote on character card",
+        security: [...bearerAuthSecurity],
+      },
     },
   )
   .post(
@@ -224,13 +272,20 @@ export const galleryRoutes = new Elysia({ prefix: "/api/kk" })
     },
     {
       params: t.Object({
-        id: t.String(),
+        id: t.String({ description: "Card id (must be author)" }),
       }),
-      body: t.Object({
-        file: t.File(),
-        semver: t.String(),
-        notes: t.Optional(t.String()),
-      }),
+      body: t.Object(
+        {
+          file: t.File({ description: "New version PNG" }),
+          semver: t.String({ description: "New version semver" }),
+          notes: t.Optional(t.String()),
+        },
+        { description: "multipart/form-data" },
+      ),
+      detail: {
+        summary: "Add card version",
+        security: [...bearerAuthSecurity],
+      },
     },
   )
   .patch(
@@ -255,13 +310,17 @@ export const galleryRoutes = new Elysia({ prefix: "/api/kk" })
     },
     {
       params: t.Object({
-        id: t.String(),
+        id: t.String({ description: "Card id" }),
       }),
       body: t.Object({
         title: t.Optional(t.String()),
         slug: t.Optional(t.String()),
         notes: t.Optional(t.String()),
       }),
+      detail: {
+        summary: "Update character card metadata",
+        security: [...bearerAuthSecurity],
+      },
     },
   )
   .delete(
@@ -282,8 +341,12 @@ export const galleryRoutes = new Elysia({ prefix: "/api/kk" })
     },
     {
       params: t.Object({
-        id: t.String(),
+        id: t.String({ description: "Card id" }),
       }),
+      detail: {
+        summary: "Delete character card",
+        security: [...bearerAuthSecurity],
+      },
     },
   )
   .delete(
@@ -306,9 +369,13 @@ export const galleryRoutes = new Elysia({ prefix: "/api/kk" })
     },
     {
       params: t.Object({
-        id: t.String(),
-        versionId: t.String(),
+        id: t.String({ description: "Card id" }),
+        versionId: t.String({ description: "Version id" }),
       }),
+      detail: {
+        summary: "Delete card version",
+        security: [...bearerAuthSecurity],
+      },
     },
   )
   .get(
@@ -333,11 +400,19 @@ export const galleryRoutes = new Elysia({ prefix: "/api/kk" })
     },
     {
       params: t.Object({
-        id: t.String(),
-        versionId: t.String(),
+        id: t.String({ description: "Card id" }),
+        versionId: t.String({ description: "Version id" }),
       }),
       query: t.Object({
-        original: t.Optional(t.String()),
+        original: t.Optional(
+          t.String({
+            description:
+              "Pass `1` or `true` for the original PNG; default is WebP preview",
+          }),
+        ),
       }),
+      detail: {
+        summary: "Download card image",
+      },
     },
   );

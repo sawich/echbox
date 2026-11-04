@@ -5,7 +5,15 @@ import {
   type CardDetail,
   type CardListItem,
 } from "@echbox/shared";
-import { and, desc, eq } from "drizzle-orm";
+import { and, count, eq, inArray } from "drizzle-orm";
+import {
+  orderBySort,
+  resolveListWindow,
+  titleSlugSearch,
+  voteNetScore,
+  type CatalogListQuery,
+  type PaginatedList,
+} from "../common/list-query";
 import { getDb } from "../db/client";
 import { newId } from "../id";
 import { sceneVersions, sceneVotes, scenes, users } from "../db/schema";
@@ -70,10 +78,12 @@ export type SceneListItem = CardListItem &
     authorId: string;
   };
 
-export type ListScenesOptions = SceneServiceOptions & {
-  viewerUserId?: string | null;
-  gameId?: string;
-};
+export type ListScenesOptions = SceneServiceOptions &
+  CatalogListQuery & {
+    viewerUserId?: string | null;
+    gameId?: string;
+    authorId?: string;
+  };
 
 export type GetSceneOptions = SceneServiceOptions & {
   viewerUserId?: string | null;
@@ -87,7 +97,19 @@ export type CreateSceneInput = SceneServiceOptions & {
   fileBytes: Uint8Array;
   semver: string;
   notes?: string;
+  /** Original upload filename — used when title is empty (scenes have no embedded name). */
+  originalFilename?: string | null;
 };
+
+/** Basename without extension; empty string if nothing usable. */
+export function filenameStem(filename: string | null | undefined): string {
+  if (!filename) return "";
+  const base = filename.replace(/\\/g, "/").split("/").pop()?.trim() ?? "";
+  if (!base || base === "." || base === "..") return "";
+  const dot = base.lastIndexOf(".");
+  const stem = (dot > 0 ? base.slice(0, dot) : base).trim();
+  return stem;
+}
 
 export type AddSceneVersionInput = SceneServiceOptions & {
   sceneId: string;
@@ -269,39 +291,69 @@ export async function getScene(
 
 export async function listScenes(
   options?: ListScenesOptions,
-): Promise<SceneListItem[]> {
+): Promise<PaginatedList<SceneListItem>> {
   const db = getDb(options?.dbPath);
-  const rows = options?.gameId
+  const { page, limit, offset, sort, q, unbounded } = resolveListWindow(options);
+
+  const whereClause = and(
+    options?.gameId ? eq(scenes.gameId, options.gameId) : undefined,
+    options?.authorId ? eq(scenes.authorId, options.authorId) : undefined,
+    titleSlugSearch(scenes.title, scenes.slug, q),
+  );
+  const score = voteNetScore("scene_votes", "scene_id", scenes.id);
+  const order = orderBySort(sort, scenes.createdAt, scenes.title, score);
+
+  const total =
+    db
+      .select({ value: count() })
+      .from(scenes)
+      .where(whereClause)
+      .get()?.value ?? 0;
+
+  if (total === 0) {
+    return { items: [], total: 0, page, limit: unbounded ? 0 : limit };
+  }
+
+  const rows = unbounded
     ? db
         .select()
         .from(scenes)
-        .where(eq(scenes.gameId, options.gameId))
-        .orderBy(desc(scenes.createdAt))
+        .where(whereClause)
+        .orderBy(...order)
         .all()
     : db
         .select()
         .from(scenes)
-        .orderBy(desc(scenes.createdAt))
+        .where(whereClause)
+        .orderBy(...order)
+        .limit(limit)
+        .offset(offset)
         .all();
 
-  if (rows.length === 0) return [];
+  const ids = rows.map((s) => s.id);
+  const pageVersions =
+    ids.length === 0
+      ? []
+      : db
+          .select()
+          .from(sceneVersions)
+          .where(inArray(sceneVersions.sceneId, ids))
+          .all();
 
-  const allVersions = db.select().from(sceneVersions).all();
-
-  const versionsByScene = new Map<string, (typeof allVersions)[number][]>();
-  for (const v of allVersions) {
+  const versionsByScene = new Map<string, (typeof pageVersions)[number][]>();
+  for (const v of pageVersions) {
     const arr = versionsByScene.get(v.sceneId) ?? [];
     arr.push(v);
     versionsByScene.set(v.sceneId, arr);
   }
 
   const voteMap = getVoteCountsForScenes(
-    rows.map((s) => s.id),
+    ids,
     options?.viewerUserId,
     options?.dbPath,
   );
 
-  const out: SceneListItem[] = [];
+  const items: SceneListItem[] = [];
   for (const scene of rows) {
     const versions = versionsByScene.get(scene.id) ?? [];
     const latestRow =
@@ -319,7 +371,7 @@ export async function listScenes(
       myVote: null,
     };
 
-    out.push({
+    items.push({
       id: scene.id,
       gameId: scene.gameId,
       type: "scene",
@@ -335,7 +387,12 @@ export async function listScenes(
     });
   }
 
-  return out;
+  return {
+    items,
+    total,
+    page: unbounded ? 1 : page,
+    limit: unbounded ? total : limit,
+  };
 }
 
 export async function createScene(
@@ -350,8 +407,17 @@ export async function createScene(
     previewPath: string;
   }
 > {
-  const { authorId, gameId, title, slug, fileBytes, notes, dbPath, dataDir } =
-    input;
+  const {
+    authorId,
+    gameId,
+    title,
+    slug,
+    fileBytes,
+    notes,
+    originalFilename,
+    dbPath,
+    dataDir,
+  } = input;
 
   const semver = normalizeSemver(input.semver);
   assertGameSupportsKind(gameId, "scenes", { dbPath });
@@ -372,7 +438,10 @@ export async function createScene(
   const versionId = newId();
   const now = new Date().toISOString();
 
-  const resolvedTitle = title?.trim() || "Untitled Scene";
+  const resolvedTitle =
+    title?.trim() ||
+    filenameStem(originalFilename) ||
+    "Untitled Scene";
   const resolvedSlug = slug?.trim()
     ? slugify(slug, sceneId)
     : slugify(resolvedTitle, sceneId);

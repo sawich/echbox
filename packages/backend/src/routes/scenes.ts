@@ -15,7 +15,12 @@ import {
   patchScene,
 } from "../scenes/service";
 import { setSceneVote } from "../scenes/votes";
+import {
+  catalogListQueryFields,
+  listOptsFromQuery,
+} from "../common/list-query-schema";
 import { GameServiceError } from "../games/service";
+import { bearerAuthSecurity } from "../openapi";
 import { authDerive } from "./auth";
 
 async function readUpload(file: File): Promise<Uint8Array> {
@@ -93,7 +98,10 @@ function handleServiceError(
   throw err;
 }
 
-export const sceneRoutes = new Elysia({ prefix: "/api/scenes" })
+export const sceneRoutes = new Elysia({
+  prefix: "/api/scenes",
+  tags: ["Scenes"],
+})
   .use(authDerive)
   .get(
     "/by-hash/:hash",
@@ -107,23 +115,31 @@ export const sceneRoutes = new Elysia({ prefix: "/api/scenes" })
     },
     {
       params: t.Object({
-        hash: t.String(),
+        hash: t.String({ description: "SHA-256 hex of the original PNG bytes" }),
       }),
+      detail: { summary: "Find scene by content hash" },
     },
   )
   .get(
     "/",
     async ({ query, user }) => {
-      const scenes = await listScenes({
+      const result = await listScenes({
         viewerUserId: user?.id ?? null,
-        gameId: query.gameId,
+        ...listOptsFromQuery(query),
       });
-      return { scenes };
+      return {
+        scenes: result.items,
+        total: result.total,
+        page: result.page,
+        limit: result.limit,
+      };
     },
     {
       query: t.Object({
-        gameId: t.Optional(t.String()),
+        gameId: t.Optional(t.String({ description: "Limit to this game id" })),
+        ...catalogListQueryFields,
       }),
+      detail: { summary: "List scenes" },
     },
   )
   .post(
@@ -143,6 +159,7 @@ export const sceneRoutes = new Elysia({ prefix: "/api/scenes" })
           semver: body.semver,
           notes: body.notes,
           fileBytes,
+          originalFilename: body.file.name,
         });
         set.status = 201;
         return stripScenePaths(created);
@@ -151,14 +168,26 @@ export const sceneRoutes = new Elysia({ prefix: "/api/scenes" })
       }
     },
     {
-      body: t.Object({
-        file: t.File(),
-        gameId: t.String(),
-        title: t.Optional(t.String()),
-        slug: t.Optional(t.String()),
-        semver: t.String(),
-        notes: t.Optional(t.String()),
-      }),
+      body: t.Object(
+        {
+          file: t.File({ description: "Studio scene PNG" }),
+          gameId: t.String({ description: "Target game id" }),
+          title: t.Optional(
+            t.String({
+              description:
+                "If empty, uses upload filename stem (scenes have no embedded title)",
+            }),
+          ),
+          slug: t.Optional(t.String()),
+          semver: t.String({ description: "Initial semver, e.g. `1.0.0`" }),
+          notes: t.Optional(t.String()),
+        },
+        { description: "multipart/form-data" },
+      ),
+      detail: {
+        summary: "Upload scene",
+        security: [...bearerAuthSecurity],
+      },
     },
   )
   .get(
@@ -175,8 +204,9 @@ export const sceneRoutes = new Elysia({ prefix: "/api/scenes" })
     },
     {
       params: t.Object({
-        id: t.String(),
+        id: t.String({ description: "Scene id" }),
       }),
+      detail: { summary: "Get scene" },
     },
   )
   .put(
@@ -203,6 +233,10 @@ export const sceneRoutes = new Elysia({ prefix: "/api/scenes" })
       body: t.Object({
         vote: t.Union([t.Literal("like"), t.Literal("dislike"), t.Null()]),
       }),
+      detail: {
+        summary: "Vote on scene",
+        security: [...bearerAuthSecurity],
+      },
     },
   )
   .post(
@@ -230,11 +264,18 @@ export const sceneRoutes = new Elysia({ prefix: "/api/scenes" })
       params: t.Object({
         id: t.String(),
       }),
-      body: t.Object({
-        file: t.File(),
-        semver: t.String(),
-        notes: t.Optional(t.String()),
-      }),
+      body: t.Object(
+        {
+          file: t.File(),
+          semver: t.String(),
+          notes: t.Optional(t.String()),
+        },
+        { description: "multipart/form-data" },
+      ),
+      detail: {
+        summary: "Add scene version",
+        security: [...bearerAuthSecurity],
+      },
     },
   )
   .patch(
@@ -266,6 +307,10 @@ export const sceneRoutes = new Elysia({ prefix: "/api/scenes" })
         slug: t.Optional(t.String()),
         notes: t.Optional(t.String()),
       }),
+      detail: {
+        summary: "Update scene metadata",
+        security: [...bearerAuthSecurity],
+      },
     },
   )
   .delete(
@@ -288,6 +333,10 @@ export const sceneRoutes = new Elysia({ prefix: "/api/scenes" })
       params: t.Object({
         id: t.String(),
       }),
+      detail: {
+        summary: "Delete scene",
+        security: [...bearerAuthSecurity],
+      },
     },
   )
   .delete(
@@ -313,6 +362,10 @@ export const sceneRoutes = new Elysia({ prefix: "/api/scenes" })
         id: t.String(),
         versionId: t.String(),
       }),
+      detail: {
+        summary: "Delete scene version",
+        security: [...bearerAuthSecurity],
+      },
     },
   )
   .get(
@@ -340,7 +393,12 @@ export const sceneRoutes = new Elysia({ prefix: "/api/scenes" })
         versionId: t.String(),
       }),
       query: t.Object({
-        original: t.Optional(t.String()),
+        original: t.Optional(
+          t.String({
+            description: "`1` / `true` for original PNG; default WebP preview",
+          }),
+        ),
       }),
+      detail: { summary: "Download scene image" },
     },
   );

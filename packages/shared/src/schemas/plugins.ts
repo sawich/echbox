@@ -1,4 +1,5 @@
 import { z } from "zod";
+import { PaginationMetaSchema } from "./pagination";
 import { CardVoteCountsSchema } from "./votes";
 
 export const PluginUploaderSchema = z.object({
@@ -20,3 +21,10 @@ export const PluginListItemSchema = CardVoteCountsSchema.extend({
   uploader: PluginUploaderSchema,
 });
 export type PluginListItem = z.infer<typeof PluginListItemSchema>;
+
+export const PluginListResponseSchema = z
+  .object({
+    plugins: z.array(PluginListItemSchema),
+  })
+  .merge(PaginationMetaSchema);
+export type PluginListResponse = z.infer<typeof PluginListResponseSchema>;

@@ -119,7 +119,7 @@ describe("character card service", () => {
     expect(String.fromCharCode(...savedPreview.slice(0, 4))).toBe("RIFF");
     expect(String.fromCharCode(...savedPreview.slice(8, 12))).toBe("WEBP");
 
-    const list = await listCharacters();
+    const list = (await listCharacters()).items;
     expect(list).toHaveLength(1);
     expect(list[0]!.id).toBe(created.id);
     expect(list[0]!.title).toBe("Heroine Card");
@@ -153,7 +153,7 @@ describe("character card service", () => {
     });
 
     expect(first.id).not.toBe(second.id);
-    const list = await listCharacters();
+    const list = (await listCharacters()).items;
     expect(list).toHaveLength(2);
   });
 
@@ -190,7 +190,7 @@ describe("character card service", () => {
     expect(conflict.versionId).toBe(first.latestVersionId);
     expect(conflict.semver).toBe("1.0.0");
 
-    const list = await listCharacters();
+    const list = (await listCharacters()).items;
     expect(list).toHaveLength(1);
   });
 
@@ -317,7 +317,7 @@ describe("character card service", () => {
       }
       expect((caught as { status: number }).status).toBe(400);
     }
-    expect(await listCharacters()).toHaveLength(0);
+    expect((await listCharacters()).items).toHaveLength(0);
 
     const card = await createCard({
       gameId,
@@ -422,7 +422,7 @@ describe("character card service", () => {
     expect(empty.versions).toEqual([]);
     expect(existsSync(v1Paths.versionDir)).toBe(false);
 
-    const listed = await listCharacters();
+    const listed = (await listCharacters()).items;
     const item = listed.find((c) => c.id === card.id);
     expect(item).toBeDefined();
     expect(item!.versionCount).toBe(0);
@@ -471,7 +471,7 @@ describe("character card service", () => {
 
     expect(caught).toBeDefined();
     expect((caught as { status: number }).status).toBe(400);
-    expect(await listCharacters()).toHaveLength(0);
+    expect((await listCharacters()).items).toHaveLength(0);
 
     // Coordinate card is a PNG with Koikatsu clothes header, not a character card
     const coordBytes = await fixtureBytes("coordinate", "kk_coordinate.png");
@@ -488,7 +488,7 @@ describe("character card service", () => {
     }
     expect(coordCaught).toBeDefined();
     expect((coordCaught as { status: number }).status).toBe(400);
-    expect(await listCharacters()).toHaveLength(0);
+    expect((await listCharacters()).items).toHaveLength(0);
   });
 
   test("plain PNG (no card payload) rejects with human message, not Out of bounds", async () => {

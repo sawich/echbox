@@ -1,6 +1,14 @@
 import { compareSemver, parseSemver, pickLatestBySemver } from "@echbox/shared";
-import { and, desc, eq } from "drizzle-orm";
+import { and, count, eq, inArray } from "drizzle-orm";
 import { sha256Hex } from "../cards/hash";
+import {
+  orderBySort,
+  resolveListWindow,
+  titleSlugSearch,
+  voteNetScore,
+  type CatalogListQuery,
+  type PaginatedList,
+} from "../common/list-query";
 import { assertNonEmptyZip } from "../common/zip";
 import {
   discardStaged,
@@ -98,10 +106,12 @@ export type SoftmodListItem = SoftmodVoteCounts & {
   uploader: SoftmodUploader;
 };
 
-export type ListSoftmodsOptions = SoftmodServiceOptions & {
-  viewerUserId?: string | null;
-  gameId?: string;
-};
+export type ListSoftmodsOptions = SoftmodServiceOptions &
+  CatalogListQuery & {
+    viewerUserId?: string | null;
+    gameId?: string;
+    authorId?: string;
+  };
 
 export type GetSoftmodOptions = SoftmodServiceOptions & {
   viewerUserId?: string | null;
@@ -279,38 +289,68 @@ export async function getSoftmod(
 
 export async function listSoftmods(
   options?: ListSoftmodsOptions,
-): Promise<SoftmodListItem[]> {
+): Promise<PaginatedList<SoftmodListItem>> {
   const db = getDb(options?.dbPath);
-  const rows = options?.gameId
+  const { page, limit, offset, sort, q, unbounded } = resolveListWindow(options);
+
+  const whereClause = and(
+    options?.gameId ? eq(softmods.gameId, options.gameId) : undefined,
+    options?.authorId ? eq(softmods.authorId, options.authorId) : undefined,
+    titleSlugSearch(softmods.title, null, q),
+  );
+  const score = voteNetScore("softmod_votes", "softmod_id", softmods.id);
+  const order = orderBySort(sort, softmods.createdAt, softmods.title, score);
+
+  const total =
+    db
+      .select({ value: count() })
+      .from(softmods)
+      .where(whereClause)
+      .get()?.value ?? 0;
+
+  if (total === 0) {
+    return { items: [], total: 0, page, limit: unbounded ? 0 : limit };
+  }
+
+  const rows = unbounded
     ? db
         .select()
         .from(softmods)
-        .where(eq(softmods.gameId, options.gameId))
-        .orderBy(desc(softmods.createdAt))
+        .where(whereClause)
+        .orderBy(...order)
         .all()
     : db
         .select()
         .from(softmods)
-        .orderBy(desc(softmods.createdAt))
+        .where(whereClause)
+        .orderBy(...order)
+        .limit(limit)
+        .offset(offset)
         .all();
 
-  if (rows.length === 0) return [];
-
-  const allVersions = db.select().from(softmodVersions).all();
-  const versionsBySoftmod = new Map<string, (typeof allVersions)[number][]>();
-  for (const v of allVersions) {
+  const ids = rows.map((s) => s.id);
+  const pageVersions =
+    ids.length === 0
+      ? []
+      : db
+          .select()
+          .from(softmodVersions)
+          .where(inArray(softmodVersions.softmodId, ids))
+          .all();
+  const versionsBySoftmod = new Map<string, (typeof pageVersions)[number][]>();
+  for (const v of pageVersions) {
     const arr = versionsBySoftmod.get(v.softmodId) ?? [];
     arr.push(v);
     versionsBySoftmod.set(v.softmodId, arr);
   }
 
   const voteMap = getSoftmodVoteCountsForSoftmods(
-    rows.map((s) => s.id),
+    ids,
     options?.viewerUserId,
     options?.dbPath,
   );
 
-  const out: SoftmodListItem[] = [];
+  const items: SoftmodListItem[] = [];
   for (const softmod of rows) {
     const versions = versionsBySoftmod.get(softmod.id) ?? [];
     const votes = voteMap.get(softmod.id) ?? {
@@ -319,7 +359,7 @@ export async function listSoftmods(
       myVote: null,
     };
 
-    out.push({
+    items.push({
       id: softmod.id,
       gameId: softmod.gameId,
       authorId: softmod.authorId,
@@ -335,7 +375,12 @@ export async function listSoftmods(
     });
   }
 
-  return out;
+  return {
+    items,
+    total,
+    page: unbounded ? 1 : page,
+    limit: unbounded ? total : limit,
+  };
 }
 
 export async function createSoftmod(

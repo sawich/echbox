@@ -1,6 +1,5 @@
 <script setup lang="ts">
-import type { CardListItem, CardType } from '@echbox/shared'
-import { type CatalogSort, filterCatalog } from '~/utils/catalog'
+import { DEFAULT_PAGE_LIMIT, type CardListItem, type CardType, type CatalogSort } from '@echbox/shared'
 import { galleryAspect } from '~/utils/gallery'
 
 const props = defineProps<{
@@ -9,6 +8,9 @@ const props = defineProps<{
   description: string
   gameId?: string
   instanceId?: string
+  contentRelPath?: string | null
+  /** Small label above the title; defaults to the section name. */
+  eyebrow?: string
 }>()
 
 const api = useApi()
@@ -19,9 +21,12 @@ const router = useRouter()
 const {
   isDesktop,
   listInstalledContent,
-  installContent,
-  uninstallContent,
 } = useLocalInstalls()
+const {
+  runContentInstall,
+  runContentUninstall,
+  isTargetBusy,
+} = useAppTasks()
 
 const installedIds = ref<Set<string>>(new Set())
 
@@ -34,20 +39,36 @@ async function refreshInstalled() {
   installedIds.value = new Set(rows.map(r => r.id))
 }
 
+const page = ref(1)
+const query = ref('')
+const debouncedQuery = refDebounced(query, 250)
+const sort = ref<CatalogSort>('recent')
+
+watch([debouncedQuery, sort, () => props.gameId, () => props.type], () => {
+  page.value = 1
+})
+
 const { data, error, status, refresh } = await useAsyncData(
-  () => `gallery-${props.type}-${props.gameId ?? 'all'}`,
+  () => `gallery-${props.type}-${props.gameId ?? 'all'}-${page.value}-${debouncedQuery.value}-${sort.value}`,
   async () => {
     const { data: body, error: err } = await api.api.kk.cards.get({
       query: {
         type: props.type,
+        page: page.value,
+        limit: DEFAULT_PAGE_LIMIT,
+        sort: sort.value,
+        ...(debouncedQuery.value.trim() ? { q: debouncedQuery.value.trim() } : {}),
         ...(props.gameId ? { gameId: props.gameId } : {}),
       },
       fetch: { credentials: 'include' },
     })
     if (err) throw err
-    return (body?.cards ?? []) as CardListItem[]
+    return {
+      cards: (body?.cards ?? []) as CardListItem[],
+      total: Number(body?.total ?? 0),
+    }
   },
-  { watch: [() => props.type, () => props.gameId] },
+  { watch: [() => props.type, () => props.gameId, page, debouncedQuery, sort] },
 )
 
 onMounted(() => {
@@ -57,11 +78,11 @@ watch(() => [props.gameId, props.instanceId], () => {
   void refreshInstalled()
 })
 
-const installBusy = ref<string | null>(null)
 const installError = ref<string | null>(null)
 
 async function toggleInstall(card: CardListItem) {
   if (!props.instanceId) return
+  if (isTargetBusy(card.id)) return
   if (!isDesktop.value) {
     installError.value = 'Install is only available in the desktop app'
     return
@@ -70,20 +91,30 @@ async function toggleInstall(card: CardListItem) {
     installError.value = 'This card has no versions to install'
     return
   }
-  installBusy.value = card.id
   installError.value = null
   try {
     if (installedIds.value.has(card.id)) {
-      await uninstallContent(props.instanceId, 'cards', card.id)
+      await runContentUninstall({
+        instanceId: props.instanceId,
+        kind: 'cards',
+        contentId: card.id,
+        title: card.title,
+      })
     }
     else {
-      await installContent(props.instanceId, 'cards', {
-        id: card.id,
-        versionId: card.latestVersionId!,
-        semver: card.latestSemver!,
-        title: card.title,
-        contentHash: null,
-        installedAt: new Date().toISOString(),
+      await runContentInstall({
+        instanceId: props.instanceId,
+        kind: 'cards',
+        row: {
+          id: card.id,
+          versionId: card.latestVersionId!,
+          semver: card.latestSemver!,
+          title: card.title,
+          contentHash: null,
+          installedAt: new Date().toISOString(),
+        },
+        apiUrl: apiUrl.value,
+        relPath: props.contentRelPath,
       })
     }
     await refreshInstalled()
@@ -91,18 +122,10 @@ async function toggleInstall(card: CardListItem) {
   catch (err) {
     installError.value = err instanceof Error ? err.message : 'Install failed'
   }
-  finally {
-    installBusy.value = null
-  }
 }
 
-const cards = computed(() => data.value ?? [])
-
-const query = ref('')
-const sort = ref<CatalogSort>('recent')
-const visibleCards = computed(() =>
-  filterCatalog(cards.value, query.value, sort.value, card => [card.title, card.slug]),
-)
+const cards = computed(() => data.value?.cards ?? [])
+const total = computed(() => data.value?.total ?? 0)
 const isPortrait = computed(() => galleryAspect(props.type) === 'aspect-[252/352]')
 
 const showUpload = ref(false)
@@ -111,14 +134,15 @@ const uploadTitle = ref('')
 const uploadNotes = ref('')
 const uploadBusy = ref(false)
 const uploadError = ref<string | null>(null)
-const semver = useSemverInput()
+const DEFAULT_CARD_SEMVER = '1.0.0'
+const semver = useSemverInput(DEFAULT_CARD_SEMVER)
 const duplicateHit = ref<{ cardId: string, semver: string } | null>(null)
 
 function resetUploadForm() {
   uploadFile.value = null
   uploadTitle.value = ''
   uploadNotes.value = ''
-  semver.reset()
+  semver.reset(DEFAULT_CARD_SEMVER)
   uploadError.value = null
   duplicateHit.value = null
 }
@@ -151,6 +175,29 @@ async function onFileSelected(file: File | null | undefined) {
   }
   catch {
     // Non-blocking pre-check
+  }
+
+  if (uploadTitle.value.trim()) return
+
+  try {
+    const form = new FormData()
+    form.append('file', file)
+    const res = await fetch(`${apiUrl.value}/api/kk/chara`, {
+      method: 'POST',
+      credentials: 'include',
+      body: form,
+    })
+    if (!res.ok) return
+    const payload = await res.json().catch(() => null) as {
+      summary?: { name?: string }
+    } | null
+    const name = payload?.summary?.name?.trim()
+    if (name && !uploadTitle.value.trim()) {
+      uploadTitle.value = name
+    }
+  }
+  catch {
+    // Non-blocking title autofill
   }
 }
 
@@ -215,13 +262,13 @@ async function submitUpload() {
 </script>
 
 <template>
-  <main class="mx-auto w-full max-w-7xl space-y-8 px-4 py-8 sm:px-6 sm:py-12">
+  <main class="ed-page-enter w-full space-y-6 px-5 py-6 sm:px-8 sm:py-7">
     <PageHeader
-      eyebrow="Library"
+      :eyebrow="eyebrow ?? 'Library'"
       icon="i-lucide-user-round"
       :title="title"
       :description="description"
-      :count="status === 'success' ? cards.length : null"
+      :count="status === 'success' ? total : null"
     >
       <template #actions>
           <UModal
@@ -234,7 +281,6 @@ async function submitUpload() {
           <UButton
             icon="i-lucide-plus"
             color="primary"
-            size="lg"
           >
             Upload character
           </UButton>
@@ -338,7 +384,7 @@ async function submitUpload() {
     </PageHeader>
 
     <CatalogToolbar
-      v-if="status === 'success' && cards.length > 0"
+      v-if="status === 'success' && (total > 0 || query.trim())"
       v-model:query="query"
       v-model:sort="sort"
       :ratings="type === 'character'"
@@ -358,7 +404,7 @@ async function submitUpload() {
     />
 
     <UEmpty
-      v-else-if="cards.length === 0"
+      v-else-if="total === 0 && !query.trim()"
       icon="i-lucide-images"
       title="No cards yet"
       :description="user ? 'Be the first to share one.' : 'Sign in to share the first one.'"
@@ -367,7 +413,7 @@ async function submitUpload() {
     />
 
     <UEmpty
-      v-else-if="visibleCards.length === 0"
+      v-else-if="cards.length === 0"
       icon="i-lucide-search-x"
       title="Nothing matches"
       :description="`No cards match “${query}”.`"
@@ -386,14 +432,14 @@ async function submitUpload() {
     />
 
     <div
-      v-if="status === 'success' && visibleCards.length > 0"
+      v-if="status === 'success' && cards.length > 0"
       class="ed-stagger grid gap-4"
       :class="isPortrait
-        ? 'grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 xl:grid-cols-5'
-        : 'grid-cols-1 sm:grid-cols-2 lg:grid-cols-3'"
+        ? 'grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 xl:grid-cols-5 2xl:grid-cols-6'
+        : 'grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 2xl:grid-cols-4'"
     >
       <div
-        v-for="card in visibleCards"
+        v-for="card in cards"
         :key="card.id"
         class="space-y-2"
       >
@@ -407,13 +453,24 @@ async function submitUpload() {
           size="sm"
           :color="installedIds.has(card.id) ? 'neutral' : 'primary'"
           :variant="installedIds.has(card.id) ? 'outline' : 'solid'"
-          :loading="installBusy === card.id"
+          :loading="isTargetBusy(card.id)"
           :disabled="!isDesktop && !installedIds.has(card.id)"
           @click="toggleInstall(card)"
         >
           {{ installedIds.has(card.id) ? 'Uninstall' : (isDesktop ? 'Install' : 'Desktop only') }}
         </UButton>
       </div>
+    </div>
+
+    <div
+      v-if="status === 'success' && total > DEFAULT_PAGE_LIMIT"
+      class="flex justify-center pt-2"
+    >
+      <UPagination
+        v-model:page="page"
+        :total="total"
+        :items-per-page="DEFAULT_PAGE_LIMIT"
+      />
     </div>
   </main>
 </template>

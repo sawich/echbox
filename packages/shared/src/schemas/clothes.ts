@@ -4,6 +4,7 @@ import {
   CardListItemSchema,
   CardVersionDetailSchema,
 } from "./cards";
+import { PaginationMetaSchema } from "./pagination";
 import { CardVoteCountsSchema } from "./votes";
 
 export const ClothesVersionDetailSchema = CardVersionDetailSchema.extend({
@@ -32,7 +33,9 @@ export const ClothesDetailSchema = CardDetailSchema.omit({ versions: true })
   });
 export type ClothesDetail = z.infer<typeof ClothesDetailSchema>;
 
-export const ClothesListResponseSchema = z.object({
-  clothes: z.array(ClothesListItemSchema),
-});
+export const ClothesListResponseSchema = z
+  .object({
+    clothes: z.array(ClothesListItemSchema),
+  })
+  .merge(PaginationMetaSchema);
 export type ClothesListResponse = z.infer<typeof ClothesListResponseSchema>;

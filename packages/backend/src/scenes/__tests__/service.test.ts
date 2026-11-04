@@ -11,6 +11,7 @@ import {
   addSceneVersion,
   createScene,
   deleteScene,
+  filenameStem,
   findSceneByHash,
   getScene,
   getSceneVersionImage,
@@ -75,6 +76,27 @@ describe("scene service", () => {
     rmSync(tempDir, { recursive: true, force: true });
   });
 
+  test("filenameStem strips path and extension", () => {
+    expect(filenameStem("sample_00.png")).toBe("sample_00");
+    expect(filenameStem("/foo/bar/My Scene.PNG")).toBe("My Scene");
+    expect(filenameStem("")).toBe("");
+    expect(filenameStem(null)).toBe("");
+  });
+
+  test("createScene uses originalFilename when title is empty", async () => {
+    const fileBytes = await fixtureBytes("scene", "kk_scene_simple.png");
+    const created = await createScene({
+      gameId,
+      semver: "1.0.0",
+      authorId,
+      fileBytes,
+      originalFilename: "Sample Scenes/sample_00.png",
+      dbPath,
+      dataDir,
+    });
+    expect(created.title).toBe("sample_00");
+  });
+
   test("createScene stores original PNG, WebP preview, and DB rows", async () => {
     const fileBytes = await fixtureBytes("scene", "kk_scene_simple.png");
     const created = await createScene({
@@ -128,7 +150,7 @@ describe("scene service", () => {
       `/scenes/${created.id}/${created.latestVersionId}/`,
     );
 
-    const list = await listScenes({ dbPath, dataDir });
+    const list = (await listScenes({ dbPath, dataDir })).items;
     expect(list).toHaveLength(1);
     expect(list[0]!.authorId).toBe(authorId);
     expect(list[0]!.imageUrl).toBe(
@@ -173,7 +195,7 @@ describe("scene service", () => {
     expect(conflict.versionId).toBe(first.latestVersionId);
     expect(conflict.semver).toBe("1.0.0");
 
-    expect(await listScenes({ dbPath, dataDir })).toHaveLength(1);
+    expect((await listScenes({ dbPath, dataDir })).items).toHaveLength(1);
   });
 
   test("character PNG upload throws 400 and writes no files", async () => {
@@ -195,7 +217,7 @@ describe("scene service", () => {
 
     expect(caught).toBeDefined();
     expect((caught as { status: number }).status).toBe(400);
-    expect(await listScenes({ dbPath, dataDir })).toHaveLength(0);
+    expect((await listScenes({ dbPath, dataDir })).items).toHaveLength(0);
     expect(existsSync(join(dataDir, "scenes"))).toBe(false);
   });
 
@@ -329,7 +351,7 @@ describe("scene service", () => {
       }
       expect((caught as { status: number }).status).toBe(400);
     }
-    expect(await listScenes({ dbPath, dataDir })).toHaveLength(0);
+    expect((await listScenes({ dbPath, dataDir })).items).toHaveLength(0);
   });
 
   test("latest is chosen by semver, not insertion order", async () => {

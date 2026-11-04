@@ -36,8 +36,16 @@ fn install_content(
     instance_id: String,
     kind: String,
     row: ContentInstall,
+    file_bytes: Vec<u8>,
+    rel_path: Option<String>,
 ) -> Result<(), String> {
-    local_install::install_content(&instance_id, &kind, row)
+    local_install::install_content(
+        &instance_id,
+        &kind,
+        row,
+        &file_bytes,
+        rel_path.as_deref(),
+    )
 }
 
 #[tauri::command]

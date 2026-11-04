@@ -1,6 +1,6 @@
 /*
-  echbox · Graphite
-  Neutral graphite surfaces, ember (coral) accent, iris (violet) secondary.
+  echbox · Slate (Steam-like desktop)
+  Deep navy-slate surfaces, glacier blue accent, moss green for positive states.
   Light values live on :root, dark values on .dark (set by @nuxtjs/color-mode).
 */
 
@@ -16,54 +16,45 @@
   --ed-ease-emphasized: cubic-bezier(0.2, 0, 0, 1);
   --ease-in-out: cubic-bezier(0.37, 0, 0.63, 1);
 
-  /* Shape — soft, generous radii */
+  /* Shape — tight, Steam-like corners; pills are reserved for badges/chips */
   --radius-none: 0;
-  --radius-xs: 0.375rem;
-  --radius-sm: 0.5rem;
-  --radius-md: 0.625rem;
-  --radius-lg: 0.875rem;
-  --radius-xl: 1.125rem;
-  --radius-2xl: 1.375rem;
-  --radius-3xl: 1.75rem;
+  --radius-xs: 0.125rem;
+  --radius-sm: 0.1875rem;
+  --radius-md: 0.25rem;
+  --radius-lg: 0.375rem;
+  --radius-xl: 0.5rem;
+  --radius-2xl: 0.625rem;
+  --radius-3xl: 0.75rem;
 
-  /* —— Primary · Ember —— */
-  --color-ember-50: #fff4f1;
-  --color-ember-100: #ffe6df;
-  --color-ember-200: #ffcabd;
-  --color-ember-300: #ffa18c;
-  --color-ember-400: #ff6f52;
-  --color-ember-500: #f8502f;
-  --color-ember-600: #e0381a;
-  --color-ember-700: #bc2b12;
-  --color-ember-800: #9b2714;
-  --color-ember-900: #802617;
-  --color-ember-950: #460f06;
+  /* Layout */
+  --ed-sidebar-width: 15rem;
+  --ed-rail-width: 3.5rem;
 
-  /* —— Secondary · Iris —— */
-  --color-iris-50: #f4f3ff;
-  --color-iris-100: #ebe9fe;
-  --color-iris-200: #d9d6fe;
-  --color-iris-300: #bcb4fd;
-  --color-iris-400: #9b8afa;
-  --color-iris-500: #7f5ef5;
-  --color-iris-600: #6f3ceb;
-  --color-iris-700: #602ad7;
-  --color-iris-800: #5023b4;
-  --color-iris-900: #431f93;
-  --color-iris-950: #281164;
+  /* —— Primary · Glacier (Steam blue) —— */
+  --color-glacier-50: #eef8ff;
+  --color-glacier-100: #d9efff;
+  --color-glacier-200: #b6e1ff;
+  --color-glacier-300: #85cefc;
+  --color-glacier-400: #4fb4f3;
+  --color-glacier-500: #1a9fff;
+  --color-glacier-600: #0f7fd1;
+  --color-glacier-700: #0b64a8;
+  --color-glacier-800: #0d5189;
+  --color-glacier-900: #10416c;
+  --color-glacier-950: #0a2842;
 
-  /* —— Success · Jade —— */
-  --color-jade-50: #effef7;
-  --color-jade-100: #d9fdec;
-  --color-jade-200: #b5f9da;
-  --color-jade-300: #7bf2be;
-  --color-jade-400: #3ae29b;
-  --color-jade-500: #11c97f;
-  --color-jade-600: #07a666;
-  --color-jade-700: #0a8254;
-  --color-jade-800: #0e6745;
-  --color-jade-900: #0e553b;
-  --color-jade-950: #01301f;
+  /* —— Secondary / Success · Moss (Steam green) —— */
+  --color-moss-50: #f4fbe6;
+  --color-moss-100: #e5f5c2;
+  --color-moss-200: #cdeb8e;
+  --color-moss-300: #b0de5a;
+  --color-moss-400: #94cc33;
+  --color-moss-500: #76b022;
+  --color-moss-600: #5c8f17;
+  --color-moss-700: #497113;
+  --color-moss-800: #3b5a13;
+  --color-moss-900: #314b14;
+  --color-moss-950: #182907;
 
   /* —— Warning · Amber —— */
   --color-amber-50: #fffbeb;
@@ -78,7 +69,7 @@
   --color-amber-900: #78350f;
   --color-amber-950: #451a03;
 
-  /* —— Error · Crimson (distinct from ember) —— */
+  /* —— Error · Crimson —— */
   --color-crimson-50: #fff1f3;
   --color-crimson-100: #ffe4e8;
   --color-crimson-200: #fecdd6;
@@ -91,66 +82,75 @@
   --color-crimson-900: #881337;
   --color-crimson-950: #4c0519;
 
-  /* —— Neutral · Graphite —— */
-  --color-graphite-50: #f7f7f8;
-  --color-graphite-100: #ededf0;
-  --color-graphite-200: #d9d9de;
-  --color-graphite-300: #b8b8c1;
-  --color-graphite-400: #8e8e9a;
-  --color-graphite-500: #6e6e7a;
-  --color-graphite-600: #555560;
-  --color-graphite-700: #3c3c45;
-  --color-graphite-800: #26262c;
-  --color-graphite-900: #17171b;
-  --color-graphite-950: #0b0b0d;
+  /* —— Neutral · Harbor (navy slate) —— */
+  --color-harbor-50: #f3f6f9;
+  --color-harbor-100: #e4eaf0;
+  --color-harbor-200: #c6d4df;
+  --color-harbor-300: #a3b3c2;
+  --color-harbor-400: #8f98a0;
+  --color-harbor-500: #67707b;
+  --color-harbor-600: #4b5868;
+  --color-harbor-700: #3a4a5c;
+  --color-harbor-800: #2a3b4f;
+  --color-harbor-900: #1f2b3a;
+  --color-harbor-950: #171d25;
 }
 
 :root {
   color-scheme: light;
 
-  --ed-primary: #e0381a;
+  --ed-primary: #0f7fd1;
   --ed-on-primary: #ffffff;
-  --ed-primary-container: #ffe6df;
-  --ed-on-primary-container: #802617;
+  --ed-primary-container: #d9efff;
+  --ed-on-primary-container: #0a2842;
 
-  --ed-secondary: #6f3ceb;
+  --ed-secondary: #5c8f17;
   --ed-on-secondary: #ffffff;
-  --ed-secondary-container: #ebe9fe;
-  --ed-on-secondary-container: #431f93;
+  --ed-secondary-container: #e5f5c2;
+  --ed-on-secondary-container: #182907;
 
-  --ed-tertiary: #07a666;
+  --ed-tertiary: #5c8f17;
   --ed-on-tertiary: #ffffff;
-  --ed-tertiary-container: #d9fdec;
-  --ed-on-tertiary-container: #0e553b;
+  --ed-tertiary-container: #e5f5c2;
+  --ed-on-tertiary-container: #182907;
 
-  --ed-error: #e11d4b;
+  --ed-error: #d13b4f;
   --ed-on-error: #ffffff;
   --ed-error-container: #ffe4e8;
   --ed-on-error-container: #881337;
 
-  --ed-surface: #f7f7f8;
-  --ed-surface-dim: #ededf0;
+  --ed-surface: #eef2f6;
+  --ed-surface-dim: #e4eaf0;
   --ed-surface-bright: #ffffff;
-  --ed-on-surface: #17171b;
-  --ed-on-surface-variant: #555560;
+  --ed-on-surface: #1b2838;
+  --ed-on-surface-variant: #4b5868;
 
   --ed-surface-container-lowest: #ffffff;
-  --ed-surface-container-low: #ffffff;
+  --ed-surface-container-low: #f8fafc;
   --ed-surface-container: #ffffff;
-  --ed-surface-container-high: #f3f3f5;
-  --ed-surface-container-highest: #ededf0;
+  --ed-surface-container-high: #e9eef3;
+  --ed-surface-container-highest: #dfe6ed;
 
-  --ed-outline: #b8b8c1;
-  --ed-outline-variant: #e4e4e9;
-  --ed-inverse-surface: #17171b;
-  --ed-inverse-on-surface: #f7f7f8;
-  --ed-inverse-primary: #ff6f52;
+  /* App chrome (sidebar / rails) */
+  --ed-sidebar: #e3e9ef;
+  --ed-sidebar-border: #d2dae2;
 
-  --ed-glow: color-mix(in oklab, var(--ed-primary) 10%, transparent);
-  --ed-glow-secondary: color-mix(in oklab, var(--ed-secondary) 8%, transparent);
+  --ed-outline: #a3b3c2;
+  --ed-outline-variant: #d5dde5;
+  --ed-inverse-surface: #1b2838;
+  --ed-inverse-on-surface: #eef2f6;
+  --ed-inverse-primary: #66c0f4;
+
+  /* Steam-style action gradients */
+  --ed-gradient-primary: linear-gradient(90deg, #47bfff 0%, #1a6ad6 100%);
+  --ed-gradient-success: linear-gradient(90deg, #8ed629 0%, #5c8f17 100%);
+
+  --ed-glow: color-mix(in oklab, var(--ed-primary) 9%, transparent);
+  --ed-glow-secondary: color-mix(in oklab, var(--ed-surface-bright) 70%, transparent);
   --ed-grid-dot: color-mix(in oklab, var(--ed-on-surface) 9%, transparent);
-  --ed-shadow-card: 0 1px 2px rgb(23 23 27 / 0.04), 0 4px 16px -4px rgb(23 23 27 / 0.08);
-  --ed-shadow-lift: 0 2px 4px rgb(23 23 27 / 0.04), 0 18px 40px -12px rgb(23 23 27 / 0.22);
+  --ed-shadow-card: 0 1px 2px rgb(27 40 56 / 0.05), 0 2px 8px -2px rgb(27 40 56 / 0.07);
+  --ed-shadow-lift: 0 1px 2px rgb(27 40 56 / 0.06), 0 14px 32px -12px rgb(27 40 56 / 0.24);
+  --ed-shadow-pop: 0 1px 2px rgb(27 40 56 / 0.06), 0 10px 24px -8px rgb(27 40 56 / 0.2);
 
   --ed-state-hover: 0.08;
   --ed-state-focus: 0.12;
@@ -169,7 +169,7 @@
   --ui-text-toned: color-mix(in oklab, var(--ed-on-surface) 85%, var(--ed-on-surface-variant));
   --ui-text: var(--ed-on-surface);
   --ui-text-highlighted: var(--ed-on-surface);
-  --ui-text-inverted: var(--ed-inverse-on-surface);
+  --ui-text-inverted: #ffffff;
 
   --ui-border: var(--ed-outline-variant);
   --ui-border-muted: color-mix(in oklab, var(--ed-outline-variant) 60%, transparent);
@@ -182,52 +182,57 @@
 .dark {
   color-scheme: dark;
 
-  --ed-primary: #ff6f52;
-  --ed-on-primary: #1d0703;
-  --ed-primary-container: #4a160b;
-  --ed-on-primary-container: #ffe6df;
+  --ed-primary: #66c0f4;
+  --ed-on-primary: #06202f;
+  --ed-primary-container: #1b3a52;
+  --ed-on-primary-container: #d9efff;
 
-  --ed-secondary: #9b8afa;
-  --ed-on-secondary: #120a33;
-  --ed-secondary-container: #2c1a6b;
-  --ed-on-secondary-container: #ebe9fe;
+  --ed-secondary: #a4d007;
+  --ed-on-secondary: #14240a;
+  --ed-secondary-container: #2d4512;
+  --ed-on-secondary-container: #e5f5c2;
 
-  --ed-tertiary: #3ae29b;
-  --ed-on-tertiary: #01301f;
-  --ed-tertiary-container: #0e553b;
-  --ed-on-tertiary-container: #d9fdec;
+  --ed-tertiary: #a4d007;
+  --ed-on-tertiary: #14240a;
+  --ed-tertiary-container: #2d4512;
+  --ed-on-tertiary-container: #e5f5c2;
 
-  --ed-error: #fb7189;
+  --ed-error: #f0786f;
   --ed-on-error: #2a020b;
-  --ed-error-container: #4c0519;
+  --ed-error-container: #4a1f24;
   --ed-on-error-container: #ffe4e8;
 
-  --ed-surface: #0b0b0d;
-  --ed-surface-dim: #0b0b0d;
-  --ed-surface-bright: #26262c;
-  --ed-on-surface: #f2f2f4;
-  --ed-on-surface-variant: #9d9da8;
+  --ed-surface: #1b2838;
+  --ed-surface-dim: #171d25;
+  --ed-surface-bright: #2a475e;
+  --ed-on-surface: #dfe7ee;
+  --ed-on-surface-variant: #8f98a0;
 
-  --ed-surface-container-lowest: #070708;
-  --ed-surface-container-low: #111114;
-  --ed-surface-container: #17171b;
-  --ed-surface-container-high: #1e1e23;
-  --ed-surface-container-highest: #26262c;
+  --ed-surface-container-lowest: #141b24;
+  --ed-surface-container-low: #1f2b3a;
+  --ed-surface-container: #22303f;
+  --ed-surface-container-high: #2a3b4f;
+  --ed-surface-container-highest: #32465d;
 
-  --ed-outline: #555560;
-  --ed-outline-variant: #24242a;
-  --ed-inverse-surface: #f2f2f4;
-  --ed-inverse-on-surface: #17171b;
-  --ed-inverse-primary: #e0381a;
+  --ed-sidebar: #171d25;
+  --ed-sidebar-border: #0e1217;
 
-  --ed-glow: color-mix(in oklab, var(--ed-primary) 14%, transparent);
-  --ed-glow-secondary: color-mix(in oklab, var(--ed-secondary) 12%, transparent);
+  --ed-outline: #4b5868;
+  --ed-outline-variant: #2d3d50;
+  --ed-inverse-surface: #e4eaf0;
+  --ed-inverse-on-surface: #1b2838;
+  --ed-inverse-primary: #0f7fd1;
+
+  --ed-glow: color-mix(in oklab, var(--ed-primary) 12%, transparent);
+  --ed-glow-secondary: color-mix(in oklab, var(--ed-surface-bright) 55%, transparent);
   --ed-grid-dot: color-mix(in oklab, var(--ed-on-surface) 7%, transparent);
-  --ed-shadow-card: 0 1px 0 rgb(255 255 255 / 0.03) inset, 0 4px 16px -6px rgb(0 0 0 / 0.5);
-  --ed-shadow-lift: 0 1px 0 rgb(255 255 255 / 0.05) inset, 0 24px 48px -16px rgb(0 0 0 / 0.7);
+  --ed-shadow-card: 0 1px 0 rgb(255 255 255 / 0.03) inset, 0 2px 10px -4px rgb(0 0 0 / 0.55);
+  --ed-shadow-lift: 0 1px 0 rgb(255 255 255 / 0.05) inset, 0 18px 40px -16px rgb(0 0 0 / 0.75);
+  --ed-shadow-pop: 0 1px 0 rgb(255 255 255 / 0.05) inset, 0 12px 28px -10px rgb(0 0 0 / 0.7);
 
   --ui-bg-muted: var(--ed-surface-container-low);
   --ui-bg-elevated: var(--ed-surface-container);
   --ui-bg-accented: var(--ed-surface-container-high);
   --ui-text-highlighted: #ffffff;
+  --ui-text-inverted: #ffffff;
 }

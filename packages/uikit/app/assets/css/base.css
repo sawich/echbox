@@ -1,6 +1,12 @@
 @layer base {
+  html,
   body {
-    min-height: 100dvh;
+    height: 100%;
+  }
+
+  body {
+    overflow: hidden;
+    overscroll-behavior: none;
     background-color: var(--ed-surface);
     color: var(--ed-on-surface);
     font-family: var(--font-sans);
@@ -24,29 +30,55 @@
     cursor: pointer;
   }
 
+  /* Thin, token-colored scrollbars — WebKitGTK / WebView2 / WKWebView */
+  * {
+    scrollbar-width: thin;
+    scrollbar-color: color-mix(in oklab, var(--ed-outline) 55%, transparent) transparent;
+  }
+
+  ::-webkit-scrollbar {
+    width: 10px;
+    height: 10px;
+  }
+
+  ::-webkit-scrollbar-track {
+    background: transparent;
+  }
+
+  ::-webkit-scrollbar-thumb {
+    border: 3px solid transparent;
+    border-radius: 999px;
+    background-clip: padding-box;
+    background-color: color-mix(in oklab, var(--ed-outline) 55%, transparent);
+  }
+
+  ::-webkit-scrollbar-thumb:hover {
+    background-color: color-mix(in oklab, var(--ed-outline) 85%, transparent);
+  }
+
   h1,
   h2,
   h3,
   .font-display {
     font-family: var(--font-display);
-    letter-spacing: -0.025em;
+    letter-spacing: -0.02em;
     text-wrap: balance;
   }
 
   .ed-display-lg {
     font-family: var(--font-display);
-    font-size: clamp(2.5rem, 5vw + 1rem, 4rem);
-    line-height: 1;
+    font-size: clamp(2rem, 2.5vw + 1rem, 3rem);
+    line-height: 1.05;
     font-weight: 600;
-    letter-spacing: -0.04em;
+    letter-spacing: -0.035em;
   }
 
   .ed-headline-md {
     font-family: var(--font-display);
-    font-size: clamp(1.875rem, 2vw + 1.25rem, 2.5rem);
-    line-height: 1.1;
+    font-size: clamp(1.5rem, 1vw + 1.1rem, 1.875rem);
+    line-height: 1.15;
     font-weight: 600;
-    letter-spacing: -0.03em;
+    letter-spacing: -0.025em;
   }
 
   .ed-title-md {
@@ -84,7 +116,14 @@
     color: transparent;
   }
 
-  /* Ambient glow + fading dot grid behind the page */
+  /* App chrome: sidebars, rails, toolbars. Behaves like native UI, not a document. */
+  .ed-chrome {
+    user-select: none;
+    -webkit-user-select: none;
+    cursor: default;
+  }
+
+  /* A faint ambient wash at the top of a scroll surface */
   .ed-atmosphere {
     position: relative;
     isolation: isolate;
@@ -96,33 +135,21 @@
     pointer-events: none;
     position: absolute;
     inset: 0 0 auto;
-    height: 640px;
+    height: 360px;
     z-index: -1;
     background:
-      radial-gradient(60% 80% at 15% 0%, var(--ed-glow), transparent 70%),
-      radial-gradient(50% 70% at 85% 0%, var(--ed-glow-secondary), transparent 70%);
-  }
-
-  .ed-atmosphere::after {
-    content: "";
-    pointer-events: none;
-    position: absolute;
-    inset: 0 0 auto;
-    height: 560px;
-    z-index: -1;
-    background-image: radial-gradient(var(--ed-grid-dot) 1px, transparent 1px);
-    background-size: 22px 22px;
-    mask-image: linear-gradient(to bottom, black, transparent);
+      radial-gradient(60% 80% at 20% 0%, var(--ed-glow), transparent 70%),
+      linear-gradient(180deg, var(--ed-glow-secondary) 0%, transparent 100%);
   }
 
   .ed-glass {
-    background-color: color-mix(in oklab, var(--ed-surface) 72%, transparent);
-    backdrop-filter: saturate(1.6) blur(16px);
-    -webkit-backdrop-filter: saturate(1.6) blur(16px);
+    background-color: color-mix(in oklab, var(--ed-surface) 78%, transparent);
+    backdrop-filter: saturate(1.4) blur(14px);
+    -webkit-backdrop-filter: saturate(1.4) blur(14px);
   }
 
   .ed-card {
-    border-radius: var(--radius-xl);
+    border-radius: var(--radius-lg);
     background-color: var(--ed-surface-container);
     box-shadow: var(--ed-shadow-card);
     border: 1px solid var(--ed-outline-variant);
@@ -130,15 +157,168 @@
 
   .ed-card-interactive {
     transition:
-      transform 260ms var(--ed-ease-emphasized),
-      box-shadow 260ms var(--ed-ease-emphasized),
-      border-color 260ms var(--ed-ease-emphasized);
+      transform 220ms var(--ed-ease-emphasized),
+      box-shadow 220ms var(--ed-ease-emphasized),
+      border-color 220ms var(--ed-ease-emphasized);
   }
 
   .ed-card-interactive:hover {
-    transform: translateY(-3px);
-    box-shadow: var(--ed-shadow-lift);
-    border-color: color-mix(in oklab, var(--ed-primary) 40%, var(--ed-outline-variant));
+    transform: translateY(-2px);
+    box-shadow: var(--ed-shadow-pop);
+    border-color: color-mix(in oklab, var(--ed-primary) 35%, var(--ed-outline-variant));
+  }
+
+  /* Hairline-separated list rows inside a card */
+  .ed-list > * + * {
+    border-top: 1px solid var(--ed-outline-variant);
+  }
+
+  /* Segmented control — one shape for sort pickers, tabs, vote groups */
+  .ed-segment {
+    display: inline-flex;
+    align-items: center;
+    gap: 2px;
+    padding: 3px;
+    border-radius: var(--radius-md);
+    background-color: var(--ed-surface-container-high);
+    border: 1px solid var(--ed-outline-variant);
+  }
+
+  .ed-segment-item {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.375rem;
+    padding: 0.3125rem 0.625rem;
+    border-radius: calc(var(--radius-md) - 3px);
+    font-size: 0.8125rem;
+    font-weight: 500;
+    line-height: 1.25rem;
+    color: var(--ed-on-surface-variant);
+    white-space: nowrap;
+    transition:
+      color 160ms var(--ed-ease-emphasized),
+      background-color 160ms var(--ed-ease-emphasized),
+      box-shadow 160ms var(--ed-ease-emphasized);
+  }
+
+  .ed-segment-item:hover {
+    color: var(--ed-on-surface);
+  }
+
+  .ed-segment-item[aria-pressed="true"],
+  .ed-segment-item[aria-current],
+  .ed-segment-item.is-active {
+    color: var(--ed-on-surface);
+    background-color: var(--ed-surface-container-lowest);
+    box-shadow: 0 1px 2px rgb(0 0 0 / 0.08), 0 0 0 1px var(--ed-outline-variant);
+  }
+
+  .dark .ed-segment-item[aria-pressed="true"],
+  .dark .ed-segment-item[aria-current],
+  .dark .ed-segment-item.is-active {
+    background-color: var(--ed-surface-container-highest);
+    box-shadow: 0 1px 0 rgb(255 255 255 / 0.04) inset, 0 1px 2px rgb(0 0 0 / 0.3);
+  }
+
+  /* Sidebar navigation rows */
+  .ed-nav-item {
+    position: relative;
+    display: flex;
+    align-items: center;
+    gap: 0.625rem;
+    width: 100%;
+    padding: 0.4375rem 0.625rem;
+    border-radius: var(--radius-md);
+    font-size: 0.875rem;
+    font-weight: 500;
+    line-height: 1.25rem;
+    color: var(--ed-on-surface-variant);
+    transition:
+      color 160ms var(--ed-ease-emphasized),
+      background-color 160ms var(--ed-ease-emphasized);
+  }
+
+  .ed-nav-item:hover {
+    color: var(--ed-on-surface);
+    background-color: color-mix(in oklab, var(--ed-on-surface) 6%, transparent);
+  }
+
+  .ed-nav-item[aria-current="page"],
+  .ed-nav-item.is-active {
+    color: var(--ed-on-surface);
+    background-color: color-mix(in oklab, var(--ed-primary) 12%, transparent);
+  }
+
+  .ed-nav-item[aria-current="page"]::before,
+  .ed-nav-item.is-active::before {
+    content: "";
+    position: absolute;
+    left: -0.5rem;
+    top: 50%;
+    width: 3px;
+    height: 1.125rem;
+    border-radius: 999px;
+    background-color: var(--ed-primary);
+    transform: translateY(-50%);
+  }
+
+  .ed-nav-item[aria-current="page"] .ed-nav-icon,
+  .ed-nav-item.is-active .ed-nav-icon {
+    color: var(--ed-primary);
+  }
+
+  /* Steam-style primary navigation: uppercase, bold, letter-spaced */
+  .ed-nav-item--caps {
+    font-size: 0.75rem;
+    font-weight: 700;
+    letter-spacing: 0.06em;
+    text-transform: uppercase;
+  }
+
+  /* Underline tabs (library content kinds, profile sections) */
+  .ed-tab {
+    position: relative;
+    display: inline-flex;
+    align-items: center;
+    gap: 0.375rem;
+    padding: 0.625rem 0.125rem 0.75rem;
+    font-size: 0.75rem;
+    font-weight: 700;
+    letter-spacing: 0.06em;
+    text-transform: uppercase;
+    line-height: 1.25rem;
+    color: var(--ed-on-surface-variant);
+    white-space: nowrap;
+    transition: color 160ms var(--ed-ease-emphasized);
+  }
+
+  .ed-tab:hover {
+    color: var(--ed-on-surface);
+  }
+
+  .ed-tab::after {
+    content: "";
+    position: absolute;
+    inset: auto 0 -1px;
+    height: 2px;
+    border-radius: 999px 999px 0 0;
+    background-color: var(--ed-primary);
+    opacity: 0;
+    transform: scaleX(0.6);
+    transition:
+      opacity 160ms var(--ed-ease-emphasized),
+      transform 220ms var(--ed-ease-emphasized);
+  }
+
+  .ed-tab[aria-selected="true"],
+  .ed-tab.is-active {
+    color: var(--ed-on-surface);
+  }
+
+  .ed-tab[aria-selected="true"]::after,
+  .ed-tab.is-active::after {
+    opacity: 1;
+    transform: scaleX(1);
   }
 
   .ed-elev-0 {
@@ -164,7 +344,7 @@
   @keyframes ed-enter {
     from {
       opacity: 0;
-      transform: translateY(8px);
+      transform: translateY(6px);
     }
     to {
       opacity: 1;
@@ -173,22 +353,22 @@
   }
 
   .ed-page-enter {
-    animation: ed-enter 420ms var(--ed-ease-emphasized) both;
+    animation: ed-enter 320ms var(--ed-ease-emphasized) both;
   }
 
   /* Stagger children of a grid as they mount */
   .ed-stagger > * {
-    animation: ed-enter 480ms var(--ed-ease-emphasized) both;
+    animation: ed-enter 360ms var(--ed-ease-emphasized) both;
   }
 
-  .ed-stagger > *:nth-child(2) { animation-delay: 30ms; }
-  .ed-stagger > *:nth-child(3) { animation-delay: 60ms; }
-  .ed-stagger > *:nth-child(4) { animation-delay: 90ms; }
-  .ed-stagger > *:nth-child(5) { animation-delay: 120ms; }
-  .ed-stagger > *:nth-child(6) { animation-delay: 150ms; }
-  .ed-stagger > *:nth-child(7) { animation-delay: 180ms; }
-  .ed-stagger > *:nth-child(8) { animation-delay: 210ms; }
-  .ed-stagger > *:nth-child(n + 9) { animation-delay: 240ms; }
+  .ed-stagger > *:nth-child(2) { animation-delay: 25ms; }
+  .ed-stagger > *:nth-child(3) { animation-delay: 50ms; }
+  .ed-stagger > *:nth-child(4) { animation-delay: 75ms; }
+  .ed-stagger > *:nth-child(5) { animation-delay: 100ms; }
+  .ed-stagger > *:nth-child(6) { animation-delay: 125ms; }
+  .ed-stagger > *:nth-child(7) { animation-delay: 150ms; }
+  .ed-stagger > *:nth-child(8) { animation-delay: 175ms; }
+  .ed-stagger > *:nth-child(n + 9) { animation-delay: 200ms; }
 
   @media (prefers-reduced-motion: reduce) {
     *,

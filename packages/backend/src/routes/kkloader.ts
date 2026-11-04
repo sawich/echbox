@@ -5,7 +5,10 @@ async function readUpload(file: File): Promise<Uint8Array> {
   return new Uint8Array(await file.arrayBuffer());
 }
 
-export const kkloaderRoutes = new Elysia({ prefix: "/api/kk" })
+export const kkloaderRoutes = new Elysia({
+  prefix: "/api/kk",
+  tags: ["Cards"],
+})
   .post(
     "/chara",
     async ({ body }) => {
@@ -17,10 +20,22 @@ export const kkloaderRoutes = new Elysia({ prefix: "/api/kk" })
       };
     },
     {
-      body: t.Object({
-        file: t.File(),
-        full: t.Optional(t.BooleanString()),
-      }),
+      body: t.Object(
+        {
+          file: t.File({ description: "Character card PNG" }),
+          full: t.Optional(
+            t.BooleanString({
+              description: "If true, include full parsed data JSON",
+            }),
+          ),
+        },
+        { description: "multipart/form-data — parse only, does not upload" },
+      ),
+      detail: {
+        summary: "Parse character card",
+        description:
+          "Returns `summary.name` and related fields without storing the file.",
+      },
     },
   )
   .post(
@@ -34,9 +49,16 @@ export const kkloaderRoutes = new Elysia({ prefix: "/api/kk" })
       };
     },
     {
-      body: t.Object({
-        file: t.File(),
-        full: t.Optional(t.BooleanString()),
-      }),
+      body: t.Object(
+        {
+          file: t.File({ description: "Studio scene PNG" }),
+          full: t.Optional(t.BooleanString()),
+        },
+        { description: "multipart/form-data — parse only" },
+      ),
+      detail: {
+        summary: "Parse studio scene",
+        description: "Scenes have no embedded title in the binary summary.",
+      },
     },
   );

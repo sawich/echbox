@@ -1,4 +1,6 @@
-export type CatalogSort = 'recent' | 'top' | 'title'
+import type { CatalogSort as SharedCatalogSort } from '@echbox/shared'
+
+export type CatalogSort = SharedCatalogSort
 
 export type CatalogItem = {
   title: string

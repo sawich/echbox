@@ -1,4 +1,5 @@
 import { z } from "zod";
+import { PaginationMetaSchema } from "./pagination";
 import { CardVoteCountsSchema } from "./votes";
 
 export const CardTypeSchema = z.enum(["character", "scene", "clothes"]);
@@ -34,9 +35,11 @@ export const CharacterCardListItemSchema = CardListItemSchema.merge(
 });
 export type CharacterCardListItem = z.infer<typeof CharacterCardListItemSchema>;
 
-export const CardListResponseSchema = z.object({
-  cards: z.array(CardListItemSchema),
-});
+export const CardListResponseSchema = z
+  .object({
+    cards: z.array(CardListItemSchema),
+  })
+  .merge(PaginationMetaSchema);
 export type CardListResponse = z.infer<typeof CardListResponseSchema>;
 
 export const CardDetailSchema = z.object({

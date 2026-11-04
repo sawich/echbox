@@ -20,7 +20,6 @@ const sort = defineModel<CatalogSort>('sort', { required: true })
       v-model="query"
       :placeholder="placeholder"
       icon="i-lucide-search"
-      size="lg"
       class="w-full sm:max-w-sm"
       :ui="{ trailing: 'pe-1' }"
     >
@@ -40,7 +39,7 @@ const sort = defineModel<CatalogSort>('sort', { required: true })
     </UInput>
 
     <div
-      class="inline-flex w-fit items-center gap-0.5 rounded-full border border-default bg-elevated p-1 sm:ml-auto"
+      class="ed-segment ed-chrome w-fit sm:ml-auto"
       role="group"
       aria-label="Sort"
     >
@@ -48,11 +47,8 @@ const sort = defineModel<CatalogSort>('sort', { required: true })
         v-for="option in catalogSortOptions.filter(o => ratings || o.value !== 'top')"
         :key="option.value"
         type="button"
+        class="ed-segment-item"
         :aria-pressed="sort === option.value"
-        class="inline-flex items-center gap-1.5 rounded-full px-3 py-1.5 text-sm font-medium transition-colors"
-        :class="sort === option.value
-          ? 'bg-[var(--ed-surface-container-highest)] text-highlighted shadow-sm'
-          : 'text-muted hover:text-highlighted'"
         @click="sort = option.value"
       >
         <UIcon

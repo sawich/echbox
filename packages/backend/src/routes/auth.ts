@@ -1,6 +1,10 @@
 import { eq } from "drizzle-orm";
 import { Elysia, t } from "elysia";
 import {
+  extractBearerToken,
+  resolveUserFromBearer,
+} from "../api-keys/service";
+import {
   createDiscordAuthUrl,
   exchangeDiscordCodeForUser,
 } from "../auth/discord";
@@ -36,12 +40,28 @@ function desktopAuthScheme(): string {
   );
 }
 
+export type AuthSource = "session" | "api_key" | null;
+
 export const authDerive = new Elysia({ name: "auth-derive" }).derive(
   { as: "global" },
-  async ({ request }): Promise<{ user: User | null }> => {
+  async ({
+    request,
+  }): Promise<{ user: User | null; authSource: AuthSource }> => {
     const cookieHeader = request.headers.get("cookie");
-    const user = await getUserFromSessionCookie(cookieHeader);
-    return { user };
+    const sessionUser = await getUserFromSessionCookie(cookieHeader);
+    if (sessionUser) {
+      return { user: sessionUser, authSource: "session" };
+    }
+
+    const bearer = extractBearerToken(request.headers.get("authorization"));
+    if (bearer) {
+      const apiUser = resolveUserFromBearer(bearer);
+      if (apiUser) {
+        return { user: apiUser, authSource: "api_key" };
+      }
+    }
+
+    return { user: null, authSource: null };
   },
 );
 
@@ -85,7 +105,10 @@ export function upsertDiscordUser(profile: {
   return newUser;
 }
 
-export const authRoutes = new Elysia({ prefix: "/api/auth" })
+export const authRoutes = new Elysia({
+  prefix: "/api/auth",
+  detail: { hide: true },
+})
   .use(authDerive)
   .get("/discord", ({ query }) => {
     const desktop = query.desktop === "1" || query.desktop === "true";

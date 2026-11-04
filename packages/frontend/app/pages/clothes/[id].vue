@@ -276,7 +276,7 @@ async function handleDeleteClothes() {
 </script>
 
 <template>
-  <main class="mx-auto w-full max-w-6xl px-4 py-6 sm:px-6 sm:py-10">
+  <main class="ed-page-enter mx-auto w-full max-w-6xl px-5 py-6 sm:px-8 sm:py-7">
     <UButton
       to="/clothes"
       variant="link"
@@ -303,16 +303,16 @@ async function handleDeleteClothes() {
       v-else
       class="grid gap-8 lg:grid-cols-[minmax(0,360px)_1fr] lg:gap-12"
     >
-      <aside class="self-start lg:sticky lg:top-24">
+      <aside class="self-start lg:sticky lg:top-6">
         <div class="relative">
           <img
             v-if="imageSrc"
             :src="imageSrc"
             alt=""
             aria-hidden="true"
-            class="absolute inset-0 size-full scale-95 rounded-[var(--radius-2xl)] object-cover opacity-60 blur-3xl saturate-150"
+            class="absolute inset-0 size-full scale-95 rounded-[var(--radius-xl)] object-cover opacity-60 blur-3xl saturate-150"
           >
-          <div class="relative overflow-hidden rounded-[var(--radius-2xl)] border border-default bg-[var(--ed-surface-container-highest)] shadow-[var(--ed-shadow-lift)]">
+          <div class="relative overflow-hidden rounded-[var(--radius-xl)] border border-default bg-[var(--ed-surface-container-highest)] shadow-[var(--ed-shadow-lift)]">
             <img
               v-if="imageSrc"
               :key="imageSrc"

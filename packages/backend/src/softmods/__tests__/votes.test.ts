@@ -124,11 +124,11 @@ describe("softmod votes", () => {
     expect(detail!.dislikes).toBe(0);
     expect(detail!.myVote).toBe("like");
 
-    const list = await listSoftmods({
+    const list = (await listSoftmods({
       dbPath,
       dataDir,
       viewerUserId: voterId,
-    });
+    })).items;
     expect(list).toHaveLength(1);
     expect(list[0]!.likes).toBe(1);
     expect(list[0]!.myVote).toBe("like");

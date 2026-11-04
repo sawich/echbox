@@ -4,6 +4,7 @@ import {
   CardListItemSchema,
   CardVersionDetailSchema,
 } from "./cards";
+import { PaginationMetaSchema } from "./pagination";
 import { CardVoteCountsSchema } from "./votes";
 
 export const SceneVersionDetailSchema = CardVersionDetailSchema.extend({
@@ -32,7 +33,9 @@ export const SceneDetailSchema = CardDetailSchema.omit({ versions: true })
   });
 export type SceneDetail = z.infer<typeof SceneDetailSchema>;
 
-export const SceneListResponseSchema = z.object({
-  scenes: z.array(SceneListItemSchema),
-});
+export const SceneListResponseSchema = z
+  .object({
+    scenes: z.array(SceneListItemSchema),
+  })
+  .merge(PaginationMetaSchema);
 export type SceneListResponse = z.infer<typeof SceneListResponseSchema>;

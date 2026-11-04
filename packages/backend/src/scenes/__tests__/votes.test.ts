@@ -124,11 +124,11 @@ describe("scene votes", () => {
     expect(detail!.likes).toBe(1);
     expect(detail!.myVote).toBe("like");
 
-    const list = await listScenes({
+    const list = (await listScenes({
       dbPath,
       dataDir,
       viewerUserId: voterId,
-    });
+    })).items;
     expect(list[0]!.likes).toBe(1);
     expect(list[0]!.myVote).toBe("like");
   });

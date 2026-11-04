@@ -331,7 +331,7 @@ async function handleDelete() {
 </script>
 
 <template>
-  <main class="mx-auto w-full max-w-6xl px-4 py-6 sm:px-6 sm:py-10">
+  <main class="ed-page-enter mx-auto w-full max-w-6xl px-5 py-6 sm:px-8 sm:py-7">
     <UButton
       :to="backTo"
       variant="link"
@@ -580,7 +580,7 @@ async function handleDelete() {
           </SectionCard>
         </div>
 
-        <aside class="space-y-4 self-start lg:sticky lg:top-24">
+        <aside class="space-y-4 self-start lg:sticky lg:top-6">
           <div class="ed-card space-y-4 p-5">
             <UButton
               v-if="active"

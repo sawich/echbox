@@ -2,7 +2,10 @@ import { Elysia, t } from "elysia";
 import { getUserProfile } from "../users/service";
 import { authDerive } from "./auth";
 
-export const userRoutes = new Elysia({ prefix: "/api/users" })
+export const userRoutes = new Elysia({
+  prefix: "/api/users",
+  detail: { hide: true },
+})
   .use(authDerive)
   .get(
     "/:id",

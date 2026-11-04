@@ -5,6 +5,8 @@ import {
   EchoResponseSchema,
   HealthResponseSchema,
 } from "@echbox/shared";
+import { openapiPlugin } from "./openapi";
+import { apiKeyRoutes } from "./routes/api-keys";
 import { authRoutes } from "./routes/auth";
 import { galleryRoutes } from "./routes/gallery";
 import { gameRoutes } from "./routes/games";
@@ -22,7 +24,9 @@ export const app = new Elysia()
       credentials: true,
     }),
   )
+  .use(openapiPlugin)
   .use(authRoutes)
+  .use(apiKeyRoutes)
   .use(userRoutes)
   .use(gameRoutes)
   .use(kkloaderRoutes)
@@ -31,7 +35,9 @@ export const app = new Elysia()
   .use(clothesRoutes)
   .use(softmodRoutes)
   .use(pluginRoutes)
-  .get("/", () => "Hello Elysia")
+  .get("/", () => "Hello Elysia", {
+    detail: { hide: true },
+  })
   .get(
     "/health",
     () =>
@@ -41,6 +47,10 @@ export const app = new Elysia()
       }),
     {
       response: HealthResponseSchema,
+      detail: {
+        summary: "Health check",
+        tags: ["System"],
+      },
     },
   )
   .post(
@@ -51,6 +61,7 @@ export const app = new Elysia()
     {
       body: EchoBodySchema,
       response: EchoResponseSchema,
+      detail: { hide: true },
     },
   );
 

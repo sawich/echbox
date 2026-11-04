@@ -5,7 +5,15 @@ import {
   type CardDetail,
   type CardListItem,
 } from "@echbox/shared";
-import { and, desc, eq } from "drizzle-orm";
+import { and, count, eq, inArray } from "drizzle-orm";
+import {
+  orderBySort,
+  resolveListWindow,
+  titleSlugSearch,
+  voteNetScore,
+  type CatalogListQuery,
+  type PaginatedList,
+} from "../common/list-query";
 import { getDb } from "../db/client";
 import { newId } from "../id";
 import {
@@ -75,10 +83,12 @@ export type CharacterCardListItem = CardListItem &
     authorId: string;
   };
 
-export type ListCharactersOptions = CardServiceOptions & {
-  viewerUserId?: string | null;
-  gameId?: string;
-};
+export type ListCharactersOptions = CardServiceOptions &
+  CatalogListQuery & {
+    viewerUserId?: string | null;
+    gameId?: string;
+    authorId?: string;
+  };
 
 export type GetCardOptions = CardServiceOptions & {
   viewerUserId?: string | null;
@@ -264,42 +274,76 @@ export async function getCard(
 
 export async function listCharacters(
   options?: ListCharactersOptions,
-): Promise<CharacterCardListItem[]> {
+): Promise<PaginatedList<CharacterCardListItem>> {
   const db = getDb(options?.dbPath);
-  const cards = options?.gameId
+  const { page, limit, offset, sort, q, unbounded } = resolveListWindow(options);
+
+  const whereClause = and(
+    options?.gameId ? eq(characterCards.gameId, options.gameId) : undefined,
+    options?.authorId
+      ? eq(characterCards.authorId, options.authorId)
+      : undefined,
+    titleSlugSearch(characterCards.title, characterCards.slug, q),
+  );
+  const score = voteNetScore("card_votes", "card_id", characterCards.id);
+  const order = orderBySort(
+    sort,
+    characterCards.createdAt,
+    characterCards.title,
+    score,
+  );
+
+  const total =
+    db
+      .select({ value: count() })
+      .from(characterCards)
+      .where(whereClause)
+      .get()?.value ?? 0;
+
+  if (total === 0) {
+    return { items: [], total: 0, page, limit: unbounded ? 0 : limit };
+  }
+
+  const cards = unbounded
     ? db
         .select()
         .from(characterCards)
-        .where(eq(characterCards.gameId, options.gameId))
-        .orderBy(desc(characterCards.createdAt))
+        .where(whereClause)
+        .orderBy(...order)
         .all()
     : db
         .select()
         .from(characterCards)
-        .orderBy(desc(characterCards.createdAt))
+        .where(whereClause)
+        .orderBy(...order)
+        .limit(limit)
+        .offset(offset)
         .all();
 
-  if (cards.length === 0) return [];
+  const ids = cards.map((c) => c.id);
+  const pageVersions =
+    ids.length === 0
+      ? []
+      : db
+          .select()
+          .from(characterCardVersions)
+          .where(inArray(characterCardVersions.cardId, ids))
+          .all();
 
-  const allVersions = db
-    .select()
-    .from(characterCardVersions)
-    .all();
-
-  const versionsByCard = new Map<string, (typeof allVersions)[number][]>();
-  for (const v of allVersions) {
+  const versionsByCard = new Map<string, (typeof pageVersions)[number][]>();
+  for (const v of pageVersions) {
     const arr = versionsByCard.get(v.cardId) ?? [];
     arr.push(v);
     versionsByCard.set(v.cardId, arr);
   }
 
   const voteMap = getVoteCountsForCards(
-    cards.map((c) => c.id),
+    ids,
     options?.viewerUserId,
     options?.dbPath,
   );
 
-  const out: CharacterCardListItem[] = [];
+  const items: CharacterCardListItem[] = [];
   for (const card of cards) {
     const versions = versionsByCard.get(card.id) ?? [];
     const latestRow =
@@ -317,7 +361,7 @@ export async function listCharacters(
       myVote: null,
     };
 
-    out.push({
+    items.push({
       id: card.id,
       gameId: card.gameId,
       type: "character",
@@ -333,7 +377,12 @@ export async function listCharacters(
     });
   }
 
-  return out;
+  return {
+    items,
+    total,
+    page: unbounded ? 1 : page,
+    limit: unbounded ? total : limit,
+  };
 }
 
 export async function createCard(

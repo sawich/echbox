@@ -5,7 +5,15 @@ import {
   type CardDetail,
   type CardListItem,
 } from "@echbox/shared";
-import { and, desc, eq } from "drizzle-orm";
+import { and, count, eq, inArray } from "drizzle-orm";
+import {
+  orderBySort,
+  resolveListWindow,
+  titleSlugSearch,
+  voteNetScore,
+  type CatalogListQuery,
+  type PaginatedList,
+} from "../common/list-query";
 import { getDb } from "../db/client";
 import { newId } from "../id";
 import { clothesVersions, clothesVotes, clothes, users } from "../db/schema";
@@ -70,10 +78,12 @@ export type ClothesListItem = CardListItem &
     authorId: string;
   };
 
-export type ListClothesOptions = ClothesServiceOptions & {
-  viewerUserId?: string | null;
-  gameId?: string;
-};
+export type ListClothesOptions = ClothesServiceOptions &
+  CatalogListQuery & {
+    viewerUserId?: string | null;
+    gameId?: string;
+    authorId?: string;
+  };
 
 export type GetClothesOptions = ClothesServiceOptions & {
   viewerUserId?: string | null;
@@ -259,39 +269,69 @@ export async function getClothes(
 
 export async function listClothes(
   options?: ListClothesOptions,
-): Promise<ClothesListItem[]> {
+): Promise<PaginatedList<ClothesListItem>> {
   const db = getDb(options?.dbPath);
-  const rows = options?.gameId
+  const { page, limit, offset, sort, q, unbounded } = resolveListWindow(options);
+
+  const whereClause = and(
+    options?.gameId ? eq(clothes.gameId, options.gameId) : undefined,
+    options?.authorId ? eq(clothes.authorId, options.authorId) : undefined,
+    titleSlugSearch(clothes.title, clothes.slug, q),
+  );
+  const score = voteNetScore("clothes_votes", "clothes_id", clothes.id);
+  const order = orderBySort(sort, clothes.createdAt, clothes.title, score);
+
+  const total =
+    db
+      .select({ value: count() })
+      .from(clothes)
+      .where(whereClause)
+      .get()?.value ?? 0;
+
+  if (total === 0) {
+    return { items: [], total: 0, page, limit: unbounded ? 0 : limit };
+  }
+
+  const rows = unbounded
     ? db
         .select()
         .from(clothes)
-        .where(eq(clothes.gameId, options.gameId))
-        .orderBy(desc(clothes.createdAt))
+        .where(whereClause)
+        .orderBy(...order)
         .all()
     : db
         .select()
         .from(clothes)
-        .orderBy(desc(clothes.createdAt))
+        .where(whereClause)
+        .orderBy(...order)
+        .limit(limit)
+        .offset(offset)
         .all();
 
-  if (rows.length === 0) return [];
+  const ids = rows.map((s) => s.id);
+  const pageVersions =
+    ids.length === 0
+      ? []
+      : db
+          .select()
+          .from(clothesVersions)
+          .where(inArray(clothesVersions.clothesId, ids))
+          .all();
 
-  const allVersions = db.select().from(clothesVersions).all();
-
-  const versionsByScene = new Map<string, (typeof allVersions)[number][]>();
-  for (const v of allVersions) {
+  const versionsByScene = new Map<string, (typeof pageVersions)[number][]>();
+  for (const v of pageVersions) {
     const arr = versionsByScene.get(v.clothesId) ?? [];
     arr.push(v);
     versionsByScene.set(v.clothesId, arr);
   }
 
   const voteMap = getVoteCountsForClothes(
-    rows.map((s) => s.id),
+    ids,
     options?.viewerUserId,
     options?.dbPath,
   );
 
-  const out: ClothesListItem[] = [];
+  const items: ClothesListItem[] = [];
   for (const scene of rows) {
     const versions = versionsByScene.get(scene.id) ?? [];
     const latestRow =
@@ -309,7 +349,7 @@ export async function listClothes(
       myVote: null,
     };
 
-    out.push({
+    items.push({
       id: scene.id,
       gameId: scene.gameId,
       type: "clothes",
@@ -325,7 +365,12 @@ export async function listClothes(
     });
   }
 
-  return out;
+  return {
+    items,
+    total,
+    page: unbounded ? 1 : page,
+    limit: unbounded ? total : limit,
+  };
 }
 
 export async function createClothes(

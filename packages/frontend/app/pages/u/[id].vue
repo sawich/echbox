@@ -57,7 +57,7 @@ const stats = computed(() => {
 </script>
 
 <template>
-  <main class="mx-auto w-full max-w-7xl px-4 py-8 sm:px-6 sm:py-12">
+  <main class="ed-page-enter w-full px-5 py-6 sm:px-8 sm:py-7">
     <div
       v-if="status === 'pending'"
       class="space-y-8"
@@ -165,7 +165,7 @@ const stats = computed(() => {
           />
           <div
             v-else
-            class="ed-stagger grid grid-cols-2 gap-4 sm:grid-cols-3 lg:grid-cols-4 xl:grid-cols-5"
+            class="ed-stagger grid grid-cols-2 gap-4 sm:grid-cols-3 lg:grid-cols-4 xl:grid-cols-5 2xl:grid-cols-6"
           >
             <CardTile
               v-for="card in data.cards"
@@ -186,7 +186,7 @@ const stats = computed(() => {
           />
           <div
             v-else
-            class="ed-stagger grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3"
+            class="ed-stagger grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3 2xl:grid-cols-4"
           >
             <SceneTile
               v-for="scene in data.scenes"
@@ -207,7 +207,7 @@ const stats = computed(() => {
           />
           <div
             v-else
-            class="ed-stagger grid grid-cols-2 gap-4 sm:grid-cols-3 lg:grid-cols-4 xl:grid-cols-5"
+            class="ed-stagger grid grid-cols-2 gap-4 sm:grid-cols-3 lg:grid-cols-4 xl:grid-cols-5 2xl:grid-cols-6"
           >
             <ClothesTile
               v-for="item in data.clothes"

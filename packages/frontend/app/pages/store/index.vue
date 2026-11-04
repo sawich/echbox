@@ -1,5 +1,6 @@
 <script setup lang="ts">
 import type { ContentKind, GameContentKind, GameListItem } from '@echbox/shared'
+import { useLibraryInstances } from '~/composables/useLibraryInstances'
 import type { GameInstance } from '~/composables/useLocalInstalls'
 
 type KindFormRow = { kind: ContentKind, label: string, enabled: boolean, relPath: string }
@@ -41,19 +42,22 @@ const api = useApi()
 const config = useRuntimeConfig()
 const apiUrl = computed(() => String(config.public.apiUrl).replace(/\/$/, ''))
 const { isAdmin } = useAuth()
-const { isDesktop, listInstalledInstances, installGame } = useLocalInstalls()
+const { isDesktop } = useLocalInstalls()
+const { instances, refreshInstalled } = useLibraryInstances()
+const { runGameInstall, isTargetBusy } = useAppTasks()
 const { extractFromPath, pickExe, listenDragDrop } = useExeIcon()
 const router = useRouter()
 
-const instances = ref<GameInstance[]>([])
-const busyId = ref<string | null>(null)
 const actionError = ref<string | null>(null)
 
 const showInstall = ref(false)
 const installGameTarget = ref<GameListItem | null>(null)
 const installLabel = ref('')
-const installBusy = ref(false)
 const installError = ref<string | null>(null)
+
+const installBusy = computed(() =>
+  installGameTarget.value ? isTargetBusy(installGameTarget.value.id) : false,
+)
 
 const showCreate = ref(false)
 const createTitle = ref('')
@@ -254,14 +258,6 @@ function installCount(gameId: string): number {
   return instancesForGame(gameId).length
 }
 
-async function refreshInstalled() {
-  if (!isDesktop.value) {
-    instances.value = []
-    return
-  }
-  instances.value = await listInstalledInstances()
-}
-
 onMounted(() => {
   void refreshInstalled()
 })
@@ -281,7 +277,6 @@ function resetInstallForm() {
   installGameTarget.value = null
   installLabel.value = ''
   installError.value = null
-  installBusy.value = false
 }
 
 watch(showInstall, (open) => {
@@ -296,22 +291,20 @@ async function confirmInstall() {
     installError.value = 'Enter a name for this install'
     return
   }
-  installBusy.value = true
-  busyId.value = game.id
   installError.value = null
   actionError.value = null
   try {
-    const created = await installGame(game.id, label)
+    const created = await runGameInstall({
+      gameId: game.id,
+      title: game.title,
+      label,
+    })
     showInstall.value = false
     await refreshInstalled()
     await router.push(`/library/${created.instanceId}`)
   }
   catch (err) {
     installError.value = err instanceof Error ? err.message : 'Install failed'
-  }
-  finally {
-    installBusy.value = false
-    busyId.value = null
   }
 }
 
@@ -416,7 +409,7 @@ const editPreviewSrc = computed(() => {
 </script>
 
 <template>
-  <main class="mx-auto w-full max-w-7xl space-y-8 px-4 py-8 sm:px-6 sm:py-12">
+  <main class="ed-page-enter w-full space-y-6 px-5 py-6 sm:px-8 sm:py-7">
     <PageHeader
       eyebrow="Store"
       icon="i-lucide-store"
@@ -435,7 +428,6 @@ const editPreviewSrc = computed(() => {
           <UButton
             icon="i-lucide-plus"
             color="primary"
-            size="lg"
           >
             Add game
           </UButton>
@@ -570,7 +562,6 @@ const editPreviewSrc = computed(() => {
           <UButton
             icon="i-lucide-plus"
             color="primary"
-            size="lg"
             disabled
           >
             Add game
@@ -856,78 +847,90 @@ const editPreviewSrc = computed(() => {
     />
     <div
       v-else
-      class="ed-stagger grid gap-4 sm:grid-cols-2 lg:grid-cols-3"
+      class="ed-stagger grid gap-4 sm:grid-cols-2 xl:grid-cols-3 2xl:grid-cols-4"
     >
       <article
         v-for="game in games"
         :key="game.id"
-        class="ed-card flex flex-col gap-4 p-5"
+        class="ed-card group relative flex flex-col gap-4 p-4"
       >
-        <div class="flex gap-4">
+        <div class="flex items-start gap-3.5">
           <img
             :src="iconSrc(game)"
             :alt="`${game.title} icon`"
-            class="size-16 shrink-0 rounded-md bg-elevated object-contain"
+            class="size-14 shrink-0 rounded-[var(--radius-md)] bg-[var(--ed-surface-container-highest)] object-contain ring-1 ring-[var(--ed-outline-variant)]"
             loading="lazy"
           >
-          <div class="min-w-0 space-y-1">
-            <h2 class="text-lg font-semibold text-highlighted">
-              {{ game.title }}
-            </h2>
-            <p class="text-xs font-mono text-dimmed">
+          <div class="min-w-0 flex-1 space-y-1">
+            <div class="flex items-start justify-between gap-2">
+              <h2 class="truncate text-[15px] font-semibold text-highlighted">
+                {{ game.title }}
+              </h2>
+              <UBadge
+                v-if="installCount(game.id) > 0"
+                color="success"
+                variant="subtle"
+                size="sm"
+                icon="i-lucide-check"
+                class="shrink-0"
+              >
+                {{ installCount(game.id) === 1 ? 'Installed' : `${installCount(game.id)} installs` }}
+              </UBadge>
+            </div>
+            <p class="truncate font-mono text-[11px] text-dimmed">
               {{ game.slug }}
             </p>
             <p
               v-if="game.description"
-              class="text-sm text-muted"
+              class="line-clamp-2 text-sm text-pretty text-muted"
             >
               {{ game.description }}
             </p>
           </div>
         </div>
-        <div class="mt-auto flex flex-wrap items-center gap-2">
-          <UButton
-            v-if="installCount(game.id) > 0"
-            color="primary"
-            variant="outline"
-            @click="onOpen(game)"
-          >
-            Open in Library
-            <UBadge
-              color="primary"
-              variant="solid"
-              size="sm"
-              class="ms-1.5"
-            >
-              {{ installCount(game.id) }}
-            </UBadge>
-          </UButton>
+        <div class="mt-auto flex flex-wrap items-center gap-2 border-t border-[var(--ed-outline-variant)] pt-3">
           <UButton
             color="primary"
-            :loading="busyId === game.id"
+            size="sm"
+            icon="i-lucide-download"
+            :loading="isTargetBusy(game.id)"
             :disabled="!isDesktop"
             @click="openInstall(game)"
           >
             {{ isDesktop ? 'Install' : 'Desktop only' }}
           </UButton>
           <UButton
-            v-if="isAdmin"
+            v-if="installCount(game.id) > 0"
             color="neutral"
-            variant="outline"
-            icon="i-lucide-pencil"
-            @click="openEdit(game)"
+            variant="soft"
+            size="sm"
+            icon="i-lucide-library"
+            @click="onOpen(game)"
           >
-            Edit
+            Open in Library
           </UButton>
-          <UButton
+          <div
             v-if="isAdmin"
-            color="error"
-            variant="outline"
-            icon="i-lucide-trash-2"
-            @click="openDelete(game)"
+            class="ml-auto flex items-center gap-0.5"
           >
-            Delete
-          </UButton>
+            <UButton
+              color="neutral"
+              variant="ghost"
+              size="sm"
+              icon="i-lucide-pencil"
+              @click="openEdit(game)"
+            >
+              Edit
+            </UButton>
+            <UButton
+              color="error"
+              variant="ghost"
+              size="sm"
+              icon="i-lucide-trash-2"
+              aria-label="Delete game"
+              @click="openDelete(game)"
+            />
+          </div>
         </div>
       </article>
     </div>

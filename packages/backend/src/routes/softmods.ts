@@ -15,7 +15,12 @@ import {
   listSoftmods,
 } from "../softmods/service";
 import { setSoftmodVote } from "../softmods/votes";
+import {
+  catalogListQueryFields,
+  listOptsFromQuery,
+} from "../common/list-query-schema";
 import { GameServiceError } from "../games/service";
+import { bearerAuthSecurity } from "../openapi";
 import { authDerive } from "./auth";
 
 async function readUpload(file: File): Promise<Uint8Array> {
@@ -80,7 +85,10 @@ function handleServiceError(
   throw err;
 }
 
-export const softmodRoutes = new Elysia({ prefix: "/api/softmods" })
+export const softmodRoutes = new Elysia({
+  prefix: "/api/softmods",
+  tags: ["Softmods"],
+})
   .use(authDerive)
   .get(
     "/by-hash/:hash",
@@ -94,23 +102,31 @@ export const softmodRoutes = new Elysia({ prefix: "/api/softmods" })
     },
     {
       params: t.Object({
-        hash: t.String(),
+        hash: t.String({ description: "SHA-256 hex of the zipmod bytes" }),
       }),
+      detail: { summary: "Find softmod by content hash" },
     },
   )
   .get(
     "/",
     async ({ query, user }) => {
-      const softmods = await listSoftmods({
+      const result = await listSoftmods({
         viewerUserId: user?.id ?? null,
-        gameId: query.gameId,
+        ...listOptsFromQuery(query),
       });
-      return { softmods };
+      return {
+        softmods: result.items,
+        total: result.total,
+        page: result.page,
+        limit: result.limit,
+      };
     },
     {
       query: t.Object({
-        gameId: t.Optional(t.String()),
+        gameId: t.Optional(t.String({ description: "Limit to this game id" })),
+        ...catalogListQueryFields,
       }),
+      detail: { summary: "List softmods" },
     },
   )
   .post(
@@ -136,12 +152,22 @@ export const softmodRoutes = new Elysia({ prefix: "/api/softmods" })
       }
     },
     {
-      body: t.Object({
-        file: t.File(),
-        gameId: t.String(),
-        semver: t.String({ minLength: 1 }),
-        notes: t.Optional(t.String()),
-      }),
+      body: t.Object(
+        {
+          file: t.File({ description: "Softmod .zipmod file" }),
+          gameId: t.String({ description: "Target game id" }),
+          semver: t.String({
+            minLength: 1,
+            description: "Initial semver (title comes from manifest)",
+          }),
+          notes: t.Optional(t.String()),
+        },
+        { description: "multipart/form-data" },
+      ),
+      detail: {
+        summary: "Upload softmod",
+        security: [...bearerAuthSecurity],
+      },
     },
   )
   .get(
@@ -158,8 +184,9 @@ export const softmodRoutes = new Elysia({ prefix: "/api/softmods" })
     },
     {
       params: t.Object({
-        id: t.String(),
+        id: t.String({ description: "Softmod id" }),
       }),
+      detail: { summary: "Get softmod" },
     },
   )
   .put(
@@ -186,6 +213,10 @@ export const softmodRoutes = new Elysia({ prefix: "/api/softmods" })
       body: t.Object({
         vote: t.Union([t.Literal("like"), t.Literal("dislike"), t.Null()]),
       }),
+      detail: {
+        summary: "Vote on softmod",
+        security: [...bearerAuthSecurity],
+      },
     },
   )
   .post(
@@ -213,11 +244,18 @@ export const softmodRoutes = new Elysia({ prefix: "/api/softmods" })
       params: t.Object({
         id: t.String(),
       }),
-      body: t.Object({
-        file: t.File(),
-        semver: t.String({ minLength: 1 }),
-        notes: t.Optional(t.String()),
-      }),
+      body: t.Object(
+        {
+          file: t.File({ description: "Softmod .zipmod" }),
+          semver: t.String({ minLength: 1 }),
+          notes: t.Optional(t.String()),
+        },
+        { description: "multipart/form-data" },
+      ),
+      detail: {
+        summary: "Add softmod version",
+        security: [...bearerAuthSecurity],
+      },
     },
   )
   .delete(
@@ -240,6 +278,10 @@ export const softmodRoutes = new Elysia({ prefix: "/api/softmods" })
       params: t.Object({
         id: t.String(),
       }),
+      detail: {
+        summary: "Delete softmod",
+        security: [...bearerAuthSecurity],
+      },
     },
   )
   .delete(
@@ -265,6 +307,10 @@ export const softmodRoutes = new Elysia({ prefix: "/api/softmods" })
         id: t.String(),
         versionId: t.String(),
       }),
+      detail: {
+        summary: "Delete softmod version",
+        security: [...bearerAuthSecurity],
+      },
     },
   )
   .get(
@@ -290,5 +336,6 @@ export const softmodRoutes = new Elysia({ prefix: "/api/softmods" })
         id: t.String(),
         versionId: t.String(),
       }),
+      detail: { summary: "Download softmod zipmod" },
     },
   );

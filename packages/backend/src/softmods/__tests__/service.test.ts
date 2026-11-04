@@ -153,7 +153,7 @@ describe("softmod service", () => {
       true,
     );
 
-    const list = await listSoftmods({ dbPath, dataDir });
+    const list = (await listSoftmods({ dbPath, dataDir })).items;
     expect(list).toHaveLength(1);
     expect(list[0]!.id).toBe("com.echbox.testmod");
     expect(list[0]!.latestSemver).toBe("1.2.3");
@@ -194,7 +194,7 @@ describe("softmod service", () => {
     expect(conflict.softmodId).toBe(guid);
     expect(conflict.name).toBe("SoftmodGuidConflictError");
 
-    const list = await listSoftmods({ dbPath, dataDir });
+    const list = (await listSoftmods({ dbPath, dataDir })).items;
     expect(list).toHaveLength(1);
   });
 
@@ -332,7 +332,7 @@ describe("softmod service", () => {
     expect(empty.versionCount).toBe(0);
     expect(empty.downloadUrl).toBe("");
 
-    const listed = await listSoftmods({ dbPath, dataDir });
+    const listed = (await listSoftmods({ dbPath, dataDir })).items;
     expect(listed.find((s) => s.id === created.id)?.versionCount).toBe(0);
     expect(await getSoftmod(created.id, { dbPath, dataDir })).not.toBeNull();
   });

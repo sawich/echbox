@@ -25,6 +25,8 @@ pub struct ContentInstall {
     #[serde(skip_serializing_if = "Option::is_none")]
     pub content_hash: Option<String>,
     pub installed_at: String,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub local_rel_path: Option<String>,
 }
 
 pub fn validate_game_id(game_id: &str) -> Result<(), String> {
@@ -328,16 +330,90 @@ pub fn list_installed_content(
     read_jsonl(&path)
 }
 
+fn extension_for_kind(kind: &str) -> Result<&'static str, String> {
+    match kind {
+        "cards" | "scenes" | "clothes" => Ok("png"),
+        "plugins" => Ok("zip"),
+        "softmods" => Ok("zipmod"),
+        _ => Err(format!("invalid content kind: {kind}")),
+    }
+}
+
+/// Normalize a content install relative path under the instance root.
+/// Empty / None → instance root. Rejects absolute paths and `..` segments.
+pub fn sanitize_content_rel_path(rel_path: Option<&str>) -> Result<Option<String>, String> {
+    let Some(raw) = rel_path.map(str::trim).filter(|s| !s.is_empty()) else {
+        return Ok(None);
+    };
+    let normalized = raw.replace('\\', "/");
+    if normalized.starts_with('/') || normalized.starts_with("~/") {
+        return Err("relPath must be relative".into());
+    }
+    if normalized
+        .split('/')
+        .any(|seg| seg.is_empty() || seg == "." || seg == "..")
+    {
+        return Err("relPath must not contain .. or empty segments".into());
+    }
+    // Drive-letter absolute paths on Windows (e.g. C:/...)
+    if let Some(first) = normalized.split('/').next() {
+        if first.len() == 2 && first.as_bytes()[1] == b':' {
+            return Err("relPath must be relative".into());
+        }
+    }
+    Ok(Some(normalized))
+}
+
+fn content_file_rel_path(
+    content_id: &str,
+    kind: &str,
+    rel_path: Option<&str>,
+) -> Result<String, String> {
+    validate_kind(kind)?;
+    if content_id.is_empty()
+        || content_id.contains('/')
+        || content_id.contains('\\')
+        || content_id.contains("..")
+    {
+        return Err("invalid content id".into());
+    }
+    let ext = extension_for_kind(kind)?;
+    let filename = format!("{content_id}.{ext}");
+    match sanitize_content_rel_path(rel_path)? {
+        Some(dir) => Ok(format!("{dir}/{filename}")),
+        None => Ok(filename),
+    }
+}
+
 pub fn install_content(
     instance_id: &str,
     kind: &str,
-    row: ContentInstall,
+    mut row: ContentInstall,
+    file_bytes: &[u8],
+    rel_path: Option<&str>,
 ) -> Result<(), String> {
     ensure_instance(instance_id)?;
     ensure_echbox_stubs(instance_id)?;
+    validate_kind(kind)?;
+
+    let local_rel = content_file_rel_path(&row.id, kind, rel_path)?;
+    let dest = instance_dir(instance_id)?.join(&local_rel);
+    if let Some(parent) = dest.parent() {
+        fs::create_dir_all(parent).map_err(|e| e.to_string())?;
+    }
+    fs::write(&dest, file_bytes).map_err(|e| e.to_string())?;
+
+    row.local_rel_path = Some(local_rel);
+
     let path = manifest_path(instance_id, kind)?;
     let mut rows = read_jsonl(&path)?;
     if let Some(existing) = rows.iter_mut().find(|r| r.id == row.id) {
+        if let Some(old) = existing.local_rel_path.as_ref() {
+            if old != row.local_rel_path.as_ref().unwrap() {
+                let old_path = instance_dir(instance_id)?.join(old);
+                let _ = fs::remove_file(old_path);
+            }
+        }
         *existing = row;
     } else {
         rows.push(row);
@@ -352,11 +428,16 @@ pub fn uninstall_content(
 ) -> Result<(), String> {
     ensure_instance(instance_id)?;
     let path = manifest_path(instance_id, kind)?;
-    let rows: Vec<_> = read_jsonl(&path)?
-        .into_iter()
-        .filter(|r| r.id != content_id)
-        .collect();
-    write_jsonl(&path, &rows)
+    let rows = read_jsonl(&path)?;
+    let (keep, removed): (Vec<_>, Vec<_>) =
+        rows.into_iter().partition(|r| r.id != content_id);
+    for row in removed {
+        if let Some(rel) = row.local_rel_path {
+            let file_path = instance_dir(instance_id)?.join(rel);
+            let _ = fs::remove_file(file_path);
+        }
+    }
+    write_jsonl(&path, &keep)
 }
 
 #[cfg(test)]
@@ -390,7 +471,19 @@ mod tests {
             title: "One".into(),
             content_hash: Some("abc".into()),
             installed_at: "2026-01-01T00:00:00.000Z".into(),
+            local_rel_path: None,
         }
+    }
+
+    fn install_sample(instance_id: &str, kind: &str, id: &str) {
+        install_content(
+            instance_id,
+            kind,
+            sample_row(id),
+            b"payload",
+            None,
+        )
+        .unwrap();
     }
 
     #[test]
@@ -570,9 +663,9 @@ mod tests {
     fn uninstall_one_instance_keeps_sibling() {
         with_temp_home(|_home| {
             let first = install_game("g", None).unwrap();
-            install_content(&first.instance_id, "cards", sample_row("c1")).unwrap();
+            install_sample(&first.instance_id, "cards", "c1");
             let second = install_game("g", None).unwrap();
-            install_content(&second.instance_id, "cards", sample_row("c2")).unwrap();
+            install_sample(&second.instance_id, "cards", "c2");
             uninstall_instance(&first.instance_id).unwrap();
             let remaining = list_installed_instances().unwrap();
             assert_eq!(remaining.len(), 1);
@@ -588,7 +681,7 @@ mod tests {
         with_temp_home(|_home| {
             let a = install_game("game", None).unwrap();
             let b = install_game("game", None).unwrap();
-            install_content(&a.instance_id, "cards", sample_row("card-a")).unwrap();
+            install_sample(&a.instance_id, "cards", "card-a");
             assert_eq!(list_installed_content(&a.instance_id, "cards").unwrap().len(), 1);
             assert!(list_installed_content(&b.instance_id, "cards").unwrap().is_empty());
         });
@@ -599,17 +692,21 @@ mod tests {
         with_temp_home(|_home| {
             let inst = install_game("g", None).unwrap();
             let row = sample_row("c1");
-            install_content(&inst.instance_id, "cards", row.clone()).unwrap();
+            install_content(&inst.instance_id, "cards", row.clone(), b"v1", None).unwrap();
             let mut updated = row;
             updated.version_id = "vid-2".into();
             updated.semver = "2.0.0".into();
             updated.title = "Two".into();
-            install_content(&inst.instance_id, "cards", updated.clone()).unwrap();
+            install_content(&inst.instance_id, "cards", updated.clone(), b"v2", None).unwrap();
             let listed = list_installed_content(&inst.instance_id, "cards").unwrap();
             assert_eq!(listed.len(), 1);
             assert_eq!(listed[0].semver, "2.0.0");
             assert_eq!(listed[0].version_id, "vid-2");
             assert_eq!(listed[0].title, "Two");
+            let file = instance_dir(&inst.instance_id)
+                .unwrap()
+                .join("c1.png");
+            assert_eq!(fs::read(&file).unwrap(), b"v2");
         });
     }
 
@@ -627,13 +724,82 @@ mod tests {
                     title: "P".into(),
                     content_hash: None,
                     installed_at: "t".into(),
+                    local_rel_path: None,
                 },
+                b"zip-bytes",
+                None,
             )
             .unwrap();
             uninstall_content(&inst.instance_id, "plugins", "p1").unwrap();
             assert!(list_installed_content(&inst.instance_id, "plugins")
                 .unwrap()
                 .is_empty());
+        });
+    }
+
+    #[test]
+    fn install_content_writes_file_under_rel_path() {
+        with_temp_home(|_home| {
+            let inst = install_game("g", None).unwrap();
+            install_content(
+                &inst.instance_id,
+                "cards",
+                sample_row("card1"),
+                b"png-bytes",
+                Some("UserData/cards"),
+            )
+            .unwrap();
+            let listed = list_installed_content(&inst.instance_id, "cards").unwrap();
+            assert_eq!(
+                listed[0].local_rel_path.as_deref(),
+                Some("UserData/cards/card1.png")
+            );
+            let file = instance_dir(&inst.instance_id)
+                .unwrap()
+                .join("UserData/cards/card1.png");
+            assert_eq!(fs::read(file).unwrap(), b"png-bytes");
+        });
+    }
+
+    #[test]
+    fn install_content_rejects_bad_rel_path() {
+        with_temp_home(|_home| {
+            let inst = install_game("g", None).unwrap();
+            let err = install_content(
+                &inst.instance_id,
+                "cards",
+                sample_row("c1"),
+                b"x",
+                Some("../escape"),
+            )
+            .unwrap_err();
+            assert!(err.to_lowercase().contains("relpath") || err.contains(".."));
+            assert!(
+                list_installed_content(&inst.instance_id, "cards")
+                    .unwrap()
+                    .is_empty()
+            );
+        });
+    }
+
+    #[test]
+    fn uninstall_content_deletes_file() {
+        with_temp_home(|_home| {
+            let inst = install_game("g", None).unwrap();
+            install_content(
+                &inst.instance_id,
+                "softmods",
+                sample_row("mod1"),
+                b"zipmod",
+                Some("mods"),
+            )
+            .unwrap();
+            let file = instance_dir(&inst.instance_id)
+                .unwrap()
+                .join("mods/mod1.zipmod");
+            assert!(file.exists());
+            uninstall_content(&inst.instance_id, "softmods", "mod1").unwrap();
+            assert!(!file.exists());
         });
     }
 }

@@ -37,16 +37,16 @@ const description = computed(() => {
 </script>
 
 <template>
-  <article class="ed-card ed-card-interactive group relative flex flex-col gap-4 p-4 sm:flex-row sm:items-center sm:p-5">
+  <article class="ed-card ed-card-interactive group relative flex flex-col gap-4 p-4 sm:flex-row sm:items-center">
     <span
-      class="grid size-12 shrink-0 place-items-center rounded-[var(--radius-lg)] bg-gradient-to-br"
+      class="grid size-11 shrink-0 place-items-center rounded-[var(--radius-md)] bg-gradient-to-br ring-1 ring-[var(--ed-outline-variant)]"
       :class="modKind === 'plugin'
         ? 'from-[color-mix(in_oklab,var(--ed-secondary)_22%,transparent)] to-[color-mix(in_oklab,var(--ed-secondary)_6%,transparent)] text-secondary'
         : 'from-[color-mix(in_oklab,var(--ed-primary)_22%,transparent)] to-[color-mix(in_oklab,var(--ed-primary)_6%,transparent)] text-primary'"
     >
       <UIcon
         :name="modKind === 'plugin' ? 'i-lucide-puzzle' : 'i-lucide-package'"
-        class="size-5.5"
+        class="size-5"
       />
     </span>
 
@@ -54,7 +54,7 @@ const description = computed(() => {
       <div class="flex flex-wrap items-center gap-2">
         <NuxtLink
           :to="detailTo"
-          class="truncate text-base font-semibold text-highlighted after:absolute after:inset-0 after:rounded-[var(--radius-xl)] after:content-[''] focus-visible:outline-none group-hover:text-primary"
+          class="truncate text-[15px] font-semibold text-highlighted after:absolute after:inset-0 after:rounded-[var(--radius-lg)] after:content-[''] focus-visible:outline-none group-hover:text-primary"
         >
           {{ item.title }}
         </NuxtLink>

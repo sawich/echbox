@@ -29,23 +29,15 @@ export async function getUserProfile(
   const listOpts = {
     dbPath: options?.dbPath,
     viewerUserId: options?.viewerUserId,
+    authorId: userId,
+    unbounded: true as const,
   };
 
-  const cards = (await listCharacters(listOpts)).filter(
-    (c) => c.authorId === userId,
-  );
-  const plugins = (await listPlugins(listOpts)).filter(
-    (p) => p.authorId === userId,
-  );
-  const softmods = (await listSoftmods(listOpts)).filter(
-    (s) => s.authorId === userId,
-  );
-  const scenes = (await listScenes(listOpts)).filter(
-    (s) => s.authorId === userId,
-  );
-  const clothesItems = (await listClothes(listOpts)).filter(
-    (c) => c.authorId === userId,
-  );
+  const cards = (await listCharacters(listOpts)).items;
+  const plugins = (await listPlugins(listOpts)).items;
+  const softmods = (await listSoftmods(listOpts)).items;
+  const scenes = (await listScenes(listOpts)).items;
+  const clothesItems = (await listClothes(listOpts)).items;
 
   const cardVotes = getLikesReceivedForAuthor(userId, options?.dbPath);
   const pluginVotes = getPluginLikesReceivedForAuthor(

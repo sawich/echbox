@@ -15,7 +15,12 @@ import {
   patchClothes,
 } from "../clothes/service";
 import { setClothesVote } from "../clothes/votes";
+import {
+  catalogListQueryFields,
+  listOptsFromQuery,
+} from "../common/list-query-schema";
 import { GameServiceError } from "../games/service";
+import { bearerAuthSecurity } from "../openapi";
 import { authDerive } from "./auth";
 
 async function readUpload(file: File): Promise<Uint8Array> {
@@ -93,7 +98,10 @@ function handleServiceError(
   throw err;
 }
 
-export const clothesRoutes = new Elysia({ prefix: "/api/clothes" })
+export const clothesRoutes = new Elysia({
+  prefix: "/api/clothes",
+  tags: ["Clothes"],
+})
   .use(authDerive)
   .get(
     "/by-hash/:hash",
@@ -107,23 +115,33 @@ export const clothesRoutes = new Elysia({ prefix: "/api/clothes" })
     },
     {
       params: t.Object({
-        hash: t.String(),
+        hash: t.String({ description: "SHA-256 hex of the original PNG bytes" }),
       }),
+      detail: { summary: "Find clothes by content hash" },
     },
   )
   .get(
     "/",
     async ({ query, user }) => {
-      const clothes = await listClothes({
+      const result = await listClothes({
         viewerUserId: user?.id ?? null,
-        gameId: query.gameId,
+        ...listOptsFromQuery(query),
       });
-      return { clothes };
+      return {
+        clothes: result.items,
+        total: result.total,
+        page: result.page,
+        limit: result.limit,
+      };
     },
     {
       query: t.Object({
-        gameId: t.Optional(t.String()),
+        gameId: t.Optional(
+          t.String({ description: "Limit to this game id" }),
+        ),
+        ...catalogListQueryFields,
       }),
+      detail: { summary: "List clothes" },
     },
   )
   .post(
@@ -151,14 +169,26 @@ export const clothesRoutes = new Elysia({ prefix: "/api/clothes" })
       }
     },
     {
-      body: t.Object({
-        file: t.File(),
-        gameId: t.String(),
-        title: t.Optional(t.String()),
-        slug: t.Optional(t.String()),
-        semver: t.String(),
-        notes: t.Optional(t.String()),
-      }),
+      body: t.Object(
+        {
+          file: t.File({ description: "Coordinate / clothes PNG" }),
+          gameId: t.String({ description: "Target game id" }),
+          title: t.Optional(
+            t.String({
+              description:
+                "If empty, uses embedded coordinateName from the file",
+            }),
+          ),
+          slug: t.Optional(t.String()),
+          semver: t.String({ description: "Initial semver, e.g. `1.0.0`" }),
+          notes: t.Optional(t.String()),
+        },
+        { description: "multipart/form-data" },
+      ),
+      detail: {
+        summary: "Upload clothes",
+        security: [...bearerAuthSecurity],
+      },
     },
   )
   .get(
@@ -175,8 +205,9 @@ export const clothesRoutes = new Elysia({ prefix: "/api/clothes" })
     },
     {
       params: t.Object({
-        id: t.String(),
+        id: t.String({ description: "Clothes id" }),
       }),
+      detail: { summary: "Get clothes" },
     },
   )
   .put(
@@ -203,6 +234,10 @@ export const clothesRoutes = new Elysia({ prefix: "/api/clothes" })
       body: t.Object({
         vote: t.Union([t.Literal("like"), t.Literal("dislike"), t.Null()]),
       }),
+      detail: {
+        summary: "Vote on clothes",
+        security: [...bearerAuthSecurity],
+      },
     },
   )
   .post(
@@ -230,11 +265,18 @@ export const clothesRoutes = new Elysia({ prefix: "/api/clothes" })
       params: t.Object({
         id: t.String(),
       }),
-      body: t.Object({
-        file: t.File(),
-        semver: t.String(),
-        notes: t.Optional(t.String()),
-      }),
+      body: t.Object(
+        {
+          file: t.File(),
+          semver: t.String(),
+          notes: t.Optional(t.String()),
+        },
+        { description: "multipart/form-data" },
+      ),
+      detail: {
+        summary: "Add clothes version",
+        security: [...bearerAuthSecurity],
+      },
     },
   )
   .patch(
@@ -266,6 +308,10 @@ export const clothesRoutes = new Elysia({ prefix: "/api/clothes" })
         slug: t.Optional(t.String()),
         notes: t.Optional(t.String()),
       }),
+      detail: {
+        summary: "Update clothes metadata",
+        security: [...bearerAuthSecurity],
+      },
     },
   )
   .delete(
@@ -288,6 +334,10 @@ export const clothesRoutes = new Elysia({ prefix: "/api/clothes" })
       params: t.Object({
         id: t.String(),
       }),
+      detail: {
+        summary: "Delete clothes",
+        security: [...bearerAuthSecurity],
+      },
     },
   )
   .delete(
@@ -313,6 +363,10 @@ export const clothesRoutes = new Elysia({ prefix: "/api/clothes" })
         id: t.String(),
         versionId: t.String(),
       }),
+      detail: {
+        summary: "Delete clothes version",
+        security: [...bearerAuthSecurity],
+      },
     },
   )
   .get(
@@ -340,7 +394,12 @@ export const clothesRoutes = new Elysia({ prefix: "/api/clothes" })
         versionId: t.String(),
       }),
       query: t.Object({
-        original: t.Optional(t.String()),
+        original: t.Optional(
+          t.String({
+            description: "`1` / `true` for original PNG; default WebP preview",
+          }),
+        ),
       }),
+      detail: { summary: "Download clothes image" },
     },
   );

@@ -18,7 +18,7 @@ const showVotes = computed(() => typeof props.likes === 'number')
 <template>
   <NuxtLink
     :to="to"
-    class="group block rounded-[var(--radius-xl)] focus-visible:outline-offset-4"
+    class="group block rounded-[var(--radius-lg)] focus-visible:outline-offset-4"
   >
     <article class="ed-card ed-card-interactive relative overflow-hidden">
       <div
@@ -29,7 +29,7 @@ const showVotes = computed(() => typeof props.likes === 'number')
           v-if="imageSrc"
           :src="imageSrc"
           :alt="title"
-          class="size-full object-cover transition-transform duration-500 ease-[var(--ed-ease-emphasized)] group-hover:scale-[1.04]"
+          class="size-full object-cover transition-transform duration-500 ease-[var(--ed-ease-emphasized)] group-hover:scale-[1.03]"
           loading="lazy"
           decoding="async"
         >
@@ -47,12 +47,12 @@ const showVotes = computed(() => typeof props.likes === 'number')
         <div class="pointer-events-none absolute inset-x-0 bottom-0 h-3/5 bg-gradient-to-t from-black/85 via-black/40 to-transparent" />
 
         <div class="absolute inset-x-0 top-0 flex items-start justify-between gap-2 p-2.5">
-          <span class="rounded-full bg-black/45 px-2 py-0.5 text-[11px] font-medium text-white/90 capitalize backdrop-blur-md">
+          <span class="rounded-full bg-black/50 px-2 py-0.5 font-mono text-[10px] font-medium tracking-wider text-white/85 uppercase backdrop-blur-md">
             {{ kind }}
           </span>
           <span
             v-if="semver"
-            class="rounded-full bg-[var(--ed-primary)] px-2 py-0.5 font-mono text-[11px] font-medium text-[var(--ed-on-primary)] shadow-sm"
+            class="rounded-full bg-[var(--ed-primary)] px-2 py-0.5 font-mono text-[10px] font-semibold text-[var(--ed-on-primary)] shadow-sm"
           >
             v{{ semver }}
           </span>

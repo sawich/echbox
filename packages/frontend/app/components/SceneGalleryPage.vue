@@ -1,12 +1,14 @@
 <script setup lang="ts">
-import type { SceneListItem } from '@echbox/shared'
-import { type CatalogSort, filterCatalog } from '~/utils/catalog'
+import { DEFAULT_PAGE_LIMIT, type CatalogSort, type SceneListItem } from '@echbox/shared'
 
 const props = defineProps<{
   gameId?: string
   instanceId?: string
   title?: string
   description?: string
+  contentRelPath?: string | null
+  /** Small label above the title; defaults to the section name. */
+  eyebrow?: string
 }>()
 
 const api = useApi()
@@ -17,12 +19,14 @@ const router = useRouter()
 const {
   isDesktop,
   listInstalledContent,
-  installContent,
-  uninstallContent,
 } = useLocalInstalls()
+const {
+  runContentInstall,
+  runContentUninstall,
+  isTargetBusy,
+} = useAppTasks()
 
 const installedIds = ref<Set<string>>(new Set())
-const installBusy = ref<string | null>(null)
 const installError = ref<string | null>(null)
 
 async function refreshInstalled() {
@@ -39,6 +43,7 @@ watch(() => [props.gameId, props.instanceId], () => { void refreshInstalled() })
 
 async function toggleInstall(scene: SceneListItem) {
   if (!props.instanceId) return
+  if (isTargetBusy(scene.id)) return
   if (!isDesktop.value) {
     installError.value = 'Install is only available in the desktop app'
     return
@@ -47,49 +52,70 @@ async function toggleInstall(scene: SceneListItem) {
     installError.value = 'This scene has no versions to install'
     return
   }
-  installBusy.value = scene.id
   installError.value = null
   try {
     if (installedIds.value.has(scene.id)) {
-      await uninstallContent(props.instanceId, 'scenes', scene.id)
-    } else {
-      await installContent(props.instanceId, 'scenes', {
-        id: scene.id,
-        versionId: scene.latestVersionId!,
-        semver: scene.latestSemver!,
+      await runContentUninstall({
+        instanceId: props.instanceId,
+        kind: 'scenes',
+        contentId: scene.id,
         title: scene.title,
-        contentHash: null,
-        installedAt: new Date().toISOString(),
+      })
+    } else {
+      await runContentInstall({
+        instanceId: props.instanceId,
+        kind: 'scenes',
+        row: {
+          id: scene.id,
+          versionId: scene.latestVersionId!,
+          semver: scene.latestSemver!,
+          title: scene.title,
+          contentHash: null,
+          installedAt: new Date().toISOString(),
+        },
+        apiUrl: apiUrl.value,
+        relPath: props.contentRelPath,
       })
     }
     await refreshInstalled()
   } catch (err) {
     installError.value = err instanceof Error ? err.message : 'Install failed'
-  } finally {
-    installBusy.value = null
   }
 }
 
+const page = ref(1)
+const query = ref('')
+const debouncedQuery = refDebounced(query, 250)
+const sort = ref<CatalogSort>('recent')
+
+watch([debouncedQuery, sort, () => props.gameId], () => {
+  page.value = 1
+})
+
 const { data, error, status, refresh } = await useAsyncData(
-  () => `scenes-gallery-${props.gameId ?? 'all'}`,
+  () => `scenes-gallery-${props.gameId ?? 'all'}-${page.value}-${debouncedQuery.value}-${sort.value}`,
   async () => {
     const { data: body, error: err } = await api.api.scenes.get({
-      query: props.gameId ? { gameId: props.gameId } : undefined,
+      query: {
+        page: page.value,
+        limit: DEFAULT_PAGE_LIMIT,
+        sort: sort.value,
+        ...(debouncedQuery.value.trim() ? { q: debouncedQuery.value.trim() } : {}),
+        ...(props.gameId ? { gameId: props.gameId } : {}),
+      },
       fetch: { credentials: 'include' },
     })
     if (err) throw err
-    return (body?.scenes ?? []) as SceneListItem[]
+    return {
+      scenes: (body?.scenes ?? []) as SceneListItem[],
+      total: Number(body?.total ?? 0),
+    }
   },
-  { watch: [() => props.gameId] },
+  { watch: [() => props.gameId, page, debouncedQuery, sort] },
 )
 
-const scenes = computed(() => data.value ?? [])
-
-const query = ref('')
-const sort = ref<CatalogSort>('recent')
-const visibleScenes = computed(() =>
-  filterCatalog(scenes.value, query.value, sort.value, scene => [scene.title, scene.slug]),
-)
+const scenes = computed(() => data.value?.scenes ?? [])
+const total = computed(() => data.value?.total ?? 0)
 
 const showUpload = ref(false)
 const uploadFile = ref<File | null>(null)
@@ -199,13 +225,13 @@ async function submitUpload() {
 </script>
 
 <template>
-  <main class="mx-auto w-full max-w-7xl space-y-8 px-4 py-8 sm:px-6 sm:py-12">
+  <main class="ed-page-enter w-full space-y-6 px-5 py-6 sm:px-8 sm:py-7">
     <PageHeader
-      eyebrow="Library"
+      :eyebrow="eyebrow ?? 'Library'"
       icon="i-lucide-clapperboard"
       :title="title || 'Scenes'"
       :description="description || 'Studio scene cards (320×180). Open a scene to browse its versions.'"
-      :count="status === 'success' ? scenes.length : null"
+      :count="status === 'success' ? total : null"
     >
       <template #actions>
         <UModal
@@ -218,7 +244,6 @@ async function submitUpload() {
           <UButton
             icon="i-lucide-plus"
             color="primary"
-            size="lg"
           >
             Upload scene
           </UButton>
@@ -322,7 +347,7 @@ async function submitUpload() {
     </PageHeader>
 
     <CatalogToolbar
-      v-if="status === 'success' && scenes.length > 0"
+      v-if="status === 'success' && (total > 0 || query.trim())"
       v-model:query="query"
       v-model:sort="sort"
       placeholder="Search scenes…"
@@ -342,7 +367,7 @@ async function submitUpload() {
     />
 
     <UEmpty
-      v-else-if="scenes.length === 0"
+      v-else-if="total === 0 && !query.trim()"
       icon="i-lucide-clapperboard"
       title="No scenes yet"
       :description="user ? 'Be the first to share one.' : 'Sign in to share the first one.'"
@@ -351,7 +376,7 @@ async function submitUpload() {
     />
 
     <UEmpty
-      v-else-if="visibleScenes.length === 0"
+      v-else-if="scenes.length === 0"
       icon="i-lucide-search-x"
       title="Nothing matches"
       :description="`No scenes match “${query}”.`"
@@ -369,11 +394,11 @@ async function submitUpload() {
     />
 
     <div
-      v-if="status === 'success' && visibleScenes.length > 0"
-      class="ed-stagger grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3"
+      v-if="status === 'success' && scenes.length > 0"
+      class="ed-stagger grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3 2xl:grid-cols-4"
     >
       <div
-        v-for="scene in visibleScenes"
+        v-for="scene in scenes"
         :key="scene.id"
         class="space-y-2"
       >
@@ -387,13 +412,24 @@ async function submitUpload() {
           size="sm"
           :color="installedIds.has(scene.id) ? 'neutral' : 'primary'"
           :variant="installedIds.has(scene.id) ? 'outline' : 'solid'"
-          :loading="installBusy === scene.id"
+          :loading="isTargetBusy(scene.id)"
           :disabled="!isDesktop && !installedIds.has(scene.id)"
           @click="toggleInstall(scene)"
         >
           {{ installedIds.has(scene.id) ? 'Uninstall' : (isDesktop ? 'Install' : 'Desktop only') }}
         </UButton>
       </div>
+    </div>
+
+    <div
+      v-if="status === 'success' && total > DEFAULT_PAGE_LIMIT"
+      class="flex justify-center pt-2"
+    >
+      <UPagination
+        v-model:page="page"
+        :total="total"
+        :items-per-page="DEFAULT_PAGE_LIMIT"
+      />
     </div>
   </main>
 </template>

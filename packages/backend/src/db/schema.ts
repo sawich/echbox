@@ -456,3 +456,23 @@ export const authClaims = sqliteTable("auth_claims", {
   expiresAt: text("expires_at").notNull(),
   usedAt: text("used_at"),
 });
+
+export const apiKeys = sqliteTable(
+  "api_keys",
+  {
+    id: text("id").primaryKey(),
+    userId: text("user_id")
+      .notNull()
+      .references(() => users.id, { onDelete: "cascade" }),
+    name: text("name").notNull(),
+    keyPrefix: text("key_prefix").notNull(),
+    keyHash: text("key_hash").notNull(),
+    createdAt: text("created_at").notNull(),
+    lastUsedAt: text("last_used_at"),
+    revokedAt: text("revoked_at"),
+  },
+  (table) => [
+    index("api_keys_user_id_idx").on(table.userId),
+    uniqueIndex("api_keys_key_hash_unique").on(table.keyHash),
+  ],
+);

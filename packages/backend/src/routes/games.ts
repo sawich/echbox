@@ -83,11 +83,24 @@ function handleServiceError(
   throw err;
 }
 
-export const gameRoutes = new Elysia({ prefix: "/api/games" })
+export const gameRoutes = new Elysia({
+  prefix: "/api/games",
+  tags: ["Games"],
+})
   .use(authDerive)
-  .get("/", () => {
-    return { games: listGames() };
-  })
+  .get(
+    "/",
+    () => {
+      return { games: listGames() };
+    },
+    {
+      detail: {
+        summary: "List games",
+        description:
+          "Public catalog. Use `id` as `gameId` when uploading content.",
+      },
+    },
+  )
   .get(
     "/:id/icons/:size",
     async ({ params, set }) => {
@@ -115,9 +128,10 @@ export const gameRoutes = new Elysia({ prefix: "/api/games" })
     },
     {
       params: t.Object({
-        id: t.String(),
-        size: t.String(),
+        id: t.String({ description: "Game id" }),
+        size: t.String({ description: "Icon size, e.g. `128`" }),
       }),
+      detail: { summary: "Get game icon" },
     },
   )
   .get(
@@ -131,7 +145,11 @@ export const gameRoutes = new Elysia({ prefix: "/api/games" })
       return game;
     },
     {
-      params: t.Object({ id: t.String() }),
+      params: t.Object({ id: t.String({ description: "Game id" }) }),
+      detail: {
+        summary: "Get game",
+        description: "Includes `contentKinds` with optional install `relPath`.",
+      },
     },
   )
   .post(
@@ -197,6 +215,7 @@ export const gameRoutes = new Elysia({ prefix: "/api/games" })
         contentKinds: ContentKindsField,
         icon: t.File(),
       }),
+      detail: { hide: true },
     },
   )
   .patch(
@@ -253,6 +272,7 @@ export const gameRoutes = new Elysia({ prefix: "/api/games" })
         contentKinds: ContentKindsField,
         icon: t.Optional(t.File()),
       }),
+      detail: { hide: true },
     },
   )
   .delete(
@@ -276,5 +296,6 @@ export const gameRoutes = new Elysia({ prefix: "/api/games" })
     },
     {
       params: t.Object({ id: t.String() }),
+      detail: { hide: true },
     },
   );

@@ -129,7 +129,7 @@ describe("plugin service", () => {
       findContentBlob(sha256Hex(fileBytes), dbPath),
     ).toEqual({ chunkCount: 1 });
 
-    const list = await listPlugins({ dbPath, dataDir });
+    const list = (await listPlugins({ dbPath, dataDir })).items;
     expect(list).toHaveLength(1);
     expect(list[0]!.id).toBe(created.id);
   });
@@ -319,7 +319,7 @@ describe("plugin service", () => {
     expect(newest.id).toMatch(UUID_V7_RE);
     expect(afterHigher.versionCount).toBe(3);
 
-    const [item] = await listPlugins({ dbPath, dataDir });
+    const [item] = (await listPlugins({ dbPath, dataDir })).items;
     expect(item!.latestSemver).toBe("2.1.0");
     expect(item!.latestVersionId).toBe(newest.id);
   });

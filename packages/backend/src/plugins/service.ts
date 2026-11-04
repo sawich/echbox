@@ -1,6 +1,14 @@
 import { compareSemver, parseSemver, pickLatestBySemver } from "@echbox/shared";
-import { and, desc, eq } from "drizzle-orm";
+import { and, count, eq, inArray } from "drizzle-orm";
 import { sha256Hex } from "../cards/hash";
+import {
+  orderBySort,
+  resolveListWindow,
+  titleSlugSearch,
+  voteNetScore,
+  type CatalogListQuery,
+  type PaginatedList,
+} from "../common/list-query";
 import { assertNonEmptyZip } from "../common/zip";
 import {
   discardStaged,
@@ -91,10 +99,12 @@ export type PluginListItem = PluginVoteCounts & {
   uploader: PluginUploader;
 };
 
-export type ListPluginsOptions = PluginServiceOptions & {
-  viewerUserId?: string | null;
-  gameId?: string;
-};
+export type ListPluginsOptions = PluginServiceOptions &
+  CatalogListQuery & {
+    viewerUserId?: string | null;
+    gameId?: string;
+    authorId?: string;
+  };
 
 export type GetPluginOptions = PluginServiceOptions & {
   viewerUserId?: string | null;
@@ -273,38 +283,68 @@ export async function getPlugin(
 
 export async function listPlugins(
   options?: ListPluginsOptions,
-): Promise<PluginListItem[]> {
+): Promise<PaginatedList<PluginListItem>> {
   const db = getDb(options?.dbPath);
-  const rows = options?.gameId
+  const { page, limit, offset, sort, q, unbounded } = resolveListWindow(options);
+
+  const whereClause = and(
+    options?.gameId ? eq(plugins.gameId, options.gameId) : undefined,
+    options?.authorId ? eq(plugins.authorId, options.authorId) : undefined,
+    titleSlugSearch(plugins.title, null, q),
+  );
+  const score = voteNetScore("plugin_votes", "plugin_id", plugins.id);
+  const order = orderBySort(sort, plugins.createdAt, plugins.title, score);
+
+  const total =
+    db
+      .select({ value: count() })
+      .from(plugins)
+      .where(whereClause)
+      .get()?.value ?? 0;
+
+  if (total === 0) {
+    return { items: [], total: 0, page, limit: unbounded ? 0 : limit };
+  }
+
+  const rows = unbounded
     ? db
         .select()
         .from(plugins)
-        .where(eq(plugins.gameId, options.gameId))
-        .orderBy(desc(plugins.createdAt))
+        .where(whereClause)
+        .orderBy(...order)
         .all()
     : db
         .select()
         .from(plugins)
-        .orderBy(desc(plugins.createdAt))
+        .where(whereClause)
+        .orderBy(...order)
+        .limit(limit)
+        .offset(offset)
         .all();
 
-  if (rows.length === 0) return [];
-
-  const allVersions = db.select().from(pluginVersions).all();
-  const versionsByPlugin = new Map<string, (typeof allVersions)[number][]>();
-  for (const v of allVersions) {
+  const ids = rows.map((p) => p.id);
+  const pageVersions =
+    ids.length === 0
+      ? []
+      : db
+          .select()
+          .from(pluginVersions)
+          .where(inArray(pluginVersions.pluginId, ids))
+          .all();
+  const versionsByPlugin = new Map<string, (typeof pageVersions)[number][]>();
+  for (const v of pageVersions) {
     const arr = versionsByPlugin.get(v.pluginId) ?? [];
     arr.push(v);
     versionsByPlugin.set(v.pluginId, arr);
   }
 
   const voteMap = getPluginVoteCountsForPlugins(
-    rows.map((p) => p.id),
+    ids,
     options?.viewerUserId,
     options?.dbPath,
   );
 
-  const out: PluginListItem[] = [];
+  const items: PluginListItem[] = [];
   for (const plugin of rows) {
     const versions = versionsByPlugin.get(plugin.id) ?? [];
     const votes = voteMap.get(plugin.id) ?? {
@@ -313,7 +353,7 @@ export async function listPlugins(
       myVote: null,
     };
 
-    out.push({
+    items.push({
       id: plugin.id,
       gameId: plugin.gameId,
       authorId: plugin.authorId,
@@ -328,7 +368,12 @@ export async function listPlugins(
     });
   }
 
-  return out;
+  return {
+    items,
+    total,
+    page: unbounded ? 1 : page,
+    limit: unbounded ? total : limit,
+  };
 }
 
 export async function createPlugin(

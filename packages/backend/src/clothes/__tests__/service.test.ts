@@ -138,7 +138,7 @@ describe("clothes service", () => {
       `/clothes/${created.id}/${created.latestVersionId}/`,
     );
 
-    const list = await listClothes({ dbPath, dataDir });
+    const list = (await listClothes({ dbPath, dataDir })).items;
     expect(list).toHaveLength(1);
     expect(list[0]!.authorId).toBe(authorId);
     expect(list[0]!.imageUrl).toBe(
@@ -183,7 +183,7 @@ describe("clothes service", () => {
     expect(conflict.versionId).toBe(first.latestVersionId);
     expect(conflict.semver).toBe("1.0.0");
 
-    expect(await listClothes({ dbPath, dataDir })).toHaveLength(1);
+    expect((await listClothes({ dbPath, dataDir })).items).toHaveLength(1);
   });
 
   test("character PNG upload throws 400 and writes no files", async () => {
@@ -205,7 +205,7 @@ describe("clothes service", () => {
 
     expect(caught).toBeDefined();
     expect((caught as { status: number }).status).toBe(400);
-    expect(await listClothes({ dbPath, dataDir })).toHaveLength(0);
+    expect((await listClothes({ dbPath, dataDir })).items).toHaveLength(0);
     expect(existsSync(join(dataDir, "clothes"))).toBe(false);
   });
 
@@ -339,7 +339,7 @@ describe("clothes service", () => {
       }
       expect((caught as { status: number }).status).toBe(400);
     }
-    expect(await listClothes({ dbPath, dataDir })).toHaveLength(0);
+    expect((await listClothes({ dbPath, dataDir })).items).toHaveLength(0);
   });
 
   test("latest is chosen by semver, not insertion order", async () => {
@@ -449,7 +449,7 @@ describe("clothes service", () => {
     expect(empty.versions).toEqual([]);
     expect(existsSync(v1Paths.versionDir)).toBe(false);
 
-    const listed = await listClothes({ dbPath, dataDir });
+    const listed = (await listClothes({ dbPath, dataDir })).items;
     const row = listed.find((c) => c.id === item.id);
     expect(row).toBeDefined();
     expect(row!.versionCount).toBe(0);

@@ -18,7 +18,7 @@ withDefaults(defineProps<{
   >
     <USkeleton
       v-if="media !== 'none'"
-      class="w-full rounded-[var(--radius-2xl)]"
+      class="w-full rounded-[var(--radius-xl)]"
       :class="media === 'landscape' ? 'aspect-[320/180]' : 'aspect-[252/352]'"
     />
     <div class="space-y-5">

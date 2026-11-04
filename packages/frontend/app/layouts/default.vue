@@ -1,23 +1,23 @@
+<script setup lang="ts">
+const route = useRoute()
+const scroller = ref<HTMLElement | null>(null)
+
+// The content column owns the scroll, so reset it on navigation like a window would.
+watch(() => route.path, () => {
+  scroller.value?.scrollTo({ top: 0 })
+})
+</script>
+
 <template>
-  <div class="ed-atmosphere flex min-h-dvh flex-col">
+  <div class="flex h-dvh flex-row bg-[var(--ed-surface)]">
     <AppNav />
-    <div class="ed-page-enter flex-1">
+    <div
+      id="content"
+      ref="scroller"
+      class="ed-atmosphere relative min-h-0 min-w-0 flex-1 overflow-y-auto"
+    >
       <slot />
     </div>
-    <footer class="border-t border-default">
-      <div class="mx-auto flex w-full max-w-7xl flex-wrap items-center justify-between gap-3 px-4 py-6 text-sm text-dimmed sm:px-6">
-        <span>echbox · Koikatsu community library</span>
-        <NuxtLink
-          to="/uikit"
-          class="inline-flex items-center gap-1.5 transition-colors hover:text-highlighted"
-        >
-          <UIcon
-            name="i-lucide-swatch-book"
-            class="size-4"
-          />
-          UI kit
-        </NuxtLink>
-      </div>
-    </footer>
+    <TasksToast />
   </div>
 </template>

@@ -1,12 +1,14 @@
 <script setup lang="ts">
-import type { ClothesListItem } from '@echbox/shared'
-import { type CatalogSort, filterCatalog } from '~/utils/catalog'
+import { DEFAULT_PAGE_LIMIT, type CatalogSort, type ClothesListItem } from '@echbox/shared'
 
 const props = defineProps<{
   gameId?: string
   instanceId?: string
   title?: string
   description?: string
+  contentRelPath?: string | null
+  /** Small label above the title; defaults to the section name. */
+  eyebrow?: string
 }>()
 
 const api = useApi()
@@ -17,12 +19,14 @@ const router = useRouter()
 const {
   isDesktop,
   listInstalledContent,
-  installContent,
-  uninstallContent,
 } = useLocalInstalls()
+const {
+  runContentInstall,
+  runContentUninstall,
+  isTargetBusy,
+} = useAppTasks()
 
 const installedIds = ref<Set<string>>(new Set())
-const installBusy = ref<string | null>(null)
 const installError = ref<string | null>(null)
 
 async function refreshInstalled() {
@@ -39,6 +43,7 @@ watch(() => [props.gameId, props.instanceId], () => { void refreshInstalled() })
 
 async function toggleInstall(clothes: ClothesListItem) {
   if (!props.instanceId) return
+  if (isTargetBusy(clothes.id)) return
   if (!isDesktop.value) {
     installError.value = 'Install is only available in the desktop app'
     return
@@ -47,49 +52,70 @@ async function toggleInstall(clothes: ClothesListItem) {
     installError.value = 'This outfit has no versions to install'
     return
   }
-  installBusy.value = clothes.id
   installError.value = null
   try {
     if (installedIds.value.has(clothes.id)) {
-      await uninstallContent(props.instanceId, 'clothes', clothes.id)
-    } else {
-      await installContent(props.instanceId, 'clothes', {
-        id: clothes.id,
-        versionId: clothes.latestVersionId!,
-        semver: clothes.latestSemver!,
+      await runContentUninstall({
+        instanceId: props.instanceId,
+        kind: 'clothes',
+        contentId: clothes.id,
         title: clothes.title,
-        contentHash: null,
-        installedAt: new Date().toISOString(),
+      })
+    } else {
+      await runContentInstall({
+        instanceId: props.instanceId,
+        kind: 'clothes',
+        row: {
+          id: clothes.id,
+          versionId: clothes.latestVersionId!,
+          semver: clothes.latestSemver!,
+          title: clothes.title,
+          contentHash: null,
+          installedAt: new Date().toISOString(),
+        },
+        apiUrl: apiUrl.value,
+        relPath: props.contentRelPath,
       })
     }
     await refreshInstalled()
   } catch (err) {
     installError.value = err instanceof Error ? err.message : 'Install failed'
-  } finally {
-    installBusy.value = null
   }
 }
 
+const page = ref(1)
+const query = ref('')
+const debouncedQuery = refDebounced(query, 250)
+const sort = ref<CatalogSort>('recent')
+
+watch([debouncedQuery, sort, () => props.gameId], () => {
+  page.value = 1
+})
+
 const { data, error, status, refresh } = await useAsyncData(
-  () => `clothes-gallery-${props.gameId ?? 'all'}`,
+  () => `clothes-gallery-${props.gameId ?? 'all'}-${page.value}-${debouncedQuery.value}-${sort.value}`,
   async () => {
     const { data: body, error: err } = await api.api.clothes.get({
-      query: props.gameId ? { gameId: props.gameId } : undefined,
+      query: {
+        page: page.value,
+        limit: DEFAULT_PAGE_LIMIT,
+        sort: sort.value,
+        ...(debouncedQuery.value.trim() ? { q: debouncedQuery.value.trim() } : {}),
+        ...(props.gameId ? { gameId: props.gameId } : {}),
+      },
       fetch: { credentials: 'include' },
     })
     if (err) throw err
-    return (body?.clothes ?? []) as ClothesListItem[]
+    return {
+      clothes: (body?.clothes ?? []) as ClothesListItem[],
+      total: Number(body?.total ?? 0),
+    }
   },
-  { watch: [() => props.gameId] },
+  { watch: [() => props.gameId, page, debouncedQuery, sort] },
 )
 
-const clothesItems = computed(() => data.value ?? [])
-
-const query = ref('')
-const sort = ref<CatalogSort>('recent')
-const visibleClothes = computed(() =>
-  filterCatalog(clothesItems.value, query.value, sort.value, item => [item.title, item.slug]),
-)
+const clothesItems = computed(() => data.value?.clothes ?? [])
+const total = computed(() => data.value?.total ?? 0)
 
 const showUpload = ref(false)
 const uploadFile = ref<File | null>(null)
@@ -199,13 +225,13 @@ async function submitUpload() {
 </script>
 
 <template>
-  <main class="mx-auto w-full max-w-7xl space-y-8 px-4 py-8 sm:px-6 sm:py-12">
+  <main class="ed-page-enter w-full space-y-6 px-5 py-6 sm:px-8 sm:py-7">
     <PageHeader
-      eyebrow="Library"
+      :eyebrow="eyebrow ?? 'Library'"
       icon="i-lucide-shirt"
       :title="title || 'Clothes'"
       :description="description || 'Outfit cards (coordinate PNG). Open an item to browse its versions.'"
-      :count="status === 'success' ? clothesItems.length : null"
+      :count="status === 'success' ? total : null"
     >
       <template #actions>
         <UModal
@@ -218,7 +244,6 @@ async function submitUpload() {
           <UButton
             icon="i-lucide-plus"
             color="primary"
-            size="lg"
           >
             Upload clothes
           </UButton>
@@ -322,7 +347,7 @@ async function submitUpload() {
     </PageHeader>
 
     <CatalogToolbar
-      v-if="status === 'success' && clothesItems.length > 0"
+      v-if="status === 'success' && (total > 0 || query.trim())"
       v-model:query="query"
       v-model:sort="sort"
       placeholder="Search clothes…"
@@ -342,7 +367,7 @@ async function submitUpload() {
     />
 
     <UEmpty
-      v-else-if="clothesItems.length === 0"
+      v-else-if="total === 0 && !query.trim()"
       icon="i-lucide-shirt"
       title="No clothes yet"
       :description="user ? 'Be the first to share one.' : 'Sign in to share the first one.'"
@@ -351,7 +376,7 @@ async function submitUpload() {
     />
 
     <UEmpty
-      v-else-if="visibleClothes.length === 0"
+      v-else-if="clothesItems.length === 0"
       icon="i-lucide-search-x"
       title="Nothing matches"
       :description="`No clothes match “${query}”.`"
@@ -369,11 +394,11 @@ async function submitUpload() {
     />
 
     <div
-      v-if="status === 'success' && visibleClothes.length > 0"
-      class="ed-stagger grid grid-cols-2 gap-4 sm:grid-cols-3 lg:grid-cols-4 xl:grid-cols-5"
+      v-if="status === 'success' && clothesItems.length > 0"
+      class="ed-stagger grid grid-cols-2 gap-4 sm:grid-cols-3 lg:grid-cols-4 xl:grid-cols-5 2xl:grid-cols-6"
     >
       <div
-        v-for="item in visibleClothes"
+        v-for="item in clothesItems"
         :key="item.id"
         class="space-y-2"
       >
@@ -387,13 +412,24 @@ async function submitUpload() {
           size="sm"
           :color="installedIds.has(item.id) ? 'neutral' : 'primary'"
           :variant="installedIds.has(item.id) ? 'outline' : 'solid'"
-          :loading="installBusy === item.id"
+          :loading="isTargetBusy(item.id)"
           :disabled="!isDesktop && !installedIds.has(item.id)"
           @click="toggleInstall(item)"
         >
           {{ installedIds.has(item.id) ? 'Uninstall' : (isDesktop ? 'Install' : 'Desktop only') }}
         </UButton>
       </div>
+    </div>
+
+    <div
+      v-if="status === 'success' && total > DEFAULT_PAGE_LIMIT"
+      class="flex justify-center pt-2"
+    >
+      <UPagination
+        v-model:page="page"
+        :total="total"
+        :items-per-page="DEFAULT_PAGE_LIMIT"
+      />
     </div>
   </main>
 </template>
