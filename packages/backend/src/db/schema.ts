@@ -86,18 +86,17 @@ export const characterCards = sqliteTable(
     gameId: text("game_id")
       .notNull()
       .references(() => games.id, { onDelete: "cascade" }),
-    authorId: text("author_id")
+    uploaderId: text("uploader_id")
       .notNull()
       .references(() => users.id),
-    slug: text("slug").notNull(),
-    title: text("title").notNull(),
+    description: text("description").notNull().default(""),
     latestSemver: text("latest_semver"),
     latestVersionId: text("latest_version_id"),
     createdAt: text("created_at").notNull(),
     updatedAt: text("updated_at").notNull(),
   },
   (table) => [
-    index("character_cards_author_id_idx").on(table.authorId),
+    index("character_cards_uploader_id_idx").on(table.uploaderId),
     index("character_cards_game_id_idx").on(table.gameId),
   ],
 );
@@ -156,18 +155,17 @@ export const scenes = sqliteTable(
     gameId: text("game_id")
       .notNull()
       .references(() => games.id, { onDelete: "cascade" }),
-    authorId: text("author_id")
+    uploaderId: text("uploader_id")
       .notNull()
       .references(() => users.id),
-    slug: text("slug").notNull(),
-    title: text("title").notNull(),
+    description: text("description").notNull().default(""),
     latestSemver: text("latest_semver"),
     latestVersionId: text("latest_version_id"),
     createdAt: text("created_at").notNull(),
     updatedAt: text("updated_at").notNull(),
   },
   (table) => [
-    index("scenes_author_id_idx").on(table.authorId),
+    index("scenes_uploader_id_idx").on(table.uploaderId),
     index("scenes_game_id_idx").on(table.gameId),
   ],
 );
@@ -229,18 +227,17 @@ export const clothes = sqliteTable(
     gameId: text("game_id")
       .notNull()
       .references(() => games.id, { onDelete: "cascade" }),
-    authorId: text("author_id")
+    uploaderId: text("uploader_id")
       .notNull()
       .references(() => users.id),
-    slug: text("slug").notNull(),
-    title: text("title").notNull(),
+    description: text("description").notNull().default(""),
     latestSemver: text("latest_semver"),
     latestVersionId: text("latest_version_id"),
     createdAt: text("created_at").notNull(),
     updatedAt: text("updated_at").notNull(),
   },
   (table) => [
-    index("clothes_author_id_idx").on(table.authorId),
+    index("clothes_uploader_id_idx").on(table.uploaderId),
     index("clothes_game_id_idx").on(table.gameId),
   ],
 );
@@ -302,11 +299,9 @@ export const softmods = sqliteTable(
     gameId: text("game_id")
       .notNull()
       .references(() => games.id, { onDelete: "cascade" }),
-    authorId: text("author_id")
+    uploaderId: text("uploader_id")
       .notNull()
       .references(() => users.id),
-    title: text("title").notNull(),
-    modAuthor: text("mod_author"),
     description: text("description").notNull(),
     website: text("website"),
     latestSemver: text("latest_semver"),
@@ -315,7 +310,7 @@ export const softmods = sqliteTable(
     updatedAt: text("updated_at").notNull(),
   },
   (table) => [
-    index("softmods_author_id_idx").on(table.authorId),
+    index("softmods_uploader_id_idx").on(table.uploaderId),
     index("softmods_game_id_idx").on(table.gameId),
   ],
 );
@@ -369,6 +364,25 @@ export const softmodVotes = sqliteTable(
 
 export type SoftmodVoteValue = "like" | "dislike";
 
+export const softmodPreviews = sqliteTable(
+  "softmod_previews",
+  {
+    id: text("id").primaryKey(),
+    softmodId: text("softmod_id")
+      .notNull()
+      .references(() => softmods.id, { onDelete: "cascade" }),
+    sortIndex: integer("sort_index").notNull(),
+    previewPath: text("preview_path").notNull(),
+    createdAt: text("created_at").notNull(),
+  },
+  (table) => [
+    uniqueIndex("softmod_previews_softmod_id_sort_index_idx").on(
+      table.softmodId,
+      table.sortIndex,
+    ),
+  ],
+);
+
 export const plugins = sqliteTable(
   "plugins",
   {
@@ -376,7 +390,7 @@ export const plugins = sqliteTable(
     gameId: text("game_id")
       .notNull()
       .references(() => games.id, { onDelete: "cascade" }),
-    authorId: text("author_id")
+    uploaderId: text("uploader_id")
       .notNull()
       .references(() => users.id),
     title: text("title").notNull(),
@@ -387,7 +401,7 @@ export const plugins = sqliteTable(
     updatedAt: text("updated_at").notNull(),
   },
   (table) => [
-    index("plugins_author_id_idx").on(table.authorId),
+    index("plugins_uploader_id_idx").on(table.uploaderId),
     index("plugins_game_id_idx").on(table.gameId),
   ],
 );
@@ -474,5 +488,81 @@ export const apiKeys = sqliteTable(
   (table) => [
     index("api_keys_user_id_idx").on(table.userId),
     uniqueIndex("api_keys_key_hash_unique").on(table.keyHash),
+  ],
+);
+
+export const tags = sqliteTable(
+  "tags",
+  {
+    id: text("id").primaryKey(),
+    name: text("name").notNull().unique(),
+    category: text("category").notNull(),
+    createdByUserId: text("created_by_user_id").references(() => users.id),
+    createdAt: text("created_at").notNull(),
+    updatedAt: text("updated_at").notNull(),
+  },
+);
+
+export const tagAliases = sqliteTable(
+  "tag_aliases",
+  {
+    id: text("id").primaryKey(),
+    alias: text("alias").notNull().unique(),
+    tagId: text("tag_id")
+      .notNull()
+      .references(() => tags.id, { onDelete: "cascade" }),
+    createdAt: text("created_at").notNull(),
+  },
+);
+
+/** "like" | "dislike" stored as text */
+export const tagVotes = sqliteTable(
+  "tag_votes",
+  {
+    id: text("id").primaryKey(),
+    tagId: text("tag_id")
+      .notNull()
+      .references(() => tags.id, { onDelete: "cascade" }),
+    userId: text("user_id")
+      .notNull()
+      .references(() => users.id),
+    vote: text("vote").notNull(),
+    createdAt: text("created_at").notNull(),
+    updatedAt: text("updated_at").notNull(),
+  },
+  (table) => [
+    uniqueIndex("tag_votes_tag_id_user_id_idx").on(table.tagId, table.userId),
+    index("tag_votes_tag_id_idx").on(table.tagId),
+    index("tag_votes_user_id_idx").on(table.userId),
+  ],
+);
+
+export type TagVoteValue = "like" | "dislike";
+
+export const contentTags = sqliteTable(
+  "content_tags",
+  {
+    id: text("id").primaryKey(),
+    tagId: text("tag_id")
+      .notNull()
+      .references(() => tags.id, { onDelete: "cascade" }),
+    contentKind: text("content_kind").notNull(),
+    contentId: text("content_id").notNull(),
+    createdByUserId: text("created_by_user_id")
+      .notNull()
+      .references(() => users.id),
+    createdAt: text("created_at").notNull(),
+  },
+  (table) => [
+    uniqueIndex("content_tags_content_kind_content_id_tag_id_idx").on(
+      table.contentKind,
+      table.contentId,
+      table.tagId,
+    ),
+    index("content_tags_tag_id_idx").on(table.tagId),
+    index("content_tags_content_kind_content_id_idx").on(
+      table.contentKind,
+      table.contentId,
+    ),
   ],
 );
