@@ -16,12 +16,15 @@ const tags = defineModel<string[]>({ default: () => [] })
 const api = useApi()
 const config = useRuntimeConfig()
 const apiUrl = computed(() => String(config.public.apiUrl).replace(/\/$/, ''))
+const { user, login } = useAuth()
 
 const draft = ref('')
 const suggestions = ref<{ name: string, category: string }[]>([])
 const activeIndex = ref(-1)
 const error = ref<string | null>(null)
 const busy = ref(false)
+const showCreate = ref(false)
+const createSeed = ref('')
 let suggestToken = 0
 
 async function load() {
@@ -83,13 +86,33 @@ function remove(name: string) {
   void commit(tags.value.filter(tag => tag !== name))
 }
 
+function openCreate() {
+  if (!user.value) {
+    login()
+    return
+  }
+  createSeed.value = normalizeTagDraft(draft.value) ?? draft.value.trim()
+  showCreate.value = true
+}
+
+function onCreated(payload: { name: string }) {
+  add(payload.name)
+}
+
 function onEnter() {
   const highlighted = suggestions.value[activeIndex.value]
   if (highlighted) {
     add(highlighted.name)
     return
   }
-  if (draft.value.trim()) add(draft.value)
+  if (!draft.value.trim()) return
+  const normalized = normalizeTagDraft(draft.value)
+  const exact = suggestions.value.find(tag => tag.name === normalized)
+  if (exact) {
+    add(exact.name)
+    return
+  }
+  openCreate()
 }
 
 function moveActive(step: number) {
@@ -200,17 +223,37 @@ watch(() => normalizeTagDraft(draft.value) ?? '', async (needle) => {
         </li>
       </ul>
     </div>
-    <p
+    <div
       v-if="!readonly"
-      class="text-xs text-dimmed"
+      class="flex flex-wrap items-center gap-2"
     >
-      New general tags are created when you add them. Author, license, character, and franchise tags already have to exist.
-    </p>
+      <p class="text-xs text-dimmed">
+        Only existing tags can be attached. Create new ones with a category first.
+      </p>
+      <UButton
+        type="button"
+        size="xs"
+        color="neutral"
+        variant="ghost"
+        icon="i-lucide-plus"
+        :disabled="busy"
+        @click="openCreate"
+      >
+        Create tag…
+      </UButton>
+    </div>
     <p
       v-if="error"
       class="text-sm text-error"
     >
       {{ error }}
     </p>
+
+    <TagFormModal
+      v-model:open="showCreate"
+      mode="create"
+      :initial-name="createSeed"
+      @saved="onCreated"
+    />
   </div>
 </template>
