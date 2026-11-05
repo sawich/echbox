@@ -48,6 +48,7 @@ import {
   removeSoftmodVersionFiles,
 } from "./storage";
 import { assertGameSupportsKind } from "../games/service";
+import { deleteContentTagsFor } from "../tags/service";
 import {
   listSoftmodPreviews,
   previewUrlsBySoftmodId,
@@ -784,6 +785,7 @@ export async function deleteSoftmod(
   }
 
   db.transaction((tx) => {
+    deleteContentTagsFor(tx, "softmods", [softmodId]);
     tx.delete(softmodPreviews)
       .where(eq(softmodPreviews.softmodId, softmodId))
       .run();

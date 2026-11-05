@@ -6,7 +6,15 @@ import {
 } from "@echbox/shared";
 import { and, desc, eq, ne } from "drizzle-orm";
 import { getDb } from "../db/client";
-import { gameContentKinds, games } from "../db/schema";
+import {
+  characterCards,
+  clothes,
+  gameContentKinds,
+  games,
+  scenes,
+  softmods,
+} from "../db/schema";
+import { deleteContentTagsFor } from "../tags/service";
 import {
   BadGameError,
   GameConflictError,
@@ -248,7 +256,49 @@ export function deleteGame(id: string, options?: GameServiceOptions): void {
     throw new GameNotFoundError();
   }
 
-  db.delete(games).where(eq(games.id, id)).run();
+  db.transaction((tx) => {
+    deleteContentTagsFor(
+      tx,
+      "cards",
+      tx
+        .select({ id: characterCards.id })
+        .from(characterCards)
+        .where(eq(characterCards.gameId, id))
+        .all()
+        .map((row) => row.id),
+    );
+    deleteContentTagsFor(
+      tx,
+      "scenes",
+      tx
+        .select({ id: scenes.id })
+        .from(scenes)
+        .where(eq(scenes.gameId, id))
+        .all()
+        .map((row) => row.id),
+    );
+    deleteContentTagsFor(
+      tx,
+      "clothes",
+      tx
+        .select({ id: clothes.id })
+        .from(clothes)
+        .where(eq(clothes.gameId, id))
+        .all()
+        .map((row) => row.id),
+    );
+    deleteContentTagsFor(
+      tx,
+      "softmods",
+      tx
+        .select({ id: softmods.id })
+        .from(softmods)
+        .where(eq(softmods.gameId, id))
+        .all()
+        .map((row) => row.id),
+    );
+    tx.delete(games).where(eq(games.id, id)).run();
+  });
   removeGameIcons(id, options?.dataDir);
 }
 

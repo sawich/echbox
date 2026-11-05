@@ -616,6 +616,26 @@ export function setTagVote(input: {
   return { likes: view.likes, dislikes: view.dislikes, myVote: view.myVote };
 }
 
+/**
+ * `content_tags.content_id` is polymorphic and has no FK to the parent row.
+ * Call this inside the same transaction as the parent delete.
+ */
+export function deleteContentTagsFor(
+  tx: Pick<TagDb, "delete">,
+  kind: TaggableContentKind,
+  contentIds: readonly string[],
+): void {
+  if (contentIds.length === 0) return;
+  tx.delete(contentTags)
+    .where(
+      and(
+        eq(contentTags.contentKind, kind),
+        inArray(contentTags.contentId, [...contentIds]),
+      ),
+    )
+    .run();
+}
+
 export function setContentTags(input: {
   kind: TaggableContentKind;
   contentId: string;

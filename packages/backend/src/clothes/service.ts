@@ -41,6 +41,7 @@ import {
   removeVersionFiles,
 } from "./storage";
 import { assertGameSupportsKind } from "../games/service";
+import { deleteContentTagsFor } from "../tags/service";
 import {
   getVoteCounts,
   getVoteCountsForClothes,
@@ -762,6 +763,7 @@ export async function deleteClothes(
   }
 
   db.transaction((tx) => {
+    deleteContentTagsFor(tx, "clothes", [targetId]);
     tx.delete(clothesVotes).where(eq(clothesVotes.clothesId, targetId)).run();
     tx.delete(clothesVersions).where(eq(clothesVersions.clothesId, targetId)).run();
     tx.delete(clothes).where(eq(clothes.id, targetId)).run();

@@ -24,7 +24,7 @@ import { softmodVersionPaths } from "../storage";
 import { setSoftmodVote } from "../votes";
 import { seedTestGame } from "../../__tests__/test-game";
 import { findContentBlob } from "../../proxy/blob-store";
-import { setContentTags } from "../../tags/service";
+import { getContentTags, setContentTags } from "../../tags/service";
 
 const UUID_V7_RE =
   /^[0-9a-f]{8}-[0-9a-f]{4}-7[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
@@ -622,6 +622,48 @@ describe("softmod service", () => {
     const filtered = await listSoftmods({ tags: ["a", "b"], dbPath, dataDir });
     expect(filtered.total).toBe(1);
     expect(filtered.items.map((item) => item.id)).toEqual([both.id]);
+  });
+
+  test("recreating a softmod with the same GUID does not keep tags from the deleted row", async () => {
+    const guid = "com.echbox.retag";
+    const actor = { userId: authorId, isAdmin: false };
+    await createSoftmod({
+      gameId,
+      uploaderId: authorId,
+      semver: "1.0.0",
+      fileBytes: zipmodWithGuid(guid, "1.0.0", "first"),
+      dbPath,
+      dataDir,
+    });
+    setContentTags({
+      kind: "softmods",
+      contentId: guid,
+      names: ["kept_tag"],
+      actor,
+      uploaderId: authorId,
+      dbPath,
+    });
+
+    await deleteSoftmod({
+      softmodId: guid,
+      uploaderId: authorId,
+      dbPath,
+      dataDir,
+    });
+
+    const again = await createSoftmod({
+      gameId,
+      uploaderId: authorId,
+      semver: "1.0.1",
+      fileBytes: zipmodWithGuid(guid, "1.0.1", "second"),
+      dbPath,
+      dataDir,
+    });
+
+    expect(again.id).toBe(guid);
+    expect(
+      getContentTags({ kind: "softmods", contentId: guid, dbPath }),
+    ).toEqual([]);
   });
 
   test("legacy disk original_path is served when blob is absent", async () => {

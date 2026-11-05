@@ -362,7 +362,7 @@ const canSubmitUpload = computed(() => {
       :icon="modKind === 'plugin' ? 'i-lucide-puzzle' : 'i-lucide-package'"
       :title="title"
       :description="description"
-      :count="status === 'success' ? total : null"
+      :count="data ? total : null"
     >
       <template #actions>
         <UModal
@@ -535,7 +535,7 @@ const canSubmitUpload = computed(() => {
     </PageHeader>
 
     <CatalogToolbar
-      v-if="status === 'success' && (total > 0 || (modKind === 'plugin' ? Boolean(query.trim()) : tags.length > 0))"
+      v-if="total > 0 || (modKind === 'plugin' ? Boolean(query.trim()) : tags.length > 0)"
       v-model:query="query"
       v-model:tags="tags"
       v-model:sort="sort"
@@ -545,7 +545,7 @@ const canSubmitUpload = computed(() => {
     />
 
     <GallerySkeleton
-      v-if="status === 'pending'"
+      v-if="status === 'pending' && !data"
       :variant="modKind === 'softmod' ? 'landscape' : 'row'"
       :count="5"
     />
@@ -585,7 +585,7 @@ const canSubmitUpload = computed(() => {
     />
 
     <div
-      v-else-if="status === 'success' && items.length > 0 && modKind === 'softmod'"
+      v-else-if="items.length > 0 && modKind === 'softmod'"
       class="ed-stagger grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3 2xl:grid-cols-4"
     >
       <div
@@ -613,7 +613,7 @@ const canSubmitUpload = computed(() => {
     </div>
 
     <div
-      v-else-if="status === 'success' && items.length > 0"
+      v-else-if="items.length > 0"
       class="ed-stagger space-y-3"
     >
       <ModRow
@@ -631,7 +631,7 @@ const canSubmitUpload = computed(() => {
     </div>
 
     <div
-      v-if="status === 'success' && total > DEFAULT_PAGE_LIMIT"
+      v-if="total > DEFAULT_PAGE_LIMIT"
       class="flex justify-center pt-2"
     >
       <UPagination

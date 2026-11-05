@@ -262,7 +262,7 @@ async function submitUpload() {
       icon="i-lucide-clapperboard"
       :title="title || 'Scenes'"
       :description="description || 'Studio scene cards (320×180). Open a scene to browse its versions.'"
-      :count="status === 'success' ? total : null"
+      :count="data ? total : null"
     >
       <template #actions>
         <UModal
@@ -386,7 +386,7 @@ async function submitUpload() {
     </PageHeader>
 
     <CatalogToolbar
-      v-if="status === 'success' && (total > 0 || tags.length > 0)"
+      v-if="total > 0 || tags.length > 0"
       v-model:tags="tags"
       v-model:sort="sort"
       search="tags"
@@ -395,7 +395,7 @@ async function submitUpload() {
     />
 
     <GallerySkeleton
-      v-if="status === 'pending'"
+      v-if="status === 'pending' && !data"
       variant="landscape"
       :count="6"
     />
@@ -435,7 +435,7 @@ async function submitUpload() {
     />
 
     <div
-      v-if="status === 'success' && scenes.length > 0"
+      v-if="scenes.length > 0"
       class="ed-stagger grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3 2xl:grid-cols-4"
     >
       <div
@@ -463,7 +463,7 @@ async function submitUpload() {
     </div>
 
     <div
-      v-if="status === 'success' && total > DEFAULT_PAGE_LIMIT"
+      v-if="total > DEFAULT_PAGE_LIMIT"
       class="flex justify-center pt-2"
     >
       <UPagination

@@ -278,7 +278,7 @@ async function submitUpload() {
       icon="i-lucide-user-round"
       :title="title"
       :description="description"
-      :count="status === 'success' ? total : null"
+      :count="data ? total : null"
     >
       <template #actions>
           <UModal
@@ -402,7 +402,7 @@ async function submitUpload() {
     </PageHeader>
 
     <CatalogToolbar
-      v-if="status === 'success' && (total > 0 || tags.length > 0)"
+      v-if="total > 0 || tags.length > 0"
       v-model:tags="tags"
       v-model:sort="sort"
       search="tags"
@@ -412,7 +412,7 @@ async function submitUpload() {
     />
 
     <GallerySkeleton
-      v-if="status === 'pending'"
+      v-if="status === 'pending' && !data"
       :variant="isPortrait ? 'portrait' : 'landscape'"
     />
 
@@ -452,7 +452,7 @@ async function submitUpload() {
     />
 
     <div
-      v-if="status === 'success' && cards.length > 0"
+      v-if="cards.length > 0"
       class="ed-stagger grid gap-4"
       :class="isPortrait
         ? 'grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 xl:grid-cols-5 2xl:grid-cols-6'
@@ -483,7 +483,7 @@ async function submitUpload() {
     </div>
 
     <div
-      v-if="status === 'success' && total > DEFAULT_PAGE_LIMIT"
+      v-if="total > DEFAULT_PAGE_LIMIT"
       class="flex justify-center pt-2"
     >
       <UPagination
