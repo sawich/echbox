@@ -1,7 +1,7 @@
 <script setup lang="ts">
 import { DEFAULT_PAGE_LIMIT, type CardListItem, type CardType, type CatalogSort } from '@echbox/shared'
 import { contentLabel } from '~/utils/content-label'
-import { replaceContentTags } from '~/utils/content-tags'
+import { postCreateFollowUp, replaceContentTags } from '~/utils/content-tags'
 import { galleryAspect } from '~/utils/gallery'
 import { tagFilterQuery } from '~/utils/tag-filter'
 
@@ -151,6 +151,7 @@ const uploadError = ref<string | null>(null)
 const DEFAULT_CARD_SEMVER = '1.0.0'
 const semver = useSemverInput(DEFAULT_CARD_SEMVER)
 const duplicateHit = ref<{ cardId: string, semver: string } | null>(null)
+const publishedId = ref<string | null>(null)
 
 function resetUploadForm() {
   uploadFile.value = null
@@ -160,6 +161,7 @@ function resetUploadForm() {
   semver.reset(DEFAULT_CARD_SEMVER)
   uploadError.value = null
   duplicateHit.value = null
+  publishedId.value = null
 }
 
 watch(showUpload, (open) => {
@@ -210,45 +212,55 @@ async function submitUpload() {
       return
     }
 
-    const form = new FormData()
-    form.append('file', uploadFile.value)
-    form.append('gameId', props.gameId)
-    form.append('semver', semver.canonical.value)
-    if (uploadDescription.value.trim()) {
-      form.append('description', uploadDescription.value.trim())
-    }
-    if (uploadNotes.value.trim()) {
-      form.append('notes', uploadNotes.value.trim())
-    }
-
-    const res = await fetch(`${apiUrl.value}/api/kk/cards`, {
-      method: 'POST',
-      credentials: 'include',
-      body: form,
-    })
-
-    const payload = await res.json().catch(() => null)
-    if (!res.ok) {
-      if (res.status === 409 && payload && (payload.cardId || payload.card_id)) {
-        duplicateHit.value = {
-          cardId: payload.cardId ?? payload.card_id,
-          semver: payload.semver ?? '',
-        }
+    let createdId = publishedId.value
+    if (!createdId) {
+      const form = new FormData()
+      form.append('file', uploadFile.value)
+      form.append('gameId', props.gameId)
+      form.append('semver', semver.canonical.value)
+      if (uploadDescription.value.trim()) {
+        form.append('description', uploadDescription.value.trim())
       }
-      uploadError.value = payload?.error || `Upload failed (${res.status})`
-      return
+      if (uploadNotes.value.trim()) {
+        form.append('notes', uploadNotes.value.trim())
+      }
+
+      const res = await fetch(`${apiUrl.value}/api/kk/cards`, {
+        method: 'POST',
+        credentials: 'include',
+        body: form,
+      })
+
+      const payload = await res.json().catch(() => null)
+      if (!res.ok) {
+        if (res.status === 409 && payload && (payload.cardId || payload.card_id)) {
+          duplicateHit.value = {
+            cardId: payload.cardId ?? payload.card_id,
+            semver: payload.semver ?? '',
+          }
+        }
+        uploadError.value = payload?.error || `Upload failed (${res.status})`
+        return
+      }
+
+      createdId = (payload?.id as string | undefined) ?? null
+      if (!createdId) {
+        uploadError.value = 'Upload succeeded but returned no id'
+        return
+      }
+      publishedId.value = createdId
     }
 
-    const createdId = payload?.id as string | undefined
-    if (createdId) {
-      const tagError = await replaceContentTags(apiUrl.value, 'cards', createdId, uploadTags.value)
-      if (tagError) uploadError.value = tagError
+    const tagError = await replaceContentTags(apiUrl.value, 'cards', createdId, uploadTags.value)
+    const followUp = postCreateFollowUp([tagError])
+    if (!followUp.navigate) {
+      uploadError.value = followUp.error
+      await refresh()
+      return
     }
     showUpload.value = false
     await refresh()
-    if (createdId) {
-      await router.push(`/cards/${createdId}`)
-    }
+    await router.push(`/cards/${createdId}`)
   }
   catch (err) {
     uploadError.value = err instanceof Error ? err.message : 'Upload failed'

@@ -1,7 +1,7 @@
 <script setup lang="ts">
 import { DEFAULT_PAGE_LIMIT, type CatalogSort, type SceneListItem } from '@echbox/shared'
 import { contentLabel } from '~/utils/content-label'
-import { replaceContentTags } from '~/utils/content-tags'
+import { postCreateFollowUp, replaceContentTags } from '~/utils/content-tags'
 import { tagFilterQuery } from '~/utils/tag-filter'
 
 const props = defineProps<{
@@ -139,6 +139,7 @@ const uploadBusy = ref(false)
 const uploadError = ref<string | null>(null)
 const semver = useSemverInput()
 const duplicateHit = ref<{ sceneId: string, semver: string } | null>(null)
+const publishedId = ref<string | null>(null)
 
 function resetUploadForm() {
   uploadFile.value = null
@@ -148,6 +149,7 @@ function resetUploadForm() {
   semver.reset()
   uploadError.value = null
   duplicateHit.value = null
+  publishedId.value = null
 }
 
 watch(showUpload, (open) => {
@@ -196,43 +198,53 @@ async function submitUpload() {
       uploadBusy.value = false
       return
     }
-    const form = new FormData()
-    form.append('file', uploadFile.value)
-    form.append('gameId', props.gameId)
-    form.append('semver', semver.canonical.value)
-    if (uploadDescription.value.trim()) {
-      form.append('description', uploadDescription.value.trim())
-    }
-    if (uploadNotes.value.trim()) {
-      form.append('notes', uploadNotes.value.trim())
-    }
-
-    const res = await fetch(`${apiUrl.value}/api/scenes`, {
-      method: 'POST',
-      credentials: 'include',
-      body: form,
-    })
-
-    const payload = await res.json().catch(() => null) as Record<string, unknown> | null
-    if (!res.ok) {
-      const dup = parseUploadDuplicatePayload(payload)
-      if (res.status === 409 && dup) {
-        duplicateHit.value = { sceneId: dup.id, semver: dup.semver ?? '' }
+    let id = publishedId.value
+    if (!id) {
+      const form = new FormData()
+      form.append('file', uploadFile.value)
+      form.append('gameId', props.gameId)
+      form.append('semver', semver.canonical.value)
+      if (uploadDescription.value.trim()) {
+        form.append('description', uploadDescription.value.trim())
       }
-      uploadError.value = (payload?.error as string | undefined) || `Upload failed (${res.status})`
-      return
+      if (uploadNotes.value.trim()) {
+        form.append('notes', uploadNotes.value.trim())
+      }
+
+      const res = await fetch(`${apiUrl.value}/api/scenes`, {
+        method: 'POST',
+        credentials: 'include',
+        body: form,
+      })
+
+      const payload = await res.json().catch(() => null) as Record<string, unknown> | null
+      if (!res.ok) {
+        const dup = parseUploadDuplicatePayload(payload)
+        if (res.status === 409 && dup) {
+          duplicateHit.value = { sceneId: dup.id, semver: dup.semver ?? '' }
+        }
+        uploadError.value = (payload?.error as string | undefined) || `Upload failed (${res.status})`
+        return
+      }
+
+      id = (payload?.id as string | undefined) ?? null
+      if (!id) {
+        uploadError.value = 'Upload succeeded but returned no id'
+        return
+      }
+      publishedId.value = id
     }
 
-    const id = (payload?.id as string | undefined)
-    if (id) {
-      const tagError = await replaceContentTags(apiUrl.value, 'scenes', id, uploadTags.value)
-      if (tagError) uploadError.value = tagError
+    const tagError = await replaceContentTags(apiUrl.value, 'scenes', id, uploadTags.value)
+    const followUp = postCreateFollowUp([tagError])
+    if (!followUp.navigate) {
+      uploadError.value = followUp.error
+      await refresh()
+      return
     }
     showUpload.value = false
     await refresh()
-    if (id) {
-      await router.push(`/scenes/${id}`)
-    }
+    await router.push(`/scenes/${id}`)
   }
   catch (err) {
     uploadError.value = err instanceof Error ? err.message : 'Upload failed'

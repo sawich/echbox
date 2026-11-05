@@ -14,6 +14,19 @@ export function contentTagsPath(kind: TaggableContentKind, id: string) {
   }
 }
 
+/** Stay on the upload form when a post-create tag or preview step fails. */
+export function postCreateFollowUp(errors: Array<string | null | undefined>): {
+  navigate: boolean
+  error: string | null
+} {
+  const messages = errors.filter((error): error is string => Boolean(error))
+  if (messages.length === 0) return { navigate: true, error: null }
+  return {
+    navigate: false,
+    error: `Published, but extras were not saved: ${messages.join(' ')}`,
+  }
+}
+
 export async function replaceContentTags(
   apiUrl: string,
   kind: TaggableContentKind,
@@ -36,8 +49,9 @@ export async function uploadSoftmodPreviews(
   apiUrl: string,
   id: string,
   files: File[],
-): Promise<string | null> {
+): Promise<{ error: string | null, uploaded: number }> {
   const base = apiUrl.replace(/\/$/, '')
+  let uploaded = 0
   for (const file of files.slice(0, 3)) {
     const form = new FormData()
     form.append('file', file)
@@ -46,9 +60,14 @@ export async function uploadSoftmodPreviews(
       credentials: 'include',
       body: form,
     })
-    if (res.ok) continue
-    const body = await res.json().catch(() => null) as { error?: string } | null
-    return body?.error || `Preview upload failed (${res.status})`
+    if (!res.ok) {
+      const body = await res.json().catch(() => null) as { error?: string } | null
+      return {
+        error: body?.error || `Preview upload failed (${res.status})`,
+        uploaded,
+      }
+    }
+    uploaded += 1
   }
-  return null
+  return { error: null, uploaded }
 }

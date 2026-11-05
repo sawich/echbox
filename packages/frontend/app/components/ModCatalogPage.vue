@@ -1,7 +1,7 @@
 <script setup lang="ts">
 import { DEFAULT_PAGE_LIMIT, type CatalogSort, type PluginListItem, type SoftmodListItem } from '@echbox/shared'
 import { contentLabel } from '~/utils/content-label'
-import { replaceContentTags, uploadSoftmodPreviews } from '~/utils/content-tags'
+import { postCreateFollowUp, replaceContentTags, uploadSoftmodPreviews } from '~/utils/content-tags'
 import { tagFilterQuery } from '~/utils/tag-filter'
 
 const props = defineProps<{
@@ -178,6 +178,7 @@ const uploadBusy = ref(false)
 const uploadError = ref<string | null>(null)
 const semver = useSemverInput()
 const duplicateHit = ref<{ id: string, semver?: string } | null>(null)
+const publishedId = ref<string | null>(null)
 
 const uploadAccept = computed(() =>
   props.modKind === 'plugin' ? '.zip,application/zip' : '.zipmod',
@@ -210,6 +211,7 @@ function resetUploadForm() {
   semver.reset()
   uploadError.value = null
   duplicateHit.value = null
+  publishedId.value = null
 }
 
 watch(showUpload, (open) => {
@@ -278,53 +280,65 @@ async function submitUpload() {
       return
     }
 
-    const form = new FormData()
-    form.append('file', uploadFile.value)
-    form.append('gameId', props.gameId)
-    form.append('semver', semver.canonical.value)
-    if (props.modKind === 'plugin') {
-      form.append('title', uploadTitle.value.trim())
-    }
-    if (uploadDescription.value.trim()) {
-      form.append('description', uploadDescription.value.trim())
-    }
-    if (uploadNotes.value.trim()) {
-      form.append('notes', uploadNotes.value.trim())
-    }
-
-    const endpoint =
-      props.modKind === 'plugin' ? `${apiUrl.value}/api/plugins` : `${apiUrl.value}/api/softmods`
-
-    const res = await fetch(endpoint, {
-      method: 'POST',
-      credentials: 'include',
-      body: form,
-    })
-
-    const payload = await res.json().catch(() => null) as Record<string, unknown> | null
-    if (!res.ok) {
-      if (res.status === 409) {
-        const dup = parseUploadDuplicatePayload(payload)
-        if (dup) duplicateHit.value = dup
+    let createdId = publishedId.value
+    if (!createdId) {
+      const form = new FormData()
+      form.append('file', uploadFile.value)
+      form.append('gameId', props.gameId)
+      form.append('semver', semver.canonical.value)
+      if (props.modKind === 'plugin') {
+        form.append('title', uploadTitle.value.trim())
       }
-      uploadError.value = (payload?.error as string | undefined) || `Upload failed (${res.status})`
-      return
+      if (uploadDescription.value.trim()) {
+        form.append('description', uploadDescription.value.trim())
+      }
+      if (uploadNotes.value.trim()) {
+        form.append('notes', uploadNotes.value.trim())
+      }
+
+      const endpoint =
+        props.modKind === 'plugin' ? `${apiUrl.value}/api/plugins` : `${apiUrl.value}/api/softmods`
+
+      const res = await fetch(endpoint, {
+        method: 'POST',
+        credentials: 'include',
+        body: form,
+      })
+
+      const payload = await res.json().catch(() => null) as Record<string, unknown> | null
+      if (!res.ok) {
+        if (res.status === 409) {
+          const dup = parseUploadDuplicatePayload(payload)
+          if (dup) duplicateHit.value = dup
+        }
+        uploadError.value = (payload?.error as string | undefined) || `Upload failed (${res.status})`
+        return
+      }
+
+      createdId = (payload?.id as string | undefined) ?? null
+      if (!createdId) {
+        uploadError.value = 'Upload succeeded but returned no id'
+        return
+      }
+      publishedId.value = createdId
     }
 
-    const createdId = (payload?.id as string | undefined)
-    if (createdId && props.modKind === 'softmod') {
-      const previewError = await uploadSoftmodPreviews(apiUrl.value, createdId, uploadPreviews.value)
+    if (props.modKind === 'softmod') {
+      const preview = await uploadSoftmodPreviews(apiUrl.value, createdId, uploadPreviews.value)
+      uploadPreviews.value = uploadPreviews.value.slice(preview.uploaded)
       const tagError = await replaceContentTags(apiUrl.value, 'softmods', createdId, uploadTags.value)
-      const followUp = previewError || tagError
-      if (followUp) uploadError.value = followUp
+      const followUp = postCreateFollowUp([preview.error, tagError])
+      if (!followUp.navigate) {
+        uploadError.value = followUp.error
+        await refresh()
+        return
+      }
     }
     showUpload.value = false
     await refresh()
-    if (createdId) {
-      await router.push(
-        props.modKind === 'plugin' ? `/plugins/${createdId}` : `/softmods/${createdId}`,
-      )
-    }
+    await router.push(
+      props.modKind === 'plugin' ? `/plugins/${createdId}` : `/softmods/${createdId}`,
+    )
   }
   catch (err) {
     uploadError.value = err instanceof Error ? err.message : 'Upload failed'
