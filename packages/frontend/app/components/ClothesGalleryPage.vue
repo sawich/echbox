@@ -2,6 +2,7 @@
 import { DEFAULT_PAGE_LIMIT, type CatalogSort, type ClothesListItem } from '@echbox/shared'
 import { contentLabel } from '~/utils/content-label'
 import { postCreateFollowUp, replaceContentTags } from '~/utils/content-tags'
+import { aggregatePageTags } from '~/utils/page-tags'
 import { tagFilterQuery } from '~/utils/tag-filter'
 
 const props = defineProps<{
@@ -101,6 +102,13 @@ function clearTags() {
   onApplyTags([])
 }
 
+function onSelectSidebarTag(name: string) {
+  if (tags.value.includes(name)) return
+  const next = [...tags.value, name]
+  tags.value = next
+  onApplyTags(next)
+}
+
 watch([() => appliedTags.value.join('\n'), sort, () => props.gameId], () => {
   page.value = 1
 })
@@ -128,6 +136,7 @@ const { data, error, status, refresh } = await useAsyncData(
 )
 
 const clothesItems = computed(() => data.value?.clothes ?? [])
+const pageTags = computed(() => aggregatePageTags(clothesItems.value))
 const total = computed(() => data.value?.total ?? 0)
 
 const showUpload = ref(false)
@@ -394,82 +403,94 @@ async function submitUpload() {
       @apply="onApplyTags"
     />
 
-    <GallerySkeleton
-      v-if="status === 'pending' && !data"
-      variant="portrait"
-      :count="6"
-    />
-
-    <LoadError
-      v-else-if="error"
-      title="Could not load gallery"
-      :message="error.message"
-      @retry="refresh()"
-    />
-
-    <UEmpty
-      v-else-if="total === 0 && appliedTags.length === 0"
-      icon="i-lucide-shirt"
-      title="No clothes yet"
-      :description="user ? 'Be the first to share one.' : 'Sign in to share the first one.'"
-      variant="soft"
-      class="py-16"
-    />
-
-    <UEmpty
-      v-else-if="clothesItems.length === 0"
-      icon="i-lucide-search-x"
-      title="Nothing matches"
-      :description="`No clothes match ${appliedTags.join(' + ')}.`"
-      variant="naked"
-      :actions="[{ label: 'Clear tags', color: 'neutral', variant: 'outline', onClick: clearTags }]"
-      class="py-16"
-    />
-
-    <UAlert
-      v-if="installError"
-      color="error"
-      variant="subtle"
-      icon="i-lucide-circle-alert"
-      :title="installError"
-    />
-
-    <div
-      v-if="clothesItems.length > 0"
-      class="ed-stagger grid grid-cols-2 gap-4 sm:grid-cols-3 lg:grid-cols-4 xl:grid-cols-5 2xl:grid-cols-6"
-    >
-      <div
-        v-for="item in clothesItems"
-        :key="item.id"
-        class="space-y-2"
-      >
-        <ClothesTile
-          :clothes="item"
-          :api-url="apiUrl"
+    <div class="lg:grid lg:grid-cols-[minmax(0,1fr)_14rem] lg:items-start lg:gap-6">
+      <div class="min-w-0 space-y-4">
+        <GallerySkeleton
+          v-if="status === 'pending' && !data"
+          variant="portrait"
+          :count="6"
         />
-        <UButton
-          v-if="instanceId"
-          block
-          size="sm"
-          :color="installedIds.has(item.id) ? 'neutral' : 'primary'"
-          :variant="installedIds.has(item.id) ? 'outline' : 'solid'"
-          :loading="isTargetBusy(item.id)"
-          :disabled="!isDesktop && !installedIds.has(item.id)"
-          @click="toggleInstall(item)"
-        >
-          {{ installedIds.has(item.id) ? 'Uninstall' : (isDesktop ? 'Install' : 'Desktop only') }}
-        </UButton>
-      </div>
-    </div>
 
-    <div
-      v-if="total > DEFAULT_PAGE_LIMIT"
-      class="flex justify-center pt-2"
-    >
-      <UPagination
-        v-model:page="page"
-        :total="total"
-        :items-per-page="DEFAULT_PAGE_LIMIT"
+        <LoadError
+          v-else-if="error"
+          title="Could not load gallery"
+          :message="error.message"
+          @retry="refresh()"
+        />
+
+        <UEmpty
+          v-else-if="total === 0 && appliedTags.length === 0"
+          icon="i-lucide-shirt"
+          title="No clothes yet"
+          :description="user ? 'Be the first to share one.' : 'Sign in to share the first one.'"
+          variant="soft"
+          class="py-16"
+        />
+
+        <UEmpty
+          v-else-if="clothesItems.length === 0"
+          icon="i-lucide-search-x"
+          title="Nothing matches"
+          :description="`No clothes match ${appliedTags.join(' + ')}.`"
+          variant="naked"
+          :actions="[{ label: 'Clear tags', color: 'neutral', variant: 'outline', onClick: clearTags }]"
+          class="py-16"
+        />
+
+        <UAlert
+          v-if="installError"
+          color="error"
+          variant="subtle"
+          icon="i-lucide-circle-alert"
+          :title="installError"
+        />
+
+        <div
+          v-if="clothesItems.length > 0"
+          class="ed-stagger grid grid-cols-2 gap-4 sm:grid-cols-3 lg:grid-cols-3 xl:grid-cols-4 2xl:grid-cols-5"
+        >
+          <div
+            v-for="item in clothesItems"
+            :key="item.id"
+            class="space-y-2"
+          >
+            <ClothesTile
+              :clothes="item"
+              :api-url="apiUrl"
+            />
+            <UButton
+              v-if="instanceId"
+              block
+              size="sm"
+              :color="installedIds.has(item.id) ? 'neutral' : 'primary'"
+              :variant="installedIds.has(item.id) ? 'outline' : 'solid'"
+              :loading="isTargetBusy(item.id)"
+              :disabled="!isDesktop && !installedIds.has(item.id)"
+              @click="toggleInstall(item)"
+            >
+              {{ installedIds.has(item.id) ? 'Uninstall' : (isDesktop ? 'Install' : 'Desktop only') }}
+            </UButton>
+          </div>
+        </div>
+
+        <div
+          v-if="total > DEFAULT_PAGE_LIMIT"
+          class="flex justify-center pt-2"
+        >
+          <UPagination
+            v-model:page="page"
+            :total="total"
+            :items-per-page="DEFAULT_PAGE_LIMIT"
+          />
+        </div>
+      </div>
+
+      <GalleryTagSidebar
+        v-if="pageTags.length > 0"
+        class="mt-6 hidden lg:mt-0 lg:block"
+        :tags="pageTags"
+        :selected="appliedTags"
+        @select="onSelectSidebarTag"
       />
     </div>
   </main>

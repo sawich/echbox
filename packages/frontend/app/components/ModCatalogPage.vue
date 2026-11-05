@@ -2,6 +2,7 @@
 import { DEFAULT_PAGE_LIMIT, type CatalogSort, type PluginListItem, type SoftmodListItem } from '@echbox/shared'
 import { contentLabel } from '~/utils/content-label'
 import { postCreateFollowUp, replaceContentTags, uploadSoftmodPreviews } from '~/utils/content-tags'
+import { aggregatePageTags } from '~/utils/page-tags'
 import { tagFilterQuery } from '~/utils/tag-filter'
 
 const props = defineProps<{
@@ -67,6 +68,13 @@ function onApplyTags(next: string[]) {
 function clearTags() {
   tags.value = []
   onApplyTags([])
+}
+
+function onSelectSidebarTag(name: string) {
+  if (tags.value.includes(name)) return
+  const next = [...tags.value, name]
+  tags.value = next
+  onApplyTags(next)
 }
 
 const listFilterKey = computed(() =>
@@ -165,6 +173,11 @@ async function toggleInstall(item: PluginListItem | SoftmodListItem) {
 }
 
 const items = computed<(PluginListItem | SoftmodListItem)[]>(() => data.value?.items ?? [])
+const pageTags = computed(() =>
+  props.modKind === 'softmod'
+    ? aggregatePageTags(items.value as SoftmodListItem[])
+    : [],
+)
 const total = computed(() => data.value?.total ?? 0)
 
 const showUpload = ref(false)
@@ -544,100 +557,116 @@ const canSubmitUpload = computed(() => {
       @apply="onApplyTags"
     />
 
-    <GallerySkeleton
-      v-if="status === 'pending' && !data"
-      :variant="modKind === 'softmod' ? 'landscape' : 'row'"
-      :count="5"
-    />
-
-    <LoadError
-      v-else-if="error"
-      title="Could not load catalog"
-      :message="error.message"
-      @retry="refresh()"
-    />
-
-    <UEmpty
-      v-else-if="total === 0 && (modKind === 'plugin' ? !query.trim() : appliedTags.length === 0)"
-      :icon="modKind === 'plugin' ? 'i-lucide-puzzle' : 'i-lucide-package'"
-      title="Nothing published yet"
-      :description="user ? 'Be the first to share one.' : 'Sign in to share the first one.'"
-      variant="soft"
-      class="py-16"
-    />
-
-    <UEmpty
-      v-else-if="items.length === 0"
-      icon="i-lucide-search-x"
-      title="Nothing matches"
-      :description="modKind === 'plugin' ? `Nothing matches “${query}”.` : `Nothing matches ${appliedTags.join(' + ')}.`"
-      variant="naked"
-      :actions="[{ label: modKind === 'plugin' ? 'Clear search' : 'Clear tags', color: 'neutral', variant: 'outline', onClick: () => { if (modKind === 'plugin') query = ''; else clearTags() } }]"
-      class="py-16"
-    />
-
-    <UAlert
-      v-if="installError"
-      color="error"
-      variant="subtle"
-      icon="i-lucide-circle-alert"
-      :title="installError"
-    />
-
     <div
-      v-else-if="items.length > 0 && modKind === 'softmod'"
-      class="ed-stagger grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3 2xl:grid-cols-4"
+      :class="modKind === 'softmod'
+        ? 'lg:grid lg:grid-cols-[minmax(0,1fr)_14rem] lg:items-start lg:gap-6'
+        : undefined"
     >
-      <div
-        v-for="item in items"
-        :key="item.id"
-        class="space-y-2"
-      >
-        <SoftmodTile
-          :item="(item as SoftmodListItem)"
-          :api-url="apiUrl"
+      <div class="min-w-0 space-y-4">
+        <GallerySkeleton
+          v-if="status === 'pending' && !data"
+          :variant="modKind === 'softmod' ? 'landscape' : 'row'"
+          :count="5"
         />
-        <UButton
-          v-if="instanceId"
-          block
-          size="sm"
-          :color="installedIds.has(item.id) ? 'neutral' : 'primary'"
-          :variant="installedIds.has(item.id) ? 'outline' : 'solid'"
-          :loading="isTargetBusy(item.id)"
-          :disabled="!isDesktop && !installedIds.has(item.id)"
-          @click="toggleInstall(item)"
+
+        <LoadError
+          v-else-if="error"
+          title="Could not load catalog"
+          :message="error.message"
+          @retry="refresh()"
+        />
+
+        <UEmpty
+          v-else-if="total === 0 && (modKind === 'plugin' ? !query.trim() : appliedTags.length === 0)"
+          :icon="modKind === 'plugin' ? 'i-lucide-puzzle' : 'i-lucide-package'"
+          title="Nothing published yet"
+          :description="user ? 'Be the first to share one.' : 'Sign in to share the first one.'"
+          variant="soft"
+          class="py-16"
+        />
+
+        <UEmpty
+          v-else-if="items.length === 0"
+          icon="i-lucide-search-x"
+          title="Nothing matches"
+          :description="modKind === 'plugin' ? `Nothing matches “${query}”.` : `Nothing matches ${appliedTags.join(' + ')}.`"
+          variant="naked"
+          :actions="[{ label: modKind === 'plugin' ? 'Clear search' : 'Clear tags', color: 'neutral', variant: 'outline', onClick: () => { if (modKind === 'plugin') query = ''; else clearTags() } }]"
+          class="py-16"
+        />
+
+        <UAlert
+          v-if="installError"
+          color="error"
+          variant="subtle"
+          icon="i-lucide-circle-alert"
+          :title="installError"
+        />
+
+        <div
+          v-else-if="items.length > 0 && modKind === 'softmod'"
+          class="ed-stagger grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-2 2xl:grid-cols-3"
         >
-          {{ installedIds.has(item.id) ? 'Uninstall' : (isDesktop ? 'Install' : 'Desktop only') }}
-        </UButton>
+          <div
+            v-for="item in items"
+            :key="item.id"
+            class="space-y-2"
+          >
+            <SoftmodTile
+              :item="(item as SoftmodListItem)"
+              :api-url="apiUrl"
+            />
+            <UButton
+              v-if="instanceId"
+              block
+              size="sm"
+              :color="installedIds.has(item.id) ? 'neutral' : 'primary'"
+              :variant="installedIds.has(item.id) ? 'outline' : 'solid'"
+              :loading="isTargetBusy(item.id)"
+              :disabled="!isDesktop && !installedIds.has(item.id)"
+              @click="toggleInstall(item)"
+            >
+              {{ installedIds.has(item.id) ? 'Uninstall' : (isDesktop ? 'Install' : 'Desktop only') }}
+            </UButton>
+          </div>
+        </div>
+
+        <div
+          v-else-if="items.length > 0"
+          class="ed-stagger space-y-3"
+        >
+          <ModRow
+            v-for="item in items"
+            :key="item.id"
+            :item="(item as PluginListItem)"
+            :api-url="apiUrl"
+            :show-install="Boolean(instanceId)"
+            :installed="installedIds.has(item.id)"
+            :install-loading="isTargetBusy(item.id)"
+            :install-disabled="!isDesktop && !installedIds.has(item.id)"
+            :install-label="installedIds.has(item.id) ? 'Uninstall' : (isDesktop ? 'Install' : 'Desktop only')"
+            @install="toggleInstall(item)"
+          />
+        </div>
+
+        <div
+          v-if="total > DEFAULT_PAGE_LIMIT"
+          class="flex justify-center pt-2"
+        >
+          <UPagination
+            v-model:page="page"
+            :total="total"
+            :items-per-page="DEFAULT_PAGE_LIMIT"
+          />
+        </div>
       </div>
-    </div>
 
-    <div
-      v-else-if="items.length > 0"
-      class="ed-stagger space-y-3"
-    >
-      <ModRow
-        v-for="item in items"
-        :key="item.id"
-        :item="(item as PluginListItem)"
-        :api-url="apiUrl"
-        :show-install="Boolean(instanceId)"
-        :installed="installedIds.has(item.id)"
-        :install-loading="isTargetBusy(item.id)"
-        :install-disabled="!isDesktop && !installedIds.has(item.id)"
-        :install-label="installedIds.has(item.id) ? 'Uninstall' : (isDesktop ? 'Install' : 'Desktop only')"
-        @install="toggleInstall(item)"
-      />
-    </div>
-
-    <div
-      v-if="total > DEFAULT_PAGE_LIMIT"
-      class="flex justify-center pt-2"
-    >
-      <UPagination
-        v-model:page="page"
-        :total="total"
-        :items-per-page="DEFAULT_PAGE_LIMIT"
+      <GalleryTagSidebar
+        v-if="modKind === 'softmod' && pageTags.length > 0"
+        class="mt-6 hidden lg:mt-0 lg:block"
+        :tags="pageTags"
+        :selected="appliedTags"
+        @select="onSelectSidebarTag"
       />
     </div>
   </main>
