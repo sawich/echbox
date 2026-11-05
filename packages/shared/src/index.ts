@@ -79,6 +79,17 @@ export {
 } from "./schemas/votes";
 
 export {
+  TagCategorySchema,
+  TaggableContentKindSchema,
+  TagListItemSchema,
+  TagSchema,
+  type TagCategory,
+  type TaggableContentKind,
+  type TagListItem,
+  type Tag,
+} from "./schemas/tags";
+
+export {
   PluginListItemSchema,
   PluginListResponseSchema,
   PluginUploaderSchema,

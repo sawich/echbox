@@ -18,8 +18,7 @@ export const CardListItemSchema = z.object({
   id: z.string().min(1),
   gameId: z.string().min(1),
   type: CardTypeSchema,
-  slug: z.string().min(1),
-  title: z.string().min(1),
+  description: z.string(),
   latestSemver: z.string().nullable(),
   latestVersionId: z.string().nullable(),
   versionCount: z.number().int().nonnegative(),
@@ -31,7 +30,7 @@ export type CardListItem = z.infer<typeof CardListItemSchema>;
 export const CharacterCardListItemSchema = CardListItemSchema.merge(
   CardVoteCountsSchema,
 ).extend({
-  authorId: z.string().min(1),
+  uploaderId: z.string().min(1),
 });
 export type CharacterCardListItem = z.infer<typeof CharacterCardListItemSchema>;
 
@@ -46,8 +45,7 @@ export const CardDetailSchema = z.object({
   id: z.string().min(1),
   gameId: z.string().min(1),
   type: CardTypeSchema,
-  slug: z.string().min(1),
-  title: z.string().min(1),
+  description: z.string(),
   latestSemver: z.string().nullable(),
   latestVersionId: z.string().nullable(),
   versions: z.array(CardVersionDetailSchema),
@@ -57,7 +55,7 @@ export type CardDetail = z.infer<typeof CardDetailSchema>;
 export const CharacterCardDetailSchema = CardDetailSchema.merge(
   CardVoteCountsSchema,
 ).extend({
-  authorId: z.string().min(1),
+  uploaderId: z.string().min(1),
   createdAt: z.iso.datetime(),
   updatedAt: z.iso.datetime(),
 });

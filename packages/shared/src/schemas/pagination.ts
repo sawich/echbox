@@ -19,6 +19,7 @@ export const ListPaginationQuerySchema = z.object({
   page: z.coerce.number().int().positive().optional(),
   limit: z.coerce.number().int().positive().max(MAX_PAGE_LIMIT).optional(),
   q: z.string().optional(),
+  tags: z.union([z.string(), z.array(z.string())]).optional(),
   sort: CatalogSortSchema.optional(),
 });
 export type ListPaginationQuery = z.infer<typeof ListPaginationQuerySchema>;

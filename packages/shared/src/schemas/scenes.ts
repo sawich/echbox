@@ -17,14 +17,14 @@ export type SceneVersionDetail = z.infer<typeof SceneVersionDetailSchema>;
 export const SceneListItemSchema = CardListItemSchema.merge(
   CardVoteCountsSchema,
 ).extend({
-  authorId: z.string().min(1),
+  uploaderId: z.string().min(1),
 });
 export type SceneListItem = z.infer<typeof SceneListItemSchema>;
 
 export const SceneDetailSchema = CardDetailSchema.omit({ versions: true })
   .merge(CardVoteCountsSchema)
   .extend({
-    authorId: z.string().min(1),
+    uploaderId: z.string().min(1),
     authorUsername: z.string().nullable().optional(),
     authorAvatar: z.string().nullable().optional(),
     createdAt: z.iso.datetime(),

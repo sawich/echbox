@@ -17,14 +17,14 @@ export type ClothesVersionDetail = z.infer<typeof ClothesVersionDetailSchema>;
 export const ClothesListItemSchema = CardListItemSchema.merge(
   CardVoteCountsSchema,
 ).extend({
-  authorId: z.string().min(1),
+  uploaderId: z.string().min(1),
 });
 export type ClothesListItem = z.infer<typeof ClothesListItemSchema>;
 
 export const ClothesDetailSchema = CardDetailSchema.omit({ versions: true })
   .merge(CardVoteCountsSchema)
   .extend({
-    authorId: z.string().min(1),
+    uploaderId: z.string().min(1),
     authorUsername: z.string().nullable().optional(),
     authorAvatar: z.string().nullable().optional(),
     createdAt: z.iso.datetime(),
