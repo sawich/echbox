@@ -19,7 +19,7 @@ const apiUrl = computed(() => String(config.public.apiUrl).replace(/\/$/, ''))
 const { user, login } = useAuth()
 
 const draft = ref('')
-const suggestions = ref<{ name: string, category: string }[]>([])
+const suggestions = ref<{ name: string, category: string, matchedAlias: string | null }[]>([])
 const activeIndex = ref(-1)
 const error = ref<string | null>(null)
 const busy = ref(false)
@@ -107,7 +107,9 @@ function onEnter() {
   }
   if (!draft.value.trim()) return
   const normalized = normalizeTagDraft(draft.value)
-  const exact = suggestions.value.find(tag => tag.name === normalized)
+  const exact = suggestions.value.find(
+    tag => tag.name === normalized || tag.matchedAlias === normalized,
+  )
   if (exact) {
     add(exact.name)
     return
@@ -144,10 +146,14 @@ watch(() => normalizeTagDraft(draft.value) ?? '', async (needle) => {
     suggestions.value = []
     return
   }
-  const listed = data.tags as { name: string, category: string }[]
+  const listed = data.tags as { name: string, category: string, matchedAlias?: string | null }[]
   suggestions.value = listed
     .filter(tag => !tags.value.includes(tag.name))
-    .map(tag => ({ name: tag.name, category: tag.category }))
+    .map(tag => ({
+      name: tag.name,
+      category: tag.category,
+      matchedAlias: tag.matchedAlias ?? null,
+    }))
 })
 </script>
 
@@ -203,21 +209,31 @@ watch(() => normalizeTagDraft(draft.value) ?? '', async (needle) => {
       <ul
         v-if="suggestions.length > 0"
         role="listbox"
-        class="absolute z-20 mt-1 max-h-60 w-full overflow-auto rounded-[var(--radius-md)] bg-default py-1 shadow-lg ring-1 ring-inset ring-accented"
+        class="absolute z-20 mt-1 max-h-60 w-full overflow-x-hidden overflow-y-auto rounded-[var(--radius-md)] bg-default p-1 shadow-lg ring-1 ring-inset ring-accented"
       >
         <li
           v-for="(item, index) in suggestions"
-          :key="item.name"
+          :key="item.matchedAlias ? `${item.matchedAlias}->${item.name}` : item.name"
           role="option"
           :aria-selected="index === activeIndex"
         >
           <button
             type="button"
-            class="flex w-full items-center justify-between gap-3 px-3 py-1.5 text-left text-sm hover:bg-elevated"
+            class="flex w-full min-w-0 items-center justify-between gap-3 rounded-[calc(var(--radius-md)-2px)] px-2.5 py-1.5 text-left text-sm hover:bg-elevated"
             :class="index === activeIndex ? 'bg-elevated' : ''"
             @mousedown.prevent="add(item.name)"
           >
-            <span class="truncate font-medium text-highlighted">{{ item.name }}</span>
+            <span class="min-w-0 flex-1 overflow-hidden">
+              <span class="block truncate font-medium text-highlighted">
+                {{ item.matchedAlias ?? item.name }}
+              </span>
+              <span
+                v-if="item.matchedAlias"
+                class="block truncate text-xs text-dimmed"
+              >
+                Alias → {{ item.name }}
+              </span>
+            </span>
             <span class="shrink-0 text-xs text-dimmed capitalize">{{ item.category }}</span>
           </button>
         </li>

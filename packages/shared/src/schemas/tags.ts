@@ -22,6 +22,7 @@ const tagCoreFields = {
   id: z.string().min(1),
   name: z.string().min(1),
   category: TagCategorySchema,
+  aliases: z.array(z.string().min(1)).default([]),
   likes: z.number().int().nonnegative(),
   dislikes: z.number().int().nonnegative(),
   myVote: CardVoteValueSchema.nullable().optional(),

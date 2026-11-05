@@ -118,6 +118,7 @@ describe("tag service", () => {
     expect(hits.map((hit) => hit.name)).toEqual(["hatsune_miku"]);
     expect(hits[0]?.id).toBe(tag.id);
     expect(hits[0]?.category).toBe("character");
+    expect(hits[0]?.matchedAlias).toBe("miku");
   });
 
   test("suggestTags omits excluded canonical names", () => {

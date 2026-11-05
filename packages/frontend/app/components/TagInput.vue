@@ -31,7 +31,7 @@ const filter = ref<TagFilterSnapshot>({
 })
 const quiet = ref(0)
 const debouncedQuiet = refDebounced(quiet, TAG_FILTER_DEBOUNCE_MS)
-const suggestions = ref<{ name: string, category: string }[]>([])
+const suggestions = ref<{ name: string, category: string, matchedAlias: string | null }[]>([])
 const activeIndex = ref(-1)
 let suggestToken = 0
 
@@ -75,7 +75,9 @@ function onInput(event: Event) {
 }
 
 async function resolveCanonical(normalized: string): Promise<string> {
-  const listed = suggestions.value.find(tag => tag.name === normalized)
+  const listed = suggestions.value.find(
+    tag => tag.name === normalized || tag.matchedAlias === normalized,
+  )
   if (listed) return listed.name
 
   const { data, error } = await api.api.tags({ id: normalized }).get({
@@ -179,7 +181,11 @@ watch(() => normalizeTagDraft(filter.value.draft), async (needle) => {
 
   suggestions.value = data.tags
     .filter(tag => !filter.value.selected.includes(tag.name))
-    .map(tag => ({ name: tag.name, category: tag.category }))
+    .map(tag => ({
+      name: tag.name,
+      category: tag.category,
+      matchedAlias: ('matchedAlias' in tag ? tag.matchedAlias : null) ?? null,
+    }))
 })
 </script>
 
@@ -228,21 +234,31 @@ watch(() => normalizeTagDraft(filter.value.draft), async (needle) => {
     <ul
       v-if="suggestions.length > 0"
       role="listbox"
-      class="absolute z-20 mt-1 max-h-60 w-full overflow-auto rounded-[var(--radius-md)] bg-default py-1 shadow-lg ring-1 ring-inset ring-accented"
+      class="absolute z-20 mt-1 max-h-60 w-full overflow-x-hidden overflow-y-auto rounded-[var(--radius-md)] bg-default p-1 shadow-lg ring-1 ring-inset ring-accented"
     >
       <li
         v-for="(item, index) in suggestions"
-        :key="item.name"
+        :key="item.matchedAlias ? `${item.matchedAlias}->${item.name}` : item.name"
         role="option"
         :aria-selected="index === activeIndex"
       >
         <button
           type="button"
-          class="flex w-full items-center justify-between gap-3 px-3 py-1.5 text-left text-sm hover:bg-elevated"
+          class="flex w-full min-w-0 items-center justify-between gap-3 rounded-[calc(var(--radius-md)-2px)] px-2.5 py-1.5 text-left text-sm hover:bg-elevated"
           :class="index === activeIndex ? 'bg-elevated' : ''"
           @mousedown.prevent="pick(item.name)"
         >
-          <span class="truncate font-medium text-highlighted">{{ item.name }}</span>
+          <span class="min-w-0 flex-1 overflow-hidden">
+            <span class="block truncate font-medium text-highlighted">
+              {{ item.matchedAlias ?? item.name }}
+            </span>
+            <span
+              v-if="item.matchedAlias"
+              class="block truncate text-xs text-dimmed"
+            >
+              Alias → {{ item.name }}
+            </span>
+          </span>
           <span class="shrink-0 text-xs text-dimmed capitalize">{{ item.category }}</span>
         </button>
       </li>

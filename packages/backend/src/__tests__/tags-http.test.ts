@@ -153,15 +153,45 @@ describe("tag and preview HTTP routes", () => {
       }),
     );
     expect(createRes.status).toBe(201);
+    const created = (await createRes.json()) as { id: string };
+
+    const aliasRes = await app.handle(
+      new Request(`http://localhost/api/tags/${created.id}/aliases`, {
+        method: "POST",
+        headers: {
+          cookie: authorCookie,
+          "content-type": "application/json",
+        },
+        body: JSON.stringify({ alias: "blondie" }),
+      }),
+    );
+    expect(aliasRes.status).toBe(201);
 
     const suggestRes = await app.handle(
       new Request("http://localhost/api/tags/suggest?q=blonde"),
     );
     expect(suggestRes.status).toBe(200);
     const suggested = (await suggestRes.json()) as {
-      tags: { name: string; category: string }[];
+      tags: { name: string; category: string; matchedAlias: string | null }[];
     };
     expect(suggested.tags.map((tag) => tag.name)).toContain("blonde_hair");
+    expect(
+      suggested.tags.find((tag) => tag.name === "blonde_hair")?.matchedAlias,
+    ).toBeNull();
+
+    const aliasSuggest = await app.handle(
+      new Request("http://localhost/api/tags/suggest?q=blondie"),
+    );
+    expect(aliasSuggest.status).toBe(200);
+    const aliasBody = (await aliasSuggest.json()) as {
+      tags: { name: string; matchedAlias: string | null }[];
+    };
+    expect(aliasBody.tags[0]).toEqual({
+      id: created.id,
+      name: "blonde_hair",
+      category: "general",
+      matchedAlias: "blondie",
+    });
 
     const excluded = await app.handle(
       new Request(

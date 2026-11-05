@@ -40,10 +40,19 @@ export type TagView = {
   id: string;
   name: string;
   category: TagCategory;
+  aliases: string[];
   likes: number;
   dislikes: number;
   myVote: TagVoteValue | null;
   usageCount: number;
+};
+
+/** Suggest hit: `matchedAlias` set when the query matched an alias, not the canonical name. */
+export type TagSuggestItem = {
+  id: string;
+  name: string;
+  category: TagCategory;
+  matchedAlias: string | null;
 };
 
 export type TagVoteCounts = {
@@ -217,6 +226,24 @@ function selectTagStats(db: TagDb) {
     .leftJoin(tagVotes, eq(tagVotes.tagId, tags.id));
 }
 
+function aliasesByTagIds(db: TagDb, ids: string[]): Map<string, string[]> {
+  const map = new Map<string, string[]>();
+  for (const id of ids) map.set(id, []);
+  if (ids.length === 0) return map;
+
+  const rows = db
+    .select({ tagId: tagAliases.tagId, alias: tagAliases.alias })
+    .from(tagAliases)
+    .where(inArray(tagAliases.tagId, ids))
+    .orderBy(asc(tagAliases.alias))
+    .all();
+
+  for (const row of rows) {
+    map.get(row.tagId)?.push(row.alias);
+  }
+  return map;
+}
+
 function toView(
   row: {
     id: string;
@@ -227,11 +254,13 @@ function toView(
     usageCount: number;
   },
   myVote: TagVoteValue | null,
+  aliases: string[] = [],
 ): TagView {
   return {
     id: row.id,
     name: row.name,
     category: parseCategory(row.category),
+    aliases,
     likes: row.likes,
     dislikes: row.dislikes,
     myVote,
@@ -252,11 +281,12 @@ function loadTagViews(
     .all();
   const byId = new Map(rows.map((row) => [row.id, row]));
   const votes = myVoteMap(db, ids, viewerUserId);
+  const aliasMap = aliasesByTagIds(db, ids);
 
   return ids.flatMap((id) => {
     const row = byId.get(id);
     if (!row) return [];
-    return [toView(row, votes.get(id) ?? null)];
+    return [toView(row, votes.get(id) ?? null, aliasMap.get(id) ?? [])];
   });
 }
 
@@ -311,12 +341,24 @@ function allContentIds(db: TagDb, kind: TaggableContentKind): string[] {
   }
 }
 
+function matchedAliasForNeedle(
+  tagName: string,
+  aliases: string[],
+  needle: string,
+): string | null {
+  if (tagName.startsWith(needle)) return null;
+  const hits = aliases
+    .filter((alias) => alias.startsWith(needle))
+    .sort((a, b) => a.length - b.length || a.localeCompare(b));
+  return hits[0] ?? null;
+}
+
 export function suggestTags(input: {
   q: string;
   limit?: number;
   excludeNames?: string[];
   dbPath?: string;
-}): TagView[] {
+}): TagSuggestItem[] {
   const needle = searchNeedle(input.q);
   if (!needle) return [];
 
@@ -339,7 +381,19 @@ export function suggestTags(input: {
     .limit(limit)
     .all();
 
-  return rows.map((row) => toView(row, null));
+  const aliasMap = aliasesByTagIds(
+    db,
+    rows.map((row) => row.id),
+  );
+  return rows.map((row) => {
+    const aliases = aliasMap.get(row.id) ?? [];
+    return {
+      id: row.id,
+      name: row.name,
+      category: parseCategory(row.category),
+      matchedAlias: matchedAliasForNeedle(row.name, aliases, needle),
+    };
+  });
 }
 
 export function listTags(input: {
@@ -390,14 +444,14 @@ export function listTags(input: {
     .offset(window.offset)
     .all();
 
-  const votes = myVoteMap(
-    db,
-    rows.map((row) => row.id),
-    input.viewerUserId,
-  );
+  const ids = rows.map((row) => row.id);
+  const votes = myVoteMap(db, ids, input.viewerUserId);
+  const aliasMap = aliasesByTagIds(db, ids);
 
   return {
-    items: rows.map((row) => toView(row, votes.get(row.id) ?? null)),
+    items: rows.map((row) =>
+      toView(row, votes.get(row.id) ?? null, aliasMap.get(row.id) ?? []),
+    ),
     total,
     page: window.page,
     limit: window.limit,
@@ -614,7 +668,14 @@ export function deleteTag(input: {
     .get();
   if (!tag) throw new TagNotFoundError();
 
-  db.delete(tags).where(eq(tags.id, tag.id)).run();
+  // Explicit cleanup so aliases (and related rows) never linger if FKs are off.
+  // Schema also uses ON DELETE CASCADE as a safety net.
+  db.transaction((tx) => {
+    tx.delete(tagAliases).where(eq(tagAliases.tagId, tag.id)).run();
+    tx.delete(tagVotes).where(eq(tagVotes.tagId, tag.id)).run();
+    tx.delete(contentTags).where(eq(contentTags.tagId, tag.id)).run();
+    tx.delete(tags).where(eq(tags.id, tag.id)).run();
+  });
 }
 
 export function setTagVote(input: {

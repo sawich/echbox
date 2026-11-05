@@ -29,10 +29,18 @@ const tagResponse = t.Object({
   id: t.String(),
   name: t.String(),
   category: tagCategory,
+  aliases: t.Array(t.String()),
   likes: t.Number(),
   dislikes: t.Number(),
   myVote: t.Union([t.Literal("like"), t.Literal("dislike"), t.Null()]),
   usageCount: t.Number(),
+});
+
+const tagSuggestResponse = t.Object({
+  id: t.String(),
+  name: t.String(),
+  category: tagCategory,
+  matchedAlias: t.Union([t.String(), t.Null()]),
 });
 
 function actorOf(user: { id: string; discordId: string }) {
@@ -59,7 +67,7 @@ export const tagRoutes = new Elysia({
         limit: t.Optional(t.Numeric({ minimum: 1, maximum: 50 })),
         exclude: t.Optional(t.Union([t.String(), t.Array(t.String())])),
       }),
-      response: t.Object({ tags: t.Array(tagResponse) }),
+      response: t.Object({ tags: t.Array(tagSuggestResponse) }),
       detail: { summary: "Suggest tags by prefix" },
     },
   )
