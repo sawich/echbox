@@ -12,8 +12,15 @@ import {
 export function parseBooruTagString(raw: string): string[] {
   return raw
     .split(",")
-    .map((part) => part.trim())
-    .filter((part) => part.length > 0);
+    .map((part) =>
+      part
+        .trim()
+        .toLowerCase()
+        .replace(/[^a-z0-9_]+/g, "_")
+        .replace(/_+/g, "_")
+        .replace(/^_|_$/g, ""),
+    )
+    .filter((part) => part.length > 0 && /^[a-z0-9_]+$/.test(part));
 }
 
 export function buildTaggerWorkflow(

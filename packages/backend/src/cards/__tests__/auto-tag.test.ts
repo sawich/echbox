@@ -33,8 +33,13 @@ describe("parseBooruTagString", () => {
       "long_hair",
     ]);
   });
-});
 
+  test("parseBooruTagString sanitizes parentheses and colons", () => {
+    expect(
+      parseBooruTagString("1girl, artoria_pendragon_(fate), rating:safe"),
+    ).toEqual(["1girl", "artoria_pendragon_fate", "rating_safe"]);
+  });
+});
 describe("buildTaggerWorkflow", () => {
   test("buildTaggerWorkflow sets LoadImage filename", () => {
     const wf = buildTaggerWorkflow(
@@ -241,6 +246,55 @@ describe("autoTagCards", () => {
     });
 
     expect(result.tagged).toBe(1);
+    expect(
+      getContentTags({ kind: "cards", contentId: cardId, dbPath }),
+    ).toEqual([]);
+  });
+
+  test("autoTagCards missing preview fails that card and continues", async () => {
+    const missing = seedCardWithPreview({ previewExists: false });
+    const ok = seedCardWithPreview();
+    const comfy = fakeComfy("1girl");
+
+    const result = await autoTagCards({
+      dbPath,
+      dataDir,
+      comfy,
+      workflow,
+      userId: uploader.userId,
+    });
+
+    expect(result.failed).toBe(1);
+    expect(result.tagged).toBe(1);
+    expect(result.failures[0]?.cardId).toBe(missing.cardId);
+    expect(
+      getContentTags({ kind: "cards", contentId: ok.cardId, dbPath }).map(
+        (t) => t.name,
+      ),
+    ).toEqual(["1girl"]);
+  });
+
+  test("autoTagCards empty history fails without writing tags", async () => {
+    const { cardId } = seedCardWithPreview();
+    const comfy: ComfyClient = {
+      async uploadImage() {
+        return "x.webp";
+      },
+      async runWorkflow() {
+        return { outputs: { "8": { text: [] } } };
+      },
+    };
+
+    const result = await autoTagCards({
+      dbPath,
+      dataDir,
+      comfy,
+      workflow,
+      userId: uploader.userId,
+    });
+
+    expect(result.failed).toBe(1);
+    expect(result.tagged).toBe(0);
     expect(
       getContentTags({ kind: "cards", contentId: cardId, dbPath }),
     ).toEqual([]);
