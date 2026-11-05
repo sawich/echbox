@@ -148,7 +148,7 @@ export function getLikesReceivedForAuthor(
     })
     .from(sceneVotes)
     .innerJoin(scenes, eq(sceneVotes.sceneId, scenes.id))
-    .where(eq(scenes.authorId, authorId))
+    .where(eq(scenes.uploaderId, authorId))
     .groupBy(sceneVotes.vote)
     .all();
 

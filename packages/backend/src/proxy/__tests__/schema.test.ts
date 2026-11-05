@@ -86,9 +86,8 @@ describe("content blob schema", () => {
         .values({
           id: cardId,
           gameId,
-          authorId: userId,
-          slug: "blob-card",
-          title: "Blob Card",
+          uploaderId: userId,
+          description: "",
           latestSemver: "1.0.0",
           latestVersionId: versionId,
           createdAt: now,

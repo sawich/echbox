@@ -158,7 +158,7 @@ export function getSoftmodLikesReceivedForAuthor(
     })
     .from(softmodVotes)
     .innerJoin(softmods, eq(softmodVotes.softmodId, softmods.id))
-    .where(eq(softmods.authorId, authorId))
+    .where(eq(softmods.uploaderId, authorId))
     .groupBy(softmodVotes.vote)
     .all();
 

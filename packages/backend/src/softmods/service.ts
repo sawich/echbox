@@ -4,11 +4,14 @@ import { sha256Hex } from "../cards/hash";
 import {
   orderBySort,
   resolveListWindow,
-  titleSlugSearch,
   voteNetScore,
   type CatalogListQuery,
   type PaginatedList,
 } from "../common/list-query";
+import {
+  contentIdsMatchingAllTagNames,
+  tagFilterNames,
+} from "../common/tag-filter";
 import { assertNonEmptyZip } from "../common/zip";
 import {
   discardStaged,
@@ -77,10 +80,9 @@ export type SoftmodVersionDetail = {
 export type SoftmodDetail = SoftmodVoteCounts & {
   id: string;
   gameId: string;
-  authorId: string;
-  title: string;
-  modAuthor: string | null;
+  uploaderId: string;
   description: string;
+  previewUrls: string[];
   website: string | null;
   latestSemver: string | null;
   latestVersionId: string | null;
@@ -95,10 +97,9 @@ export type SoftmodDetail = SoftmodVoteCounts & {
 export type SoftmodListItem = SoftmodVoteCounts & {
   id: string;
   gameId: string;
-  authorId: string;
-  title: string;
-  modAuthor: string | null;
+  uploaderId: string;
   description: string;
+  previewUrls: string[];
   latestSemver: string | null;
   latestVersionId: string | null;
   versionCount: number;
@@ -110,7 +111,8 @@ export type ListSoftmodsOptions = SoftmodServiceOptions &
   CatalogListQuery & {
     viewerUserId?: string | null;
     gameId?: string;
-    authorId?: string;
+    uploaderId?: string;
+    tags?: string[];
   };
 
 export type GetSoftmodOptions = SoftmodServiceOptions & {
@@ -118,16 +120,17 @@ export type GetSoftmodOptions = SoftmodServiceOptions & {
 };
 
 export type CreateSoftmodInput = SoftmodServiceOptions & {
-  authorId: string;
+  uploaderId: string;
   gameId: string;
   semver: string;
   fileBytes: Uint8Array;
   notes?: string;
+  description?: string;
 };
 
 export type AddSoftmodVersionInput = SoftmodServiceOptions & {
   softmodId: string;
-  authorId: string;
+  uploaderId: string;
   semver: string;
   fileBytes: Uint8Array;
   notes?: string;
@@ -135,13 +138,19 @@ export type AddSoftmodVersionInput = SoftmodServiceOptions & {
 
 export type DeleteSoftmodInput = SoftmodServiceOptions & {
   softmodId: string;
-  authorId: string;
+  uploaderId: string;
+};
+
+export type PatchSoftmodInput = SoftmodServiceOptions & {
+  softmodId: string;
+  uploaderId: string;
+  description?: string;
 };
 
 export type DeleteSoftmodVersionInput = SoftmodServiceOptions & {
   softmodId: string;
   versionId: string;
-  authorId: string;
+  uploaderId: string;
 };
 
 function downloadUrl(softmodId: string, versionId: string | null): string {
@@ -210,7 +219,7 @@ export function findSoftmodByHash(
 
 function loadUploader(
   db: ReturnType<typeof getDb>,
-  authorId: string,
+  uploaderId: string,
 ): SoftmodUploader {
   const author = db
     .select({
@@ -218,11 +227,11 @@ function loadUploader(
       username: users.username,
     })
     .from(users)
-    .where(eq(users.id, authorId))
+    .where(eq(users.id, uploaderId))
     .get();
 
   return {
-    id: authorId,
+    id: uploaderId,
     username: author?.username ?? "",
   };
 }
@@ -270,16 +279,15 @@ export async function getSoftmod(
   return {
     id: softmod.id,
     gameId: softmod.gameId,
-    authorId: softmod.authorId,
-    title: softmod.title,
-    modAuthor: softmod.modAuthor,
+    uploaderId: softmod.uploaderId,
     description: softmod.description,
+    previewUrls: [],
     website: softmod.website,
     latestSemver: softmod.latestSemver,
     latestVersionId: softmod.latestVersionId,
     createdAt: softmod.createdAt,
     updatedAt: softmod.updatedAt,
-    uploader: loadUploader(db, softmod.authorId),
+    uploader: loadUploader(db, softmod.uploaderId),
     downloadUrl: downloadUrl(softmod.id, softmod.latestVersionId),
     versionCount: versions.length,
     ...votes,
@@ -291,15 +299,31 @@ export async function listSoftmods(
   options?: ListSoftmodsOptions,
 ): Promise<PaginatedList<SoftmodListItem>> {
   const db = getDb(options?.dbPath);
-  const { page, limit, offset, sort, q, unbounded } = resolveListWindow(options);
+  const { page, limit, offset, sort, unbounded } = resolveListWindow(options);
+  const tagNames = tagFilterNames(options?.tags);
+  const taggedIds = tagNames.length
+    ? contentIdsMatchingAllTagNames({
+        kind: "softmods",
+        names: tagNames,
+        dbPath: options?.dbPath,
+      })
+    : undefined;
+  if (taggedIds && taggedIds.length === 0) {
+    return { items: [], total: 0, page, limit: unbounded ? 0 : limit };
+  }
 
   const whereClause = and(
     options?.gameId ? eq(softmods.gameId, options.gameId) : undefined,
-    options?.authorId ? eq(softmods.authorId, options.authorId) : undefined,
-    titleSlugSearch(softmods.title, null, q),
+    options?.uploaderId ? eq(softmods.uploaderId, options.uploaderId) : undefined,
+    taggedIds ? inArray(softmods.id, taggedIds) : undefined,
   );
   const score = voteNetScore("softmod_votes", "softmod_id", softmods.id);
-  const order = orderBySort(sort, softmods.createdAt, softmods.title, score);
+  const order = orderBySort(
+    sort === "title" ? "recent" : sort,
+    softmods.createdAt,
+    softmods.createdAt,
+    score,
+  );
 
   const total =
     db
@@ -362,15 +386,14 @@ export async function listSoftmods(
     items.push({
       id: softmod.id,
       gameId: softmod.gameId,
-      authorId: softmod.authorId,
-      title: softmod.title,
-      modAuthor: softmod.modAuthor,
+      uploaderId: softmod.uploaderId,
       description: softmod.description,
+      previewUrls: [],
       latestSemver: softmod.latestSemver,
       latestVersionId: softmod.latestVersionId,
       versionCount: versions.length,
       downloadUrl: downloadUrl(softmod.id, softmod.latestVersionId),
-      uploader: loadUploader(db, softmod.authorId),
+      uploader: loadUploader(db, softmod.uploaderId),
       ...votes,
     });
   }
@@ -386,7 +409,7 @@ export async function listSoftmods(
 export async function createSoftmod(
   input: CreateSoftmodInput,
 ): Promise<SoftmodDetail> {
-  const { authorId, gameId, fileBytes, notes, dbPath, dataDir } = input;
+  const { uploaderId, gameId, fileBytes, notes, dbPath, dataDir } = input;
   const semver = normalizeSemver(input.semver);
 
   assertGameSupportsKind(gameId, "softmods", { dbPath });
@@ -439,10 +462,8 @@ export async function createSoftmod(
           .values({
             id: softmodId,
             gameId,
-            authorId,
-            title: manifest.name || "Untitled",
-            modAuthor: manifest.author || null,
-            description: manifest.description,
+            uploaderId,
+            description: input.description ?? manifest.description,
             website: manifest.website,
             latestSemver: semver,
             latestVersionId: versionId,
@@ -498,7 +519,7 @@ export async function createSoftmod(
 export async function addSoftmodVersion(
   input: AddSoftmodVersionInput,
 ): Promise<SoftmodDetail> {
-  const { softmodId, authorId, fileBytes, notes, dbPath, dataDir } = input;
+  const { softmodId, uploaderId, fileBytes, notes, dbPath, dataDir } = input;
   const semver = normalizeSemver(input.semver);
   const db = getDb(dbPath);
 
@@ -512,7 +533,7 @@ export async function addSoftmodVersion(
     throw new SoftmodNotFoundError();
   }
 
-  if (softmod.authorId !== authorId) {
+  if (softmod.uploaderId !== uploaderId) {
     throw new ForbiddenSoftmodError();
   }
 
@@ -562,7 +583,7 @@ export async function addSoftmodVersion(
         if (!current) {
           throw new SoftmodNotFoundError();
         }
-        if (current.authorId !== authorId) {
+        if (current.uploaderId !== uploaderId) {
           throw new ForbiddenSoftmodError();
         }
 
@@ -600,9 +621,6 @@ export async function addSoftmodVersion(
 
         tx.update(softmods)
           .set({
-            title: manifest.name || current.title,
-            modAuthor: manifest.author || null,
-            description: manifest.description,
             website: manifest.website,
             latestSemver: latest.semver,
             latestVersionId: latest.id,
@@ -637,7 +655,7 @@ export async function addSoftmodVersion(
 export async function deleteSoftmodVersion(
   input: DeleteSoftmodVersionInput,
 ): Promise<SoftmodDetail> {
-  const { softmodId, versionId, authorId, dbPath, dataDir } = input;
+  const { softmodId, versionId, uploaderId, dbPath, dataDir } = input;
   const db = getDb(dbPath);
 
   const softmod = db
@@ -650,7 +668,7 @@ export async function deleteSoftmodVersion(
     throw new SoftmodNotFoundError();
   }
 
-  if (softmod.authorId !== authorId) {
+  if (softmod.uploaderId !== uploaderId) {
     throw new ForbiddenSoftmodError();
   }
 
@@ -698,10 +716,44 @@ export async function deleteSoftmodVersion(
   return detail!;
 }
 
+export async function patchSoftmod(
+  input: PatchSoftmodInput,
+): Promise<SoftmodDetail> {
+  const db = getDb(input.dbPath);
+  const softmod = db
+    .select()
+    .from(softmods)
+    .where(eq(softmods.id, input.softmodId))
+    .get();
+
+  if (!softmod) {
+    throw new SoftmodNotFoundError();
+  }
+  if (softmod.uploaderId !== input.uploaderId) {
+    throw new ForbiddenSoftmodError();
+  }
+
+  if (input.description !== undefined) {
+    db.update(softmods)
+      .set({
+        description: input.description,
+        updatedAt: new Date().toISOString(),
+      })
+      .where(eq(softmods.id, input.softmodId))
+      .run();
+  }
+
+  const detail = await getSoftmod(input.softmodId, {
+    dbPath: input.dbPath,
+    dataDir: input.dataDir,
+  });
+  return detail!;
+}
+
 export async function deleteSoftmod(
   input: DeleteSoftmodInput,
 ): Promise<{ ok: true; id: string }> {
-  const { softmodId, authorId, dbPath, dataDir } = input;
+  const { softmodId, uploaderId, dbPath, dataDir } = input;
   const db = getDb(dbPath);
 
   const softmod = db
@@ -714,7 +766,7 @@ export async function deleteSoftmod(
     throw new SoftmodNotFoundError();
   }
 
-  if (softmod.authorId !== authorId) {
+  if (softmod.uploaderId !== uploaderId) {
     throw new ForbiddenSoftmodError();
   }
 

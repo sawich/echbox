@@ -73,7 +73,7 @@ export type PluginVersionDetail = {
 export type PluginDetail = PluginVoteCounts & {
   id: string;
   gameId: string;
-  authorId: string;
+  uploaderId: string;
   title: string;
   description: string | null;
   latestSemver: string | null;
@@ -89,7 +89,7 @@ export type PluginDetail = PluginVoteCounts & {
 export type PluginListItem = PluginVoteCounts & {
   id: string;
   gameId: string;
-  authorId: string;
+  uploaderId: string;
   title: string;
   description: string | null;
   latestSemver: string | null;
@@ -103,7 +103,7 @@ export type ListPluginsOptions = PluginServiceOptions &
   CatalogListQuery & {
     viewerUserId?: string | null;
     gameId?: string;
-    authorId?: string;
+    uploaderId?: string;
   };
 
 export type GetPluginOptions = PluginServiceOptions & {
@@ -111,7 +111,7 @@ export type GetPluginOptions = PluginServiceOptions & {
 };
 
 export type CreatePluginInput = PluginServiceOptions & {
-  authorId: string;
+  uploaderId: string;
   gameId: string;
   title: string;
   description?: string;
@@ -122,7 +122,7 @@ export type CreatePluginInput = PluginServiceOptions & {
 
 export type AddPluginVersionInput = PluginServiceOptions & {
   pluginId: string;
-  authorId: string;
+  uploaderId: string;
   semver: string;
   fileBytes: Uint8Array;
   notes?: string;
@@ -130,20 +130,20 @@ export type AddPluginVersionInput = PluginServiceOptions & {
 
 export type PatchPluginInput = PluginServiceOptions & {
   id: string;
-  authorId: string;
+  uploaderId: string;
   title?: string;
   description?: string;
 };
 
 export type DeletePluginInput = PluginServiceOptions & {
   pluginId: string;
-  authorId: string;
+  uploaderId: string;
 };
 
 export type DeletePluginVersionInput = PluginServiceOptions & {
   pluginId: string;
   versionId: string;
-  authorId: string;
+  uploaderId: string;
 };
 
 const EMPTY_SUMMARY_JSON = "{}";
@@ -210,7 +210,7 @@ export function findPluginByHash(
 
 function loadUploader(
   db: ReturnType<typeof getDb>,
-  authorId: string,
+  uploaderId: string,
 ): PluginUploader {
   const author = db
     .select({
@@ -218,11 +218,11 @@ function loadUploader(
       username: users.username,
     })
     .from(users)
-    .where(eq(users.id, authorId))
+    .where(eq(users.id, uploaderId))
     .get();
 
   return {
-    id: authorId,
+    id: uploaderId,
     username: author?.username ?? "",
   };
 }
@@ -266,14 +266,14 @@ export async function getPlugin(
   return {
     id: plugin.id,
     gameId: plugin.gameId,
-    authorId: plugin.authorId,
+    uploaderId: plugin.uploaderId,
     title: plugin.title,
     description: plugin.description,
     latestSemver: plugin.latestSemver,
     latestVersionId: plugin.latestVersionId,
     createdAt: plugin.createdAt,
     updatedAt: plugin.updatedAt,
-    uploader: loadUploader(db, plugin.authorId),
+    uploader: loadUploader(db, plugin.uploaderId),
     downloadUrl: downloadUrl(plugin.id, plugin.latestVersionId),
     versionCount: versions.length,
     ...votes,
@@ -289,7 +289,7 @@ export async function listPlugins(
 
   const whereClause = and(
     options?.gameId ? eq(plugins.gameId, options.gameId) : undefined,
-    options?.authorId ? eq(plugins.authorId, options.authorId) : undefined,
+    options?.uploaderId ? eq(plugins.uploaderId, options.uploaderId) : undefined,
     titleSlugSearch(plugins.title, null, q),
   );
   const score = voteNetScore("plugin_votes", "plugin_id", plugins.id);
@@ -356,14 +356,14 @@ export async function listPlugins(
     items.push({
       id: plugin.id,
       gameId: plugin.gameId,
-      authorId: plugin.authorId,
+      uploaderId: plugin.uploaderId,
       title: plugin.title,
       description: plugin.description,
       latestSemver: plugin.latestSemver,
       latestVersionId: plugin.latestVersionId,
       versionCount: versions.length,
       downloadUrl: downloadUrl(plugin.id, plugin.latestVersionId),
-      uploader: loadUploader(db, plugin.authorId),
+      uploader: loadUploader(db, plugin.uploaderId),
       ...votes,
     });
   }
@@ -380,7 +380,7 @@ export async function createPlugin(
   input: CreatePluginInput,
 ): Promise<PluginDetail> {
   const {
-    authorId,
+    uploaderId,
     gameId,
     title,
     description,
@@ -428,7 +428,7 @@ export async function createPlugin(
           .values({
             id: pluginId,
             gameId,
-            authorId,
+            uploaderId,
             title: normalizedTitle,
             description: description?.trim() || null,
             latestSemver: semver,
@@ -477,7 +477,7 @@ export async function createPlugin(
 export async function addPluginVersion(
   input: AddPluginVersionInput,
 ): Promise<PluginDetail> {
-  const { pluginId, authorId, fileBytes, notes, dbPath, dataDir } = input;
+  const { pluginId, uploaderId, fileBytes, notes, dbPath, dataDir } = input;
   const semver = normalizeSemver(input.semver);
   const db = getDb(dbPath);
 
@@ -487,7 +487,7 @@ export async function addPluginVersion(
     throw new PluginNotFoundError();
   }
 
-  if (plugin.authorId !== authorId) {
+  if (plugin.uploaderId !== uploaderId) {
     throw new ForbiddenPluginError();
   }
 
@@ -528,7 +528,7 @@ export async function addPluginVersion(
         if (!current) {
           throw new PluginNotFoundError();
         }
-        if (current.authorId !== authorId) {
+        if (current.uploaderId !== uploaderId) {
           throw new ForbiddenPluginError();
         }
 
@@ -599,7 +599,7 @@ export async function addPluginVersion(
 export async function patchPlugin(
   input: PatchPluginInput,
 ): Promise<PluginDetail> {
-  const { id, authorId, title, description, dbPath, dataDir } = input;
+  const { id, uploaderId, title, description, dbPath, dataDir } = input;
   const db = getDb(dbPath);
 
   const plugin = db.select().from(plugins).where(eq(plugins.id, id)).get();
@@ -608,7 +608,7 @@ export async function patchPlugin(
     throw new PluginNotFoundError();
   }
 
-  if (plugin.authorId !== authorId) {
+  if (plugin.uploaderId !== uploaderId) {
     throw new ForbiddenPluginError();
   }
 
@@ -639,7 +639,7 @@ export async function patchPlugin(
 export async function deletePluginVersion(
   input: DeletePluginVersionInput,
 ): Promise<PluginDetail> {
-  const { pluginId, versionId, authorId, dbPath, dataDir } = input;
+  const { pluginId, versionId, uploaderId, dbPath, dataDir } = input;
   const db = getDb(dbPath);
 
   const plugin = db.select().from(plugins).where(eq(plugins.id, pluginId)).get();
@@ -648,7 +648,7 @@ export async function deletePluginVersion(
     throw new PluginNotFoundError();
   }
 
-  if (plugin.authorId !== authorId) {
+  if (plugin.uploaderId !== uploaderId) {
     throw new ForbiddenPluginError();
   }
 
@@ -699,7 +699,7 @@ export async function deletePluginVersion(
 export async function deletePlugin(
   input: DeletePluginInput,
 ): Promise<{ ok: true; id: string }> {
-  const { pluginId, authorId, dbPath, dataDir } = input;
+  const { pluginId, uploaderId, dbPath, dataDir } = input;
   const db = getDb(dbPath);
 
   const plugin = db.select().from(plugins).where(eq(plugins.id, pluginId)).get();
@@ -708,7 +708,7 @@ export async function deletePlugin(
     throw new PluginNotFoundError();
   }
 
-  if (plugin.authorId !== authorId) {
+  if (plugin.uploaderId !== uploaderId) {
     throw new ForbiddenPluginError();
   }
 

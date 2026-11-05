@@ -4,7 +4,8 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { getDb } from "../../db/client";
 import { migrateDb } from "../../db/migrate";
-import { users } from "../../db/schema";
+import { clothes, users } from "../../db/schema";
+import { setContentTags } from "../../tags/service";
 import { fixtureBytes } from "../../kkloader/__tests__/helpers";
 import { sha256Hex } from "../../cards/hash";
 import {
@@ -90,8 +91,8 @@ describe("clothes service", () => {
     const created = await createClothes({
       gameId,
       semver: "1.0.0",
-      authorId,
-      title: "Test Outfit",
+      uploaderId: authorId,
+      description: "Test Outfit",
       fileBytes,
       notes: "Initial upload",
       dbPath,
@@ -100,8 +101,9 @@ describe("clothes service", () => {
 
     expect(created.id).toBeString();
     expect(created.type).toBe("clothes");
-    expect(created.authorId).toBe(authorId);
-    expect(created.title).toBe("Test Outfit");
+    expect(created.uploaderId).toBe(authorId);
+    expect(created.description).toBe("Test Outfit");
+    expect(created).not.toHaveProperty("title");
     expect(created.latestSemver).toBe("1.0.0");
     expect(created.latestVersionId).toBe(created.versions[0]!.id);
     expect(created.versions).toHaveLength(1);
@@ -140,7 +142,8 @@ describe("clothes service", () => {
 
     const list = (await listClothes({ dbPath, dataDir })).items;
     expect(list).toHaveLength(1);
-    expect(list[0]!.authorId).toBe(authorId);
+    expect(list[0]!.uploaderId).toBe(authorId);
+    expect(list[0]!.description).toBe("Test Outfit");
     expect(list[0]!.imageUrl).toBe(
       `/api/clothes/${created.id}/versions/${created.latestVersionId}/image`,
     );
@@ -151,7 +154,7 @@ describe("clothes service", () => {
     const first = await createClothes({
       gameId,
       semver: "1.0.0",
-      authorId,
+      uploaderId: authorId,
       fileBytes,
       dbPath,
       dataDir,
@@ -162,7 +165,7 @@ describe("clothes service", () => {
       await createClothes({
       gameId,
       semver: "1.0.0",
-        authorId: otherUserId,
+        uploaderId: otherUserId,
         fileBytes,
         dbPath,
         dataDir,
@@ -194,7 +197,7 @@ describe("clothes service", () => {
       await createClothes({
       gameId,
       semver: "1.0.0",
-        authorId,
+        uploaderId: authorId,
         fileBytes: charaBytes,
         dbPath,
         dataDir,
@@ -216,8 +219,8 @@ describe("clothes service", () => {
     const item = await createClothes({
       gameId,
       semver: "1.0.0",
-      authorId,
-      title: "Evolving Outfit",
+      uploaderId: authorId,
+      description: "Evolving Outfit",
       fileBytes: v1Bytes,
       dbPath,
       dataDir,
@@ -226,7 +229,7 @@ describe("clothes service", () => {
     const updated = await addClothesVersion({
       clothesId: item.id,
       semver: "2.0.0",
-      authorId,
+      uploaderId: authorId,
       fileBytes: v2Bytes,
       notes: "Modded outfit",
       dbPath,
@@ -242,7 +245,7 @@ describe("clothes service", () => {
       await addClothesVersion({
         clothesId: item.id,
         semver: "2.0.0",
-        authorId,
+        uploaderId: authorId,
         fileBytes: v1Bytes,
         dbPath,
         dataDir,
@@ -261,7 +264,7 @@ describe("clothes service", () => {
     const item = await createClothes({
       gameId,
       semver: "1.0.0",
-      authorId,
+      uploaderId: authorId,
       fileBytes: v1Bytes,
       dbPath,
       dataDir,
@@ -272,7 +275,7 @@ describe("clothes service", () => {
       await addClothesVersion({
         clothesId: item.id,
         semver: "2.0.0",
-        authorId: otherUserId,
+        uploaderId: otherUserId,
         fileBytes: v2Bytes,
         dbPath,
         dataDir,
@@ -295,7 +298,7 @@ describe("clothes service", () => {
   test("addClothesVersion rejects duplicate semver with 409 DUPLICATE_SEMVER", async () => {
     const item = await createClothes({
       gameId,
-      authorId,
+      uploaderId: authorId,
       semver: "1.0.0",
       fileBytes: await fixtureBytes("clothes", "kk_clothes.png"),
       dbPath,
@@ -306,7 +309,7 @@ describe("clothes service", () => {
     try {
       await addClothesVersion({
         clothesId: item.id,
-        authorId,
+        uploaderId: authorId,
         semver: "1.0.0",
         fileBytes: await altClothesBytes(),
         dbPath,
@@ -328,7 +331,7 @@ describe("clothes service", () => {
       try {
         await createClothes({
           gameId,
-          authorId,
+          uploaderId: authorId,
           semver: bad,
           fileBytes: bytes,
           dbPath,
@@ -345,7 +348,7 @@ describe("clothes service", () => {
   test("latest is chosen by semver, not insertion order", async () => {
     const item = await createClothes({
       gameId,
-      authorId,
+      uploaderId: authorId,
       semver: "2.0.0",
       fileBytes: await fixtureBytes("clothes", "kk_clothes.png"),
       dbPath,
@@ -353,7 +356,7 @@ describe("clothes service", () => {
     });
     const updated = await addClothesVersion({
       clothesId: item.id,
-      authorId,
+      uploaderId: authorId,
       semver: "1.5.0",
       fileBytes: await altClothesBytes(),
       dbPath,
@@ -373,7 +376,7 @@ describe("clothes service", () => {
     const item = await createClothes({
       gameId,
       semver: "1.0.0",
-      authorId,
+      uploaderId: authorId,
       fileBytes: v1Bytes,
       dbPath,
       dataDir,
@@ -389,7 +392,7 @@ describe("clothes service", () => {
   test("deleteClothesVersion recomputes latest and deleting last leaves empty parent", async () => {
     const item = await createClothes({
       gameId,
-      authorId,
+      uploaderId: authorId,
       semver: "1.0.0",
       fileBytes: await fixtureBytes("clothes", "kk_clothes.png"),
       dbPath,
@@ -400,7 +403,7 @@ describe("clothes service", () => {
 
     const withV2 = await addClothesVersion({
       clothesId: item.id,
-      authorId,
+      uploaderId: authorId,
       semver: "2.0.0",
       fileBytes: await altClothesBytes(),
       dbPath,
@@ -413,7 +416,7 @@ describe("clothes service", () => {
     const afterDeleteHigher = await deleteClothesVersion({
       clothesId: item.id,
       versionId: v2Id,
-      authorId,
+      uploaderId: authorId,
       dbPath,
       dataDir,
     });
@@ -428,7 +431,7 @@ describe("clothes service", () => {
       await deleteClothesVersion({
         clothesId: item.id,
         versionId: v1Id,
-        authorId: otherUserId,
+        uploaderId: otherUserId,
         dbPath,
         dataDir,
       });
@@ -440,7 +443,7 @@ describe("clothes service", () => {
     const empty = await deleteClothesVersion({
       clothesId: item.id,
       versionId: v1Id,
-      authorId,
+      uploaderId: authorId,
       dbPath,
       dataDir,
     });
@@ -461,8 +464,8 @@ describe("clothes service", () => {
     const item = await createClothes({
       gameId,
       semver: "1.0.0",
-      authorId,
-      title: "Before",
+      uploaderId: authorId,
+      description: "Before",
       fileBytes,
       dbPath,
       dataDir,
@@ -473,8 +476,8 @@ describe("clothes service", () => {
     try {
       await patchClothes({
         clothesId: item.id,
-        authorId: otherUserId,
-        title: "Hacked",
+        uploaderId: otherUserId,
+        description: "Hacked",
         dbPath,
         dataDir,
       });
@@ -485,16 +488,17 @@ describe("clothes service", () => {
 
     const patched = await patchClothes({
       clothesId: item.id,
-      authorId,
-      title: "After",
+      uploaderId: authorId,
+      description: "After",
       dbPath,
       dataDir,
     });
-    expect(patched.title).toBe("After");
+    expect(patched.description).toBe("After");
+    expect(patched).not.toHaveProperty("title");
 
     await deleteClothes({
       clothesId: item.id,
-      authorId,
+      uploaderId: authorId,
       dbPath,
       dataDir,
     });
@@ -502,11 +506,53 @@ describe("clothes service", () => {
     expect(findContentBlob(contentHash, dbPath)).toEqual({ chunkCount: 1 });
   });
 
+  test("listClothes with tags returns only clothes that have every tag", async () => {
+    const db = getDb(dbPath);
+    const now = new Date().toISOString();
+    const bothId = crypto.randomUUID();
+    const onlyId = crypto.randomUUID();
+    for (const id of [bothId, onlyId]) {
+      db.insert(clothes)
+        .values({
+          id,
+          gameId,
+          uploaderId: authorId,
+          description: "",
+          latestSemver: null,
+          latestVersionId: null,
+          createdAt: now,
+          updatedAt: now,
+        })
+        .run();
+    }
+    const actor = { userId: authorId, isAdmin: false };
+    setContentTags({
+      kind: "clothes",
+      contentId: bothId,
+      names: ["a", "b"],
+      actor,
+      uploaderId: authorId,
+      dbPath,
+    });
+    setContentTags({
+      kind: "clothes",
+      contentId: onlyId,
+      names: ["a"],
+      actor,
+      uploaderId: authorId,
+      dbPath,
+    });
+
+    const filtered = await listClothes({ tags: ["a", "b"], dbPath, dataDir });
+    expect(filtered.total).toBe(1);
+    expect(filtered.items.map((item) => item.id)).toEqual([bothId]);
+  });
+
   test("legacy disk original_path is served when blob is absent", async () => {
     const db = getDb(dbPath);
     const planted = await plantLegacyClothesVersionOnDisk(db, {
       gameId,
-      authorId,
+      uploaderId: authorId,
       dataDir,
     });
 
@@ -527,14 +573,14 @@ describe("clothes service", () => {
     const db = getDb(dbPath);
     const planted = await plantClothesVersionWithBlob(db, {
       gameId,
-      authorId,
+      uploaderId: authorId,
       dbPath,
       dataDir,
     });
 
     await deleteClothes({
       clothesId: planted.clothesId,
-      authorId,
+      uploaderId: authorId,
       dbPath,
       dataDir,
     });

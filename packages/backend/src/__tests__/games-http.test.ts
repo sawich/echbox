@@ -10,6 +10,8 @@ import { users } from "../db/schema";
 import { createGame, getGame } from "../games/service";
 import { gameIconsDir, iconSourcePath, iconWebpPath } from "../games/icons";
 import { createPlugin } from "../plugins/service";
+import { sha256Hex } from "../cards/hash";
+import { findContentBlob } from "../proxy/blob-store";
 import { strToU8, zipSync } from "fflate";
 
 const iconFixturePath = join(import.meta.dir, "fixtures", "icon.png");
@@ -219,7 +221,7 @@ describe("Games HTTP routes", () => {
     expect(denied.status).toBe(403);
   });
 
-  test("admin delete removes the game and plugin rows and leaves the zip", async () => {
+  test("admin delete removes the game and plugin rows and leaves the content blob", async () => {
     const game = createGame({
       title: "Honey Select 2",
       createdByUserId: adminId,
@@ -227,16 +229,19 @@ describe("Games HTTP routes", () => {
       contentKinds: [{ kind: "plugins", relPath: null }],
     });
 
+    const fileBytes = zipSync({ "data.txt": strToU8("x") });
     const plugin = await createPlugin({
-      authorId: userId,
+      uploaderId: userId,
       gameId: game.id,
       title: "Content",
       semver: "1.0.0",
-      fileBytes: zipSync({ "data.txt": strToU8("x") }),
+      fileBytes,
       dbPath,
       dataDir,
     });
-    const zipPath = plugin.versions[0]!.originalPath;
+    const contentHash = sha256Hex(fileBytes);
+    expect(plugin.versions[0]!.originalPath).toBeNull();
+    expect(findContentBlob(contentHash, dbPath)).toEqual({ chunkCount: 1 });
 
     const denied = await app.handle(
       new Request(`http://localhost/api/games/${game.id}`, {
@@ -255,7 +260,7 @@ describe("Games HTTP routes", () => {
     );
     expect(res.status).toBe(204);
     expect(getGame(game.id, { dbPath })).toBeNull();
-    expect(existsSync(zipPath)).toBe(true);
+    expect(findContentBlob(contentHash, dbPath)).toEqual({ chunkCount: 1 });
 
     const missing = await app.handle(
       new Request(`http://localhost/api/games/${game.id}`, {
@@ -377,7 +382,7 @@ describe("Games HTTP routes", () => {
     });
     await expect(
       createPlugin({
-        authorId: userId,
+        uploaderId: userId,
         gameId: game.id,
         title: "Nope",
         semver: "1.0.0",

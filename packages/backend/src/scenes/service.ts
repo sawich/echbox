@@ -9,11 +9,14 @@ import { and, count, eq, inArray } from "drizzle-orm";
 import {
   orderBySort,
   resolveListWindow,
-  titleSlugSearch,
   voteNetScore,
   type CatalogListQuery,
   type PaginatedList,
 } from "../common/list-query";
+import {
+  contentIdsMatchingAllTagNames,
+  tagFilterNames,
+} from "../common/tag-filter";
 import { getDb } from "../db/client";
 import { newId } from "../id";
 import { sceneVersions, sceneVotes, scenes, users } from "../db/schema";
@@ -64,7 +67,7 @@ export type SceneVersionDetail = CardDetail["versions"][number] & {
 export type SceneDetail = Omit<CardDetail, "versions"> &
   VoteCounts & {
     gameId: string;
-    authorId: string;
+    uploaderId: string;
     authorUsername?: string | null;
     authorAvatar?: string | null;
     createdAt: string;
@@ -75,14 +78,15 @@ export type SceneDetail = Omit<CardDetail, "versions"> &
 export type SceneListItem = CardListItem &
   VoteCounts & {
     gameId: string;
-    authorId: string;
+    uploaderId: string;
   };
 
 export type ListScenesOptions = SceneServiceOptions &
   CatalogListQuery & {
     viewerUserId?: string | null;
     gameId?: string;
-    authorId?: string;
+    uploaderId?: string;
+    tags?: string[];
   };
 
 export type GetSceneOptions = SceneServiceOptions & {
@@ -90,30 +94,18 @@ export type GetSceneOptions = SceneServiceOptions & {
 };
 
 export type CreateSceneInput = SceneServiceOptions & {
-  authorId: string;
+  uploaderId: string;
   gameId: string;
-  title?: string;
-  slug?: string;
+  description?: string;
   fileBytes: Uint8Array;
   semver: string;
   notes?: string;
-  /** Original upload filename — used when title is empty (scenes have no embedded name). */
   originalFilename?: string | null;
 };
 
-/** Basename without extension; empty string if nothing usable. */
-export function filenameStem(filename: string | null | undefined): string {
-  if (!filename) return "";
-  const base = filename.replace(/\\/g, "/").split("/").pop()?.trim() ?? "";
-  if (!base || base === "." || base === "..") return "";
-  const dot = base.lastIndexOf(".");
-  const stem = (dot > 0 ? base.slice(0, dot) : base).trim();
-  return stem;
-}
-
 export type AddSceneVersionInput = SceneServiceOptions & {
   sceneId: string;
-  authorId: string;
+  uploaderId: string;
   fileBytes: Uint8Array;
   semver: string;
   notes?: string;
@@ -122,22 +114,21 @@ export type AddSceneVersionInput = SceneServiceOptions & {
 export type PatchSceneInput = SceneServiceOptions & {
   sceneId?: string;
   id?: string;
-  authorId: string;
-  title?: string;
-  slug?: string;
+  uploaderId: string;
+  description?: string;
   notes?: string;
 };
 
 export type DeleteSceneInput = SceneServiceOptions & {
   sceneId?: string;
   id?: string;
-  authorId: string;
+  uploaderId: string;
 };
 
 export type DeleteSceneVersionInput = SceneServiceOptions & {
   sceneId: string;
   versionId: string;
-  authorId: string;
+  uploaderId: string;
 };
 
 function imageUrl(sceneId: string, versionId: string | null): string {
@@ -154,15 +145,6 @@ function normalizeSemver(input: string | undefined): string {
   } catch {
     throw new BadSceneError("Enter a valid version number (for example 1.0.0).");
   }
-}
-
-function slugify(input: string, fallbackId: string): string {
-  const normalized = input
-    .trim()
-    .toLowerCase()
-    .replace(/[^a-z0-9]+/g, "-")
-    .replace(/^-+|-+$/g, "");
-  return normalized || `scene-${fallbackId.slice(0, 8)}`;
 }
 
 function humanizeSceneParseError(err: unknown): string {
@@ -268,18 +250,17 @@ export async function getScene(
       avatar: users.avatar,
     })
     .from(users)
-    .where(eq(users.id, scene.authorId))
+    .where(eq(users.id, scene.uploaderId))
     .get();
 
   return {
     id: scene.id,
     gameId: scene.gameId,
     type: "scene",
-    authorId: scene.authorId,
+    uploaderId: scene.uploaderId,
     authorUsername: author?.username ?? null,
     authorAvatar: author?.avatar ?? null,
-    slug: scene.slug,
-    title: scene.title,
+    description: scene.description,
     latestSemver: scene.latestSemver,
     latestVersionId: scene.latestVersionId,
     createdAt: scene.createdAt,
@@ -293,15 +274,31 @@ export async function listScenes(
   options?: ListScenesOptions,
 ): Promise<PaginatedList<SceneListItem>> {
   const db = getDb(options?.dbPath);
-  const { page, limit, offset, sort, q, unbounded } = resolveListWindow(options);
+  const { page, limit, offset, sort, unbounded } = resolveListWindow(options);
+  const tagNames = tagFilterNames(options?.tags);
+  const taggedIds = tagNames.length
+    ? contentIdsMatchingAllTagNames({
+        kind: "scenes",
+        names: tagNames,
+        dbPath: options?.dbPath,
+      })
+    : undefined;
+  if (taggedIds && taggedIds.length === 0) {
+    return { items: [], total: 0, page, limit: unbounded ? 0 : limit };
+  }
 
   const whereClause = and(
     options?.gameId ? eq(scenes.gameId, options.gameId) : undefined,
-    options?.authorId ? eq(scenes.authorId, options.authorId) : undefined,
-    titleSlugSearch(scenes.title, scenes.slug, q),
+    options?.uploaderId ? eq(scenes.uploaderId, options.uploaderId) : undefined,
+    taggedIds ? inArray(scenes.id, taggedIds) : undefined,
   );
   const score = voteNetScore("scene_votes", "scene_id", scenes.id);
-  const order = orderBySort(sort, scenes.createdAt, scenes.title, score);
+  const order = orderBySort(
+    sort === "title" ? "recent" : sort,
+    scenes.createdAt,
+    scenes.createdAt,
+    score,
+  );
 
   const total =
     db
@@ -375,9 +372,8 @@ export async function listScenes(
       id: scene.id,
       gameId: scene.gameId,
       type: "scene",
-      authorId: scene.authorId,
-      slug: scene.slug,
-      title: scene.title,
+      uploaderId: scene.uploaderId,
+      description: scene.description,
       latestSemver: scene.latestSemver,
       latestVersionId: scene.latestVersionId,
       versionCount: versions.length,
@@ -407,17 +403,7 @@ export async function createScene(
     previewPath: string;
   }
 > {
-  const {
-    authorId,
-    gameId,
-    title,
-    slug,
-    fileBytes,
-    notes,
-    originalFilename,
-    dbPath,
-    dataDir,
-  } = input;
+  const { uploaderId, gameId, fileBytes, notes, dbPath, dataDir } = input;
 
   const semver = normalizeSemver(input.semver);
   assertGameSupportsKind(gameId, "scenes", { dbPath });
@@ -437,14 +423,6 @@ export async function createScene(
   const sceneId = newId();
   const versionId = newId();
   const now = new Date().toISOString();
-
-  const resolvedTitle =
-    title?.trim() ||
-    filenameStem(originalFilename) ||
-    "Untitled Scene";
-  const resolvedSlug = slug?.trim()
-    ? slugify(slug, sceneId)
-    : slugify(resolvedTitle, sceneId);
 
   const { previewPath } = getVersionPaths(
     sceneId,
@@ -473,9 +451,8 @@ export async function createScene(
       .values({
         id: sceneId,
         gameId,
-        authorId,
-        slug: resolvedSlug,
-        title: resolvedTitle,
+        uploaderId,
+        description: input.description ?? "",
         latestSemver: semver,
         latestVersionId: versionId,
         createdAt: now,
@@ -522,7 +499,7 @@ export async function addSceneVersion(
     previewPath: string;
   }
 > {
-  const { sceneId, authorId, fileBytes, notes, dbPath, dataDir } = input;
+  const { sceneId, uploaderId, fileBytes, notes, dbPath, dataDir } = input;
   const semver = normalizeSemver(input.semver);
   const db = getDb(dbPath);
 
@@ -536,7 +513,7 @@ export async function addSceneVersion(
     throw new SceneNotFoundError();
   }
 
-  if (scene.authorId !== authorId) {
+  if (scene.uploaderId !== uploaderId) {
     throw new ForbiddenSceneError();
   }
 
@@ -659,23 +636,18 @@ export async function patchScene(
     throw new SceneNotFoundError();
   }
 
-  if (scene.authorId !== input.authorId) {
+  if (scene.uploaderId !== input.uploaderId) {
     throw new ForbiddenSceneError();
   }
 
   const now = new Date().toISOString();
-  const nextTitle = input.title?.trim() ? input.title.trim() : scene.title;
-  const nextSlug = input.slug?.trim()
-    ? slugify(input.slug, targetId)
-    : input.title?.trim() && input.slug === undefined
-      ? scene.slug
-      : scene.slug;
 
   db.transaction((tx) => {
     tx.update(scenes)
       .set({
-        title: nextTitle,
-        slug: nextSlug,
+        ...(input.description !== undefined
+          ? { description: input.description }
+          : {}),
         updatedAt: now,
       })
       .where(eq(scenes.id, targetId))
@@ -706,7 +678,7 @@ export async function patchScene(
 export async function deleteSceneVersion(
   input: DeleteSceneVersionInput,
 ): Promise<SceneDetail> {
-  const { sceneId, versionId, authorId, dbPath, dataDir } = input;
+  const { sceneId, versionId, uploaderId, dbPath, dataDir } = input;
   const db = getDb(dbPath);
 
   const scene = db
@@ -719,7 +691,7 @@ export async function deleteSceneVersion(
     throw new SceneNotFoundError();
   }
 
-  if (scene.authorId !== authorId) {
+  if (scene.uploaderId !== uploaderId) {
     throw new ForbiddenSceneError();
   }
 
@@ -774,7 +746,7 @@ export async function deleteScene(
   const input: DeleteSceneInput =
     typeof sceneIdOrInput === "string"
       ? typeof maybeAuthorOrInput === "string"
-        ? { sceneId: sceneIdOrInput, authorId: maybeAuthorOrInput }
+        ? { sceneId: sceneIdOrInput, uploaderId: maybeAuthorOrInput }
         : { sceneId: sceneIdOrInput, ...maybeAuthorOrInput! }
       : sceneIdOrInput;
 
@@ -794,7 +766,7 @@ export async function deleteScene(
     throw new SceneNotFoundError();
   }
 
-  if (scene.authorId !== input.authorId) {
+  if (scene.uploaderId !== input.uploaderId) {
     throw new ForbiddenSceneError();
   }
 
@@ -879,7 +851,7 @@ export function createSceneService(options: SceneServiceOptions = {}) {
           return deleteScene({
             ...options,
             sceneId: sceneIdOrInput,
-            authorId: maybeAuthorOrInput,
+            uploaderId: maybeAuthorOrInput,
           });
         }
         return deleteScene(sceneIdOrInput, { ...options, ...maybeAuthorOrInput! });

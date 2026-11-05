@@ -154,7 +154,7 @@ export function getPluginLikesReceivedForAuthor(
     })
     .from(pluginVotes)
     .innerJoin(plugins, eq(pluginVotes.pluginId, plugins.id))
-    .where(eq(plugins.authorId, authorId))
+    .where(eq(plugins.uploaderId, authorId))
     .groupBy(pluginVotes.vote)
     .all();
 

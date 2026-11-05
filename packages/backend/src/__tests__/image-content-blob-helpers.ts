@@ -46,7 +46,7 @@ export async function plantCardVersionWithBlob(
   db: Db,
   input: {
     gameId: string;
-    authorId: string;
+    uploaderId: string;
     dbPath: string;
     dataDir: string;
     fileBytes?: Uint8Array;
@@ -74,9 +74,8 @@ export async function plantCardVersionWithBlob(
     .values({
       id: cardId,
       gameId: input.gameId,
-      authorId: input.authorId,
-      slug: `card-${cardId.slice(0, 8)}`,
-      title: "Planted",
+      uploaderId: input.uploaderId,
+      description: "",
       latestSemver: "1.0.0",
       latestVersionId: versionId,
       createdAt: now,
@@ -104,7 +103,7 @@ export async function plantLegacyCardVersionOnDisk(
   db: Db,
   input: {
     gameId: string;
-    authorId: string;
+    uploaderId: string;
     dataDir: string;
     fileBytes?: Uint8Array;
   },
@@ -132,9 +131,8 @@ export async function plantLegacyCardVersionOnDisk(
     .values({
       id: cardId,
       gameId: input.gameId,
-      authorId: input.authorId,
-      slug: `legacy-${cardId.slice(0, 8)}`,
-      title: "Legacy card",
+      uploaderId: input.uploaderId,
+      description: "",
       latestSemver: "1.0.0",
       latestVersionId: versionId,
       createdAt: now,
@@ -162,7 +160,7 @@ export async function plantSceneVersionWithBlob(
   db: Db,
   input: {
     gameId: string;
-    authorId: string;
+    uploaderId: string;
     dbPath: string;
     dataDir: string;
     fileBytes?: Uint8Array;
@@ -190,9 +188,8 @@ export async function plantSceneVersionWithBlob(
     .values({
       id: sceneId,
       gameId: input.gameId,
-      authorId: input.authorId,
-      slug: `scene-${sceneId.slice(0, 8)}`,
-      title: "Planted scene",
+      uploaderId: input.uploaderId,
+      description: "",
       latestSemver: "1.0.0",
       latestVersionId: versionId,
       createdAt: now,
@@ -220,7 +217,7 @@ export async function plantLegacySceneVersionOnDisk(
   db: Db,
   input: {
     gameId: string;
-    authorId: string;
+    uploaderId: string;
     dataDir: string;
     fileBytes?: Uint8Array;
   },
@@ -248,9 +245,8 @@ export async function plantLegacySceneVersionOnDisk(
     .values({
       id: sceneId,
       gameId: input.gameId,
-      authorId: input.authorId,
-      slug: `legacy-scene-${sceneId.slice(0, 8)}`,
-      title: "Legacy scene",
+      uploaderId: input.uploaderId,
+      description: "",
       latestSemver: "1.0.0",
       latestVersionId: versionId,
       createdAt: now,
@@ -278,7 +274,7 @@ export async function plantClothesVersionWithBlob(
   db: Db,
   input: {
     gameId: string;
-    authorId: string;
+    uploaderId: string;
     dbPath: string;
     dataDir: string;
     fileBytes?: Uint8Array;
@@ -310,9 +306,8 @@ export async function plantClothesVersionWithBlob(
     .values({
       id: clothesId,
       gameId: input.gameId,
-      authorId: input.authorId,
-      slug: `clothes-${clothesId.slice(0, 8)}`,
-      title: "Planted clothes",
+      uploaderId: input.uploaderId,
+      description: "",
       latestSemver: "1.0.0",
       latestVersionId: versionId,
       createdAt: now,
@@ -340,7 +335,7 @@ export async function plantLegacyClothesVersionOnDisk(
   db: Db,
   input: {
     gameId: string;
-    authorId: string;
+    uploaderId: string;
     dataDir: string;
     fileBytes?: Uint8Array;
   },
@@ -368,9 +363,8 @@ export async function plantLegacyClothesVersionOnDisk(
     .values({
       id: clothesId,
       gameId: input.gameId,
-      authorId: input.authorId,
-      slug: `legacy-clothes-${clothesId.slice(0, 8)}`,
-      title: "Legacy clothes",
+      uploaderId: input.uploaderId,
+      description: "",
       latestSemver: "1.0.0",
       latestVersionId: versionId,
       createdAt: now,

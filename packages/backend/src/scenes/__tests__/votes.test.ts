@@ -62,7 +62,7 @@ describe("scene votes", () => {
     const created = await createScene({
       gameId,
       semver: "1.0.0",
-      authorId,
+      uploaderId: authorId,
       fileBytes,
       dbPath,
       dataDir,

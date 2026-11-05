@@ -9,11 +9,14 @@ import { and, count, eq, inArray } from "drizzle-orm";
 import {
   orderBySort,
   resolveListWindow,
-  titleSlugSearch,
   voteNetScore,
   type CatalogListQuery,
   type PaginatedList,
 } from "../common/list-query";
+import {
+  contentIdsMatchingAllTagNames,
+  tagFilterNames,
+} from "../common/tag-filter";
 import { getDb } from "../db/client";
 import { newId } from "../id";
 import { clothesVersions, clothesVotes, clothes, users } from "../db/schema";
@@ -64,7 +67,7 @@ export type ClothesVersionDetail = CardDetail["versions"][number] & {
 export type ClothesDetail = Omit<CardDetail, "versions"> &
   VoteCounts & {
     gameId: string;
-    authorId: string;
+    uploaderId: string;
     authorUsername?: string | null;
     authorAvatar?: string | null;
     createdAt: string;
@@ -75,14 +78,15 @@ export type ClothesDetail = Omit<CardDetail, "versions"> &
 export type ClothesListItem = CardListItem &
   VoteCounts & {
     gameId: string;
-    authorId: string;
+    uploaderId: string;
   };
 
 export type ListClothesOptions = ClothesServiceOptions &
   CatalogListQuery & {
     viewerUserId?: string | null;
     gameId?: string;
-    authorId?: string;
+    uploaderId?: string;
+    tags?: string[];
   };
 
 export type GetClothesOptions = ClothesServiceOptions & {
@@ -90,10 +94,9 @@ export type GetClothesOptions = ClothesServiceOptions & {
 };
 
 export type CreateClothesInput = ClothesServiceOptions & {
-  authorId: string;
+  uploaderId: string;
   gameId: string;
-  title?: string;
-  slug?: string;
+  description?: string;
   fileBytes: Uint8Array;
   semver: string;
   notes?: string;
@@ -101,7 +104,7 @@ export type CreateClothesInput = ClothesServiceOptions & {
 
 export type AddClothesVersionInput = ClothesServiceOptions & {
   clothesId: string;
-  authorId: string;
+  uploaderId: string;
   fileBytes: Uint8Array;
   semver: string;
   notes?: string;
@@ -110,22 +113,21 @@ export type AddClothesVersionInput = ClothesServiceOptions & {
 export type PatchClothesInput = ClothesServiceOptions & {
   clothesId?: string;
   id?: string;
-  authorId: string;
-  title?: string;
-  slug?: string;
+  uploaderId: string;
+  description?: string;
   notes?: string;
 };
 
 export type DeleteClothesInput = ClothesServiceOptions & {
   clothesId?: string;
   id?: string;
-  authorId: string;
+  uploaderId: string;
 };
 
 export type DeleteClothesVersionInput = ClothesServiceOptions & {
   clothesId: string;
   versionId: string;
-  authorId: string;
+  uploaderId: string;
 };
 
 function imageUrl(clothesId: string, versionId: string | null): string {
@@ -142,15 +144,6 @@ function normalizeSemver(input: string | undefined): string {
   } catch {
     throw new BadClothesError("Enter a valid version number (for example 1.0.0).");
   }
-}
-
-function slugify(input: string, fallbackId: string): string {
-  const normalized = input
-    .trim()
-    .toLowerCase()
-    .replace(/[^a-z0-9]+/g, "-")
-    .replace(/^-+|-+$/g, "");
-  return normalized || `clothes-${fallbackId.slice(0, 8)}`;
 }
 
 function humanizeClothesParseError(err: unknown): string {
@@ -246,18 +239,17 @@ export async function getClothes(
       avatar: users.avatar,
     })
     .from(users)
-    .where(eq(users.id, scene.authorId))
+    .where(eq(users.id, scene.uploaderId))
     .get();
 
   return {
     id: scene.id,
     gameId: scene.gameId,
     type: "clothes",
-    authorId: scene.authorId,
+    uploaderId: scene.uploaderId,
     authorUsername: author?.username ?? null,
     authorAvatar: author?.avatar ?? null,
-    slug: scene.slug,
-    title: scene.title,
+    description: scene.description,
     latestSemver: scene.latestSemver,
     latestVersionId: scene.latestVersionId,
     createdAt: scene.createdAt,
@@ -271,15 +263,31 @@ export async function listClothes(
   options?: ListClothesOptions,
 ): Promise<PaginatedList<ClothesListItem>> {
   const db = getDb(options?.dbPath);
-  const { page, limit, offset, sort, q, unbounded } = resolveListWindow(options);
+  const { page, limit, offset, sort, unbounded } = resolveListWindow(options);
+  const tagNames = tagFilterNames(options?.tags);
+  const taggedIds = tagNames.length
+    ? contentIdsMatchingAllTagNames({
+        kind: "clothes",
+        names: tagNames,
+        dbPath: options?.dbPath,
+      })
+    : undefined;
+  if (taggedIds && taggedIds.length === 0) {
+    return { items: [], total: 0, page, limit: unbounded ? 0 : limit };
+  }
 
   const whereClause = and(
     options?.gameId ? eq(clothes.gameId, options.gameId) : undefined,
-    options?.authorId ? eq(clothes.authorId, options.authorId) : undefined,
-    titleSlugSearch(clothes.title, clothes.slug, q),
+    options?.uploaderId ? eq(clothes.uploaderId, options.uploaderId) : undefined,
+    taggedIds ? inArray(clothes.id, taggedIds) : undefined,
   );
   const score = voteNetScore("clothes_votes", "clothes_id", clothes.id);
-  const order = orderBySort(sort, clothes.createdAt, clothes.title, score);
+  const order = orderBySort(
+    sort === "title" ? "recent" : sort,
+    clothes.createdAt,
+    clothes.createdAt,
+    score,
+  );
 
   const total =
     db
@@ -353,9 +361,8 @@ export async function listClothes(
       id: scene.id,
       gameId: scene.gameId,
       type: "clothes",
-      authorId: scene.authorId,
-      slug: scene.slug,
-      title: scene.title,
+      uploaderId: scene.uploaderId,
+      description: scene.description,
       latestSemver: scene.latestSemver,
       latestVersionId: scene.latestVersionId,
       versionCount: versions.length,
@@ -385,8 +392,7 @@ export async function createClothes(
     previewPath: string;
   }
 > {
-  const { authorId, gameId, title, slug, fileBytes, notes, dbPath, dataDir } =
-    input;
+  const { uploaderId, gameId, fileBytes, notes, dbPath, dataDir } = input;
 
   const semver = normalizeSemver(input.semver);
   assertGameSupportsKind(gameId, "clothes", { dbPath });
@@ -408,11 +414,6 @@ export async function createClothes(
   const now = new Date().toISOString();
 
   const summary = ks.summary();
-  const resolvedTitle =
-    title?.trim() || summary.coordinateName.trim() || "Untitled";
-  const resolvedSlug = slug?.trim()
-    ? slugify(slug, clothesId)
-    : slugify(resolvedTitle, clothesId);
 
   const { previewPath } = getVersionPaths(
     clothesId,
@@ -441,9 +442,8 @@ export async function createClothes(
       .values({
         id: clothesId,
         gameId,
-        authorId,
-        slug: resolvedSlug,
-        title: resolvedTitle,
+        uploaderId,
+        description: input.description ?? "",
         latestSemver: semver,
         latestVersionId: versionId,
         createdAt: now,
@@ -490,7 +490,7 @@ export async function addClothesVersion(
     previewPath: string;
   }
 > {
-  const { clothesId, authorId, fileBytes, notes, dbPath, dataDir } = input;
+  const { clothesId, uploaderId, fileBytes, notes, dbPath, dataDir } = input;
   const semver = normalizeSemver(input.semver);
   const db = getDb(dbPath);
 
@@ -504,7 +504,7 @@ export async function addClothesVersion(
     throw new ClothesNotFoundError();
   }
 
-  if (scene.authorId !== authorId) {
+  if (scene.uploaderId !== uploaderId) {
     throw new ForbiddenClothesError();
   }
 
@@ -627,23 +627,18 @@ export async function patchClothes(
     throw new ClothesNotFoundError();
   }
 
-  if (scene.authorId !== input.authorId) {
+  if (scene.uploaderId !== input.uploaderId) {
     throw new ForbiddenClothesError();
   }
 
   const now = new Date().toISOString();
-  const nextTitle = input.title?.trim() ? input.title.trim() : scene.title;
-  const nextSlug = input.slug?.trim()
-    ? slugify(input.slug, targetId)
-    : input.title?.trim() && input.slug === undefined
-      ? scene.slug
-      : scene.slug;
 
   db.transaction((tx) => {
     tx.update(clothes)
       .set({
-        title: nextTitle,
-        slug: nextSlug,
+        ...(input.description !== undefined
+          ? { description: input.description }
+          : {}),
         updatedAt: now,
       })
       .where(eq(clothes.id, targetId))
@@ -674,7 +669,7 @@ export async function patchClothes(
 export async function deleteClothesVersion(
   input: DeleteClothesVersionInput,
 ): Promise<ClothesDetail> {
-  const { clothesId, versionId, authorId, dbPath, dataDir } = input;
+  const { clothesId, versionId, uploaderId, dbPath, dataDir } = input;
   const db = getDb(dbPath);
 
   const scene = db
@@ -687,7 +682,7 @@ export async function deleteClothesVersion(
     throw new ClothesNotFoundError();
   }
 
-  if (scene.authorId !== authorId) {
+  if (scene.uploaderId !== uploaderId) {
     throw new ForbiddenClothesError();
   }
 
@@ -742,7 +737,7 @@ export async function deleteClothes(
   const input: DeleteClothesInput =
     typeof clothesIdOrInput === "string"
       ? typeof maybeAuthorOrInput === "string"
-        ? { clothesId: clothesIdOrInput, authorId: maybeAuthorOrInput }
+        ? { clothesId: clothesIdOrInput, uploaderId: maybeAuthorOrInput }
         : { clothesId: clothesIdOrInput, ...maybeAuthorOrInput! }
       : clothesIdOrInput;
 
@@ -762,7 +757,7 @@ export async function deleteClothes(
     throw new ClothesNotFoundError();
   }
 
-  if (scene.authorId !== input.authorId) {
+  if (scene.uploaderId !== input.uploaderId) {
     throw new ForbiddenClothesError();
   }
 
@@ -847,7 +842,7 @@ export function createClothesService(options: ClothesServiceOptions = {}) {
           return deleteClothes({
             ...options,
             clothesId: clothesIdOrInput,
-            authorId: maybeAuthorOrInput,
+            uploaderId: maybeAuthorOrInput,
           });
         }
         return deleteClothes(clothesIdOrInput, { ...options, ...maybeAuthorOrInput! });

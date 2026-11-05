@@ -61,11 +61,7 @@ describe("listCharacters pagination", () => {
     rmSync(tempDir, { recursive: true, force: true });
   });
 
-  function plantCard(input: {
-    title: string;
-    slug: string;
-    createdAt: string;
-  }): string {
+  function plantCard(input: { createdAt: string; description?: string }): string {
     const db = getDb(dbPath);
     const cardId = crypto.randomUUID();
     const versionId = crypto.randomUUID();
@@ -73,9 +69,8 @@ describe("listCharacters pagination", () => {
       .values({
         id: cardId,
         gameId,
-        authorId,
-        slug: input.slug,
-        title: input.title,
+        uploaderId: authorId,
+        description: input.description ?? "",
         latestSemver: "1.0.0",
         latestVersionId: versionId,
         createdAt: input.createdAt,
@@ -99,12 +94,13 @@ describe("listCharacters pagination", () => {
   }
 
   test("page/limit returns slice and total", async () => {
+    const ids: string[] = [];
     for (let i = 0; i < 5; i++) {
-      plantCard({
-        title: `Card ${i}`,
-        slug: `card-${i}`,
-        createdAt: new Date(2024, 0, i + 1).toISOString(),
-      });
+      ids.push(
+        plantCard({
+          createdAt: new Date(2024, 0, i + 1).toISOString(),
+        }),
+      );
     }
 
     const page1 = await listCharacters({ page: 1, limit: 2, dbPath, dataDir });
@@ -113,72 +109,39 @@ describe("listCharacters pagination", () => {
     expect(page1.limit).toBe(2);
     expect(page1.items).toHaveLength(2);
     // recent = newest first
-    expect(page1.items[0]!.title).toBe("Card 4");
-    expect(page1.items[1]!.title).toBe("Card 3");
+    expect(page1.items.map((card) => card.id)).toEqual([ids[4], ids[3]]);
 
     const page2 = await listCharacters({ page: 2, limit: 2, dbPath, dataDir });
     expect(page2.total).toBe(5);
-    expect(page2.items.map((c) => c.title)).toEqual(["Card 2", "Card 1"]);
+    expect(page2.items.map((card) => card.id)).toEqual([ids[2], ids[1]]);
 
     const page3 = await listCharacters({ page: 3, limit: 2, dbPath, dataDir });
-    expect(page3.items.map((c) => c.title)).toEqual(["Card 0"]);
+    expect(page3.items.map((card) => card.id)).toEqual([ids[0]]);
   });
 
-  test("q filters title and slug case-insensitively", async () => {
-    plantCard({
-      title: "Alpha Hero",
-      slug: "alpha-hero",
-      createdAt: "2024-01-01T00:00:00.000Z",
-    });
-    plantCard({
-      title: "Beta Side",
-      slug: "zeta-slug",
-      createdAt: "2024-01-02T00:00:00.000Z",
-    });
-    plantCard({
-      title: "Other",
-      slug: "alpha-copy",
-      createdAt: "2024-01-03T00:00:00.000Z",
-    });
+  test("q does not filter nameless cards", async () => {
+    plantCard({ createdAt: "2024-01-01T00:00:00.000Z" });
+    plantCard({ createdAt: "2024-01-02T00:00:00.000Z" });
+    plantCard({ createdAt: "2024-01-03T00:00:00.000Z" });
 
-    const byTitle = await listCharacters({
+    const listed = await listCharacters({
       page: 1,
       limit: 10,
       q: "hero",
       dbPath,
       dataDir,
     });
-    expect(byTitle.total).toBe(1);
-    expect(byTitle.items[0]!.title).toBe("Alpha Hero");
-
-    const bySlug = await listCharacters({
-      page: 1,
-      limit: 10,
-      q: "ALPHA",
-      dbPath,
-      dataDir,
-    });
-    expect(bySlug.total).toBe(2);
-    expect(bySlug.items.map((c) => c.slug).sort()).toEqual([
-      "alpha-copy",
-      "alpha-hero",
-    ]);
+    expect(listed.total).toBe(3);
   });
 
-  test("sort title and top", async () => {
-    const a = plantCard({
-      title: "Charlie",
-      slug: "c",
+  test("sort title falls back to recent and top uses vote score", async () => {
+    const oldest = plantCard({
       createdAt: "2024-01-01T00:00:00.000Z",
     });
-    const b = plantCard({
-      title: "Alpha",
-      slug: "a",
+    const middle = plantCard({
       createdAt: "2024-01-02T00:00:00.000Z",
     });
-    plantCard({
-      title: "Bravo",
-      slug: "b",
+    const newest = plantCard({
       createdAt: "2024-01-03T00:00:00.000Z",
     });
 
@@ -189,15 +152,15 @@ describe("listCharacters pagination", () => {
       dbPath,
       dataDir,
     });
-    expect(byTitle.items.map((c) => c.title)).toEqual([
-      "Alpha",
-      "Bravo",
-      "Charlie",
+    expect(byTitle.items.map((card) => card.id)).toEqual([
+      newest,
+      middle,
+      oldest,
     ]);
 
-    setCardVote({ cardId: a, userId: voterId, vote: "like", dbPath });
+    setCardVote({ cardId: oldest, userId: voterId, vote: "like", dbPath });
     setCardVote({
-      cardId: b,
+      cardId: middle,
       userId: voterId,
       vote: "dislike",
       dbPath,
@@ -208,7 +171,7 @@ describe("listCharacters pagination", () => {
     db.insert(cardVotes)
       .values({
         id: crypto.randomUUID(),
-        cardId: a,
+        cardId: oldest,
         userId: authorId,
         vote: "like",
         createdAt: now,
@@ -223,21 +186,19 @@ describe("listCharacters pagination", () => {
       dbPath,
       dataDir,
     });
-    expect(byTop.items[0]!.title).toBe("Charlie");
+    expect(byTop.items[0]!.id).toBe(oldest);
     expect(byTop.items[0]!.likes).toBe(2);
-    expect(byTop.items.at(-1)!.title).toBe("Alpha");
+    expect(byTop.items.at(-1)!.id).toBe(middle);
   });
 
-  test("unbounded authorId returns all without page defaults", async () => {
+  test("unbounded uploaderId returns all without page defaults", async () => {
     for (let i = 0; i < 3; i++) {
       plantCard({
-        title: `U${i}`,
-        slug: `u-${i}`,
         createdAt: new Date(2024, 0, i + 1).toISOString(),
       });
     }
     const result = await listCharacters({
-      authorId,
+      uploaderId: authorId,
       unbounded: true,
       dbPath,
       dataDir,

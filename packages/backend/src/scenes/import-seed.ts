@@ -107,17 +107,14 @@ export async function importSeedScenes(
         continue;
       }
 
-      const title = card.title?.trim() || undefined;
       const notes = ver.notes;
 
       const semver = seedVersionSemver(ver);
 
       if (sceneId === null) {
         const created = await createScene({
-          authorId: ECHBOX_SYSTEM_USER.id,
+          uploaderId: ECHBOX_SYSTEM_USER.id,
           gameId,
-          title,
-          slug: card.slug,
           semver,
           fileBytes,
           notes,
@@ -129,7 +126,7 @@ export async function importSeedScenes(
       } else {
         await addSceneVersion({
           sceneId,
-          authorId: ECHBOX_SYSTEM_USER.id,
+          uploaderId: ECHBOX_SYSTEM_USER.id,
           semver,
           fileBytes,
           notes,

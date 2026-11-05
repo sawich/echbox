@@ -11,7 +11,6 @@ import {
   addSceneVersion,
   createScene,
   deleteScene,
-  filenameStem,
   findSceneByHash,
   getScene,
   getSceneVersionImage,
@@ -21,6 +20,7 @@ import {
 import { getVersionPaths } from "../storage";
 import { seedTestGame } from "../../__tests__/test-game";
 import { findContentBlob } from "../../proxy/blob-store";
+import { setContentTags } from "../../tags/service";
 import {
   plantLegacySceneVersionOnDisk,
   plantSceneVersionWithBlob,
@@ -76,25 +76,20 @@ describe("scene service", () => {
     rmSync(tempDir, { recursive: true, force: true });
   });
 
-  test("filenameStem strips path and extension", () => {
-    expect(filenameStem("sample_00.png")).toBe("sample_00");
-    expect(filenameStem("/foo/bar/My Scene.PNG")).toBe("My Scene");
-    expect(filenameStem("")).toBe("");
-    expect(filenameStem(null)).toBe("");
-  });
-
-  test("createScene uses originalFilename when title is empty", async () => {
+  test("createScene stores an empty description and no title", async () => {
     const fileBytes = await fixtureBytes("scene", "kk_scene_simple.png");
     const created = await createScene({
       gameId,
       semver: "1.0.0",
-      authorId,
+      uploaderId: authorId,
       fileBytes,
       originalFilename: "Sample Scenes/sample_00.png",
       dbPath,
       dataDir,
     });
-    expect(created.title).toBe("sample_00");
+    expect(created.description).toBe("");
+    expect(created).not.toHaveProperty("title");
+    expect(created).not.toHaveProperty("slug");
   });
 
   test("createScene stores original PNG, WebP preview, and DB rows", async () => {
@@ -102,8 +97,8 @@ describe("scene service", () => {
     const created = await createScene({
       gameId,
       semver: "1.0.0",
-      authorId,
-      title: "Simple Studio",
+      uploaderId: authorId,
+      description: "Simple Studio",
       fileBytes,
       notes: "Initial upload",
       dbPath,
@@ -112,8 +107,8 @@ describe("scene service", () => {
 
     expect(created.id).toBeString();
     expect(created.type).toBe("scene");
-    expect(created.authorId).toBe(authorId);
-    expect(created.title).toBe("Simple Studio");
+    expect(created.uploaderId).toBe(authorId);
+    expect(created.description).toBe("Simple Studio");
     expect(created.latestSemver).toBe("1.0.0");
     expect(created.latestVersionId).toBe(created.versions[0]!.id);
     expect(created.versions).toHaveLength(1);
@@ -152,7 +147,8 @@ describe("scene service", () => {
 
     const list = (await listScenes({ dbPath, dataDir })).items;
     expect(list).toHaveLength(1);
-    expect(list[0]!.authorId).toBe(authorId);
+    expect(list[0]!.uploaderId).toBe(authorId);
+    expect(list[0]!.description).toBe("Simple Studio");
     expect(list[0]!.imageUrl).toBe(
       `/api/scenes/${created.id}/versions/${created.latestVersionId}/image`,
     );
@@ -163,7 +159,7 @@ describe("scene service", () => {
     const first = await createScene({
       gameId,
       semver: "1.0.0",
-      authorId,
+      uploaderId: authorId,
       fileBytes,
       dbPath,
       dataDir,
@@ -174,7 +170,7 @@ describe("scene service", () => {
       await createScene({
       gameId,
       semver: "1.0.0",
-        authorId: otherUserId,
+        uploaderId: otherUserId,
         fileBytes,
         dbPath,
         dataDir,
@@ -206,7 +202,7 @@ describe("scene service", () => {
       await createScene({
       gameId,
       semver: "1.0.0",
-        authorId,
+        uploaderId: authorId,
         fileBytes: charaBytes,
         dbPath,
         dataDir,
@@ -228,8 +224,8 @@ describe("scene service", () => {
     const scene = await createScene({
       gameId,
       semver: "1.0.0",
-      authorId,
-      title: "Evolving Scene",
+      uploaderId: authorId,
+      description: "Evolving Scene",
       fileBytes: v1Bytes,
       dbPath,
       dataDir,
@@ -238,7 +234,7 @@ describe("scene service", () => {
     const updated = await addSceneVersion({
       sceneId: scene.id,
       semver: "2.0.0",
-      authorId,
+      uploaderId: authorId,
       fileBytes: v2Bytes,
       notes: "Modded scene",
       dbPath,
@@ -254,7 +250,7 @@ describe("scene service", () => {
       await addSceneVersion({
         sceneId: scene.id,
         semver: "2.0.0",
-        authorId,
+        uploaderId: authorId,
         fileBytes: v1Bytes,
         dbPath,
         dataDir,
@@ -273,7 +269,7 @@ describe("scene service", () => {
     const scene = await createScene({
       gameId,
       semver: "1.0.0",
-      authorId,
+      uploaderId: authorId,
       fileBytes: v1Bytes,
       dbPath,
       dataDir,
@@ -284,7 +280,7 @@ describe("scene service", () => {
       await addSceneVersion({
         sceneId: scene.id,
         semver: "2.0.0",
-        authorId: otherUserId,
+        uploaderId: otherUserId,
         fileBytes: v2Bytes,
         dbPath,
         dataDir,
@@ -307,7 +303,7 @@ describe("scene service", () => {
   test("addSceneVersion rejects duplicate semver with 409 DUPLICATE_SEMVER", async () => {
     const scene = await createScene({
       gameId,
-      authorId,
+      uploaderId: authorId,
       semver: "1.0.0",
       fileBytes: await fixtureBytes("scene", "kk_scene_simple.png"),
       dbPath,
@@ -318,7 +314,7 @@ describe("scene service", () => {
     try {
       await addSceneVersion({
         sceneId: scene.id,
-        authorId,
+        uploaderId: authorId,
         semver: "1.0.0",
         fileBytes: await fixtureBytes("scene", "kk_scene_mod.png"),
         dbPath,
@@ -340,7 +336,7 @@ describe("scene service", () => {
       try {
         await createScene({
           gameId,
-          authorId,
+          uploaderId: authorId,
           semver: bad,
           fileBytes: bytes,
           dbPath,
@@ -357,7 +353,7 @@ describe("scene service", () => {
   test("latest is chosen by semver, not insertion order", async () => {
     const scene = await createScene({
       gameId,
-      authorId,
+      uploaderId: authorId,
       semver: "2.0.0",
       fileBytes: await fixtureBytes("scene", "kk_scene_simple.png"),
       dbPath,
@@ -365,7 +361,7 @@ describe("scene service", () => {
     });
     const updated = await addSceneVersion({
       sceneId: scene.id,
-      authorId,
+      uploaderId: authorId,
       semver: "1.5.0",
       fileBytes: await fixtureBytes("scene", "kk_scene_mod.png"),
       dbPath,
@@ -385,7 +381,7 @@ describe("scene service", () => {
     const scene = await createScene({
       gameId,
       semver: "1.0.0",
-      authorId,
+      uploaderId: authorId,
       fileBytes: v1Bytes,
       dbPath,
       dataDir,
@@ -403,8 +399,8 @@ describe("scene service", () => {
     const scene = await createScene({
       gameId,
       semver: "1.0.0",
-      authorId,
-      title: "Before",
+      uploaderId: authorId,
+      description: "Before",
       fileBytes,
       dbPath,
       dataDir,
@@ -415,8 +411,8 @@ describe("scene service", () => {
     try {
       await patchScene({
         sceneId: scene.id,
-        authorId: otherUserId,
-        title: "Hacked",
+        uploaderId: otherUserId,
+        description: "Hacked",
         dbPath,
         dataDir,
       });
@@ -427,16 +423,17 @@ describe("scene service", () => {
 
     const patched = await patchScene({
       sceneId: scene.id,
-      authorId,
-      title: "After",
+      uploaderId: authorId,
+      description: "After",
       dbPath,
       dataDir,
     });
-    expect(patched.title).toBe("After");
+    expect(patched.description).toBe("After");
+    expect(patched).not.toHaveProperty("title");
 
     await deleteScene({
       sceneId: scene.id,
-      authorId,
+      uploaderId: authorId,
       dbPath,
       dataDir,
     });
@@ -444,11 +441,53 @@ describe("scene service", () => {
     expect(findContentBlob(contentHash, dbPath)).toEqual({ chunkCount: 1 });
   });
 
+  test("listScenes with tags returns only scenes that have every tag", async () => {
+    const bothBytes = await fixtureBytes("scene", "kk_scene_simple.png");
+    const onlyBytes = await fixtureBytes("scene", "kk_scene.png");
+    const both = await createScene({
+      gameId,
+      semver: "1.0.0",
+      uploaderId: authorId,
+      fileBytes: bothBytes,
+      dbPath,
+      dataDir,
+    });
+    const onlyA = await createScene({
+      gameId,
+      semver: "1.0.0",
+      uploaderId: authorId,
+      fileBytes: onlyBytes,
+      dbPath,
+      dataDir,
+    });
+    const actor = { userId: authorId, isAdmin: false };
+    setContentTags({
+      kind: "scenes",
+      contentId: both.id,
+      names: ["a", "b"],
+      actor,
+      uploaderId: authorId,
+      dbPath,
+    });
+    setContentTags({
+      kind: "scenes",
+      contentId: onlyA.id,
+      names: ["a"],
+      actor,
+      uploaderId: authorId,
+      dbPath,
+    });
+
+    const filtered = await listScenes({ tags: ["a", "b"], dbPath, dataDir });
+    expect(filtered.total).toBe(1);
+    expect(filtered.items.map((scene) => scene.id)).toEqual([both.id]);
+  });
+
   test("legacy disk original_path is served when blob is absent", async () => {
     const db = getDb(dbPath);
     const planted = await plantLegacySceneVersionOnDisk(db, {
       gameId,
-      authorId,
+      uploaderId: authorId,
       dataDir,
     });
 
@@ -469,14 +508,14 @@ describe("scene service", () => {
     const db = getDb(dbPath);
     const planted = await plantSceneVersionWithBlob(db, {
       gameId,
-      authorId,
+      uploaderId: authorId,
       dbPath,
       dataDir,
     });
 
     await deleteScene({
       sceneId: planted.sceneId,
-      authorId,
+      uploaderId: authorId,
       dbPath,
       dataDir,
     });

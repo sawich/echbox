@@ -152,9 +152,8 @@ describe("game content kinds", () => {
       .values({
         id: crypto.randomUUID(),
         gameId: game.id,
-        authorId: userId,
-        slug: "outfit",
-        title: "Outfit",
+        uploaderId: userId,
+        description: "",
         latestSemver: null,
         latestVersionId: null,
         createdAt: now,

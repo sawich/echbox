@@ -65,7 +65,7 @@ describe("plugin archive validation and storage hardening", () => {
       await expect(
         createPlugin({
           gameId,
-          authorId,
+          uploaderId: authorId,
           title: "P",
           semver: "1.0.0",
           fileBytes,
@@ -79,7 +79,7 @@ describe("plugin archive validation and storage hardening", () => {
 
   test("addVersion rejects empty and non-zip archives", async () => {
     const created = await createPlugin({ gameId,
-      authorId,
+      uploaderId: authorId,
       title: "P",
       semver: "1.0.0",
       fileBytes: pluginZip("v1"),
@@ -90,7 +90,7 @@ describe("plugin archive validation and storage hardening", () => {
       await expect(
         addPluginVersion({
           pluginId: created.id,
-          authorId,
+          uploaderId: authorId,
           semver: "1.0.1",
           fileBytes,
           dbPath,
@@ -109,8 +109,8 @@ describe("plugin archive validation and storage hardening", () => {
   test("concurrent identical uploads: one wins, loser maps to duplicate-hash", async () => {
     const bytes = pluginZip("same");
     const results = await Promise.allSettled([
-      createPlugin({ gameId, authorId, title: "A", semver: "1.0.0", fileBytes: bytes, dbPath, dataDir }),
-      createPlugin({ gameId, authorId, title: "B", semver: "1.0.0", fileBytes: bytes, dbPath, dataDir }),
+      createPlugin({ gameId, uploaderId: authorId, title: "A", semver: "1.0.0", fileBytes: bytes, dbPath, dataDir }),
+      createPlugin({ gameId, uploaderId: authorId, title: "B", semver: "1.0.0", fileBytes: bytes, dbPath, dataDir }),
     ]);
     expect(results.filter((r) => r.status === "fulfilled")).toHaveLength(1);
     const bad = results.find((r) => r.status === "rejected") as PromiseRejectedResult;
@@ -120,7 +120,7 @@ describe("plugin archive validation and storage hardening", () => {
 
   test("concurrent version uploads get distinct semvers and intact files", async () => {
     const created = await createPlugin({ gameId,
-      authorId,
+      uploaderId: authorId,
       title: "P",
       semver: "1.0.0",
       fileBytes: pluginZip("v1"),
@@ -131,7 +131,7 @@ describe("plugin archive validation and storage hardening", () => {
       ["a", "b", "c"].map((p, i) =>
         addPluginVersion({
           pluginId: created.id,
-          authorId,
+          uploaderId: authorId,
           semver: `1.0.${i + 1}`,
           fileBytes: pluginZip(p),
           dbPath,

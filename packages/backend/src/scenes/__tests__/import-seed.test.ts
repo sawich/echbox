@@ -63,7 +63,7 @@ describe("import seed scenes", () => {
     const scenes = (await listScenes({ dbPath, dataDir })).items;
     expect(scenes).toHaveLength(SCENE_SEED_COUNT);
     for (const scene of scenes) {
-      expect(scene.authorId).toBe(ECHBOX_SYSTEM_USER.id);
+      expect(scene.uploaderId).toBe(ECHBOX_SYSTEM_USER.id);
       expect(scene.gameId).toBe(gameId);
     }
 

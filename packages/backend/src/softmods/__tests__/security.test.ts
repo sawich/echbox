@@ -74,7 +74,7 @@ describe("softmod storage hardening", () => {
     writeFileSync(sentinel, "keep");
     for (const guid of ["..", ".", "../..", "../../escape", "a/b", "/abs/x"]) {
       await expect(
-        createSoftmod({ gameId, authorId, semver: "1.0.0", fileBytes: zipmod(guid), dbPath, dataDir }),
+        createSoftmod({ gameId, uploaderId: authorId, semver: "1.0.0", fileBytes: zipmod(guid), dbPath, dataDir }),
       ).rejects.toBeInstanceOf(BadSoftmodError);
     }
     expect(existsSync(sentinel)).toBe(true);
@@ -93,14 +93,14 @@ describe("softmod storage hardening", () => {
 
   test("hostile delete id never removes other softmods' files", async () => {
     const created = await createSoftmod({ gameId,
-      authorId,
+      uploaderId: authorId,
       semver: "1.0.0", fileBytes: zipmod("com.keep.me"),
       dbPath,
       dataDir,
     });
     for (const id of ["..", ".", "../..", "../softmods"]) {
       await expect(
-        deleteSoftmod({ softmodId: id, authorId, dbPath, dataDir }),
+        deleteSoftmod({ softmodId: id, uploaderId: authorId, dbPath, dataDir }),
       ).rejects.toThrow();
     }
     expect(await getSoftmod(created.id, { dbPath })).not.toBeNull();
@@ -111,7 +111,7 @@ describe("softmod storage hardening", () => {
     await expect(
       addSoftmodVersion({
         softmodId: "../..",
-        authorId,
+        uploaderId: authorId,
         semver: "1.0.0", fileBytes: zipmod("../.."),
         dbPath,
         dataDir,
@@ -126,11 +126,11 @@ describe("softmod storage hardening", () => {
       zipSync({}),
     ]) {
       await expect(
-        createSoftmod({ gameId, authorId, semver: "1.0.0", fileBytes: bytes, dbPath, dataDir }),
+        createSoftmod({ gameId, uploaderId: authorId, semver: "1.0.0", fileBytes: bytes, dbPath, dataDir }),
       ).rejects.toBeInstanceOf(BadSoftmodError);
     }
     const created = await createSoftmod({ gameId,
-      authorId,
+      uploaderId: authorId,
       semver: "1.0.0", fileBytes: zipmod("com.valid.one"),
       dbPath,
       dataDir,
@@ -138,7 +138,7 @@ describe("softmod storage hardening", () => {
     await expect(
       addSoftmodVersion({
         softmodId: created.id,
-        authorId,
+        uploaderId: authorId,
         semver: "1.0.1",
         fileBytes: new Uint8Array(),
         dbPath,
@@ -151,8 +151,8 @@ describe("softmod storage hardening", () => {
     const a = zipmod("com.race.guid", "payload-a");
     const b = zipmod("com.race.guid", "payload-b");
     const results = await Promise.allSettled([
-      createSoftmod({ gameId, authorId, semver: "1.0.0", fileBytes: a, dbPath, dataDir }),
-      createSoftmod({ gameId, authorId, semver: "1.0.0", fileBytes: b, dbPath, dataDir }),
+      createSoftmod({ gameId, uploaderId: authorId, semver: "1.0.0", fileBytes: a, dbPath, dataDir }),
+      createSoftmod({ gameId, uploaderId: authorId, semver: "1.0.0", fileBytes: b, dbPath, dataDir }),
     ]);
     const ok = results.filter((r) => r.status === "fulfilled");
     const bad = results.filter((r) => r.status === "rejected");
@@ -181,8 +181,8 @@ describe("softmod storage hardening", () => {
   test("concurrent identical uploads map to duplicate-hash error", async () => {
     const bytes = zipmod("com.race.same", "same");
     const results = await Promise.allSettled([
-      createSoftmod({ gameId, authorId, semver: "1.0.0", fileBytes: bytes, dbPath, dataDir }),
-      createSoftmod({ gameId, authorId, semver: "1.0.0", fileBytes: bytes, dbPath, dataDir }),
+      createSoftmod({ gameId, uploaderId: authorId, semver: "1.0.0", fileBytes: bytes, dbPath, dataDir }),
+      createSoftmod({ gameId, uploaderId: authorId, semver: "1.0.0", fileBytes: bytes, dbPath, dataDir }),
     ]);
     const bad = results.filter((r) => r.status === "rejected");
     expect(results.filter((r) => r.status === "fulfilled")).toHaveLength(1);
@@ -193,7 +193,7 @@ describe("softmod storage hardening", () => {
 
   test("concurrent version uploads get distinct semvers and intact files", async () => {
     const created = await createSoftmod({ gameId,
-      authorId,
+      uploaderId: authorId,
       semver: "1.0.0", fileBytes: zipmod("com.race.ver", "v1"),
       dbPath,
       dataDir,
@@ -203,7 +203,7 @@ describe("softmod storage hardening", () => {
       files.map((fileBytes, i) =>
         addSoftmodVersion({
           softmodId: created.id,
-          authorId,
+          uploaderId: authorId,
           semver: `1.0.${i + 1}`,
           fileBytes,
           dbPath,
@@ -235,7 +235,7 @@ describe("softmod storage hardening", () => {
     const bytes = zipmod("com.fail.fk", "x");
     await expect(
       createSoftmod({ gameId,
-        authorId: "no-such-user",
+        uploaderId: "no-such-user",
         semver: "1.0.0", fileBytes: bytes,
         dbPath,
         dataDir,

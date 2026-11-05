@@ -91,7 +91,7 @@ describe("plugin service", () => {
   test("createPlugin stores zip from fixture with UUID id and manual title", async () => {
     const fileBytes = await fixtureBytes("plugins", "testplugin.zip");
     const created = await createPlugin({ gameId,
-      authorId,
+      uploaderId: authorId,
       title: "My Plugin",
       semver: "1.0.0",
       description: "Does things",
@@ -137,7 +137,7 @@ describe("plugin service", () => {
   test("second createPlugin with same file bytes throws DuplicatePluginHashError", async () => {
     const fileBytes = await fixtureBytes("plugins", "testplugin.zip");
     const first = await createPlugin({ gameId,
-      authorId,
+      uploaderId: authorId,
       title: "First",
       semver: "1.0.0",
       fileBytes,
@@ -147,7 +147,7 @@ describe("plugin service", () => {
     let caught: unknown;
     try {
       await createPlugin({ gameId,
-        authorId: otherUserId,
+        uploaderId: otherUserId,
         title: "Second",
         semver: "1.0.0",
         fileBytes,
@@ -175,7 +175,7 @@ describe("plugin service", () => {
   test("patchPlugin updates title and description for author only", async () => {
     const fileBytes = pluginZip("patch-test");
     const created = await createPlugin({ gameId,
-      authorId,
+      uploaderId: authorId,
       title: "Original",
       semver: "1.0.0",
       description: "Old desc",
@@ -187,7 +187,7 @@ describe("plugin service", () => {
     try {
       await patchPlugin({
         id: created.id,
-        authorId: otherUserId,
+        uploaderId: otherUserId,
         title: "Hacked",
         dbPath,
       });
@@ -198,7 +198,7 @@ describe("plugin service", () => {
 
     const patched = await patchPlugin({
       id: created.id,
-      authorId,
+      uploaderId: authorId,
       title: "Renamed",
       description: "New desc",
       dbPath,
@@ -214,7 +214,7 @@ describe("plugin service", () => {
   test("addPluginVersion as non-author throws 403", async () => {
     const v1 = pluginZip("v1");
     const created = await createPlugin({ gameId,
-      authorId,
+      uploaderId: authorId,
       title: "Plugin",
       semver: "1.0.0",
       fileBytes: v1,
@@ -227,7 +227,7 @@ describe("plugin service", () => {
     try {
       await addPluginVersion({
         pluginId: created.id,
-        authorId: otherUserId,
+        uploaderId: otherUserId,
         semver: "1.1.0",
         fileBytes: v2,
         ...blobOpts(),
@@ -244,7 +244,7 @@ describe("plugin service", () => {
   test("getPluginVersionBytes returns stored zip bytes", async () => {
     const fileBytes = pluginZip("download-me");
     const created = await createPlugin({ gameId,
-      authorId,
+      uploaderId: authorId,
       title: "Dl",
       semver: "1.0.0",
       fileBytes,
@@ -266,7 +266,7 @@ describe("plugin service", () => {
     expect(await findPluginByHash(hash, { dbPath })).toBeNull();
 
     const created = await createPlugin({ gameId,
-      authorId,
+      uploaderId: authorId,
       title: "Hash",
       semver: "1.0.0",
       fileBytes,
@@ -283,7 +283,7 @@ describe("plugin service", () => {
   test("addPluginVersion picks latest by semver, not upload order", async () => {
     const created = await createPlugin({
       gameId,
-      authorId,
+      uploaderId: authorId,
       title: "Semver",
       semver: "2.0.0",
       fileBytes: pluginZip("two"),
@@ -293,7 +293,7 @@ describe("plugin service", () => {
 
     const afterLower = await addPluginVersion({
       pluginId: created.id,
-      authorId,
+      uploaderId: authorId,
       semver: "1.5.0",
       fileBytes: pluginZip("one-five"),
       ...blobOpts(),
@@ -307,7 +307,7 @@ describe("plugin service", () => {
 
     const afterHigher = await addPluginVersion({
       pluginId: created.id,
-      authorId,
+      uploaderId: authorId,
       semver: "2.1.0",
       fileBytes: pluginZip("two-one"),
       ...blobOpts(),
@@ -327,7 +327,7 @@ describe("plugin service", () => {
   test("duplicate semver on addPluginVersion throws 409 with versionId + semver", async () => {
     const created = await createPlugin({
       gameId,
-      authorId,
+      uploaderId: authorId,
       title: "Dup semver",
       semver: "1.0.0",
       fileBytes: pluginZip("a"),
@@ -338,7 +338,7 @@ describe("plugin service", () => {
     try {
       await addPluginVersion({
         pluginId: created.id,
-        authorId,
+        uploaderId: authorId,
         semver: "v1.0.0",
         fileBytes: pluginZip("b"),
         ...blobOpts(),
@@ -364,7 +364,7 @@ describe("plugin service", () => {
       await expect(
         createPlugin({
           gameId,
-          authorId,
+          uploaderId: authorId,
           title: "Bad",
           semver,
           fileBytes: pluginZip("bad"),
@@ -375,7 +375,7 @@ describe("plugin service", () => {
     await expect(
       createPlugin({
         gameId,
-        authorId,
+        uploaderId: authorId,
         title: "Missing",
         fileBytes: pluginZip("missing"),
         ...blobOpts(),
@@ -387,7 +387,7 @@ describe("plugin service", () => {
     const fileBytes = pluginZip("delete-me");
     const contentHash = sha256Hex(fileBytes);
     const created = await createPlugin({ gameId,
-      authorId,
+      uploaderId: authorId,
       title: "Del",
       semver: "1.0.0",
       fileBytes,
@@ -405,7 +405,7 @@ describe("plugin service", () => {
     try {
       await deletePlugin({
         pluginId: created.id,
-        authorId: otherUserId,
+        uploaderId: otherUserId,
         ...blobOpts(),
       });
     } catch (err) {
@@ -415,7 +415,7 @@ describe("plugin service", () => {
 
     await deletePlugin({
       pluginId: created.id,
-      authorId,
+      uploaderId: authorId,
       ...blobOpts(),
     });
 
@@ -445,7 +445,7 @@ describe("plugin service", () => {
       .values({
         id: pluginId,
         gameId,
-        authorId,
+        uploaderId: authorId,
         title: "Legacy",
         description: null,
         latestSemver: "1.0.0",

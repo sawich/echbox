@@ -29,7 +29,7 @@ export async function getUserProfile(
   const listOpts = {
     dbPath: options?.dbPath,
     viewerUserId: options?.viewerUserId,
-    authorId: userId,
+    uploaderId: userId,
     unbounded: true as const,
   };
 

@@ -9,11 +9,14 @@ import { and, count, eq, inArray } from "drizzle-orm";
 import {
   orderBySort,
   resolveListWindow,
-  titleSlugSearch,
   voteNetScore,
   type CatalogListQuery,
   type PaginatedList,
 } from "../common/list-query";
+import {
+  contentIdsMatchingAllTagNames,
+  tagFilterNames,
+} from "../common/tag-filter";
 import { getDb } from "../db/client";
 import { newId } from "../id";
 import {
@@ -69,7 +72,7 @@ export type CharacterCardVersionDetail = CardDetail["versions"][number] & {
 export type CharacterCardDetail = Omit<CardDetail, "versions"> &
   VoteCounts & {
     gameId: string;
-    authorId: string;
+    uploaderId: string;
     authorUsername?: string | null;
     authorAvatar?: string | null;
     createdAt: string;
@@ -80,14 +83,15 @@ export type CharacterCardDetail = Omit<CardDetail, "versions"> &
 export type CharacterCardListItem = CardListItem &
   VoteCounts & {
     gameId: string;
-    authorId: string;
+    uploaderId: string;
   };
 
 export type ListCharactersOptions = CardServiceOptions &
   CatalogListQuery & {
     viewerUserId?: string | null;
     gameId?: string;
-    authorId?: string;
+    uploaderId?: string;
+    tags?: string[];
   };
 
 export type GetCardOptions = CardServiceOptions & {
@@ -95,10 +99,9 @@ export type GetCardOptions = CardServiceOptions & {
 };
 
 export type CreateCardInput = CardServiceOptions & {
-  authorId: string;
+  uploaderId: string;
   gameId: string;
-  title?: string;
-  slug?: string;
+  description?: string;
   fileBytes: Uint8Array;
   semver: string;
   notes?: string;
@@ -106,7 +109,7 @@ export type CreateCardInput = CardServiceOptions & {
 
 export type AddVersionInput = CardServiceOptions & {
   cardId: string;
-  authorId: string;
+  uploaderId: string;
   fileBytes: Uint8Array;
   semver: string;
   notes?: string;
@@ -115,22 +118,21 @@ export type AddVersionInput = CardServiceOptions & {
 export type PatchCardInput = CardServiceOptions & {
   cardId?: string;
   id?: string;
-  authorId: string;
-  title?: string;
-  slug?: string;
+  uploaderId: string;
+  description?: string;
   notes?: string;
 };
 
 export type DeleteCardInput = CardServiceOptions & {
   cardId?: string;
   id?: string;
-  authorId: string;
+  uploaderId: string;
 };
 
 export type DeleteVersionInput = CardServiceOptions & {
   cardId: string;
   versionId: string;
-  authorId: string;
+  uploaderId: string;
 };
 
 function imageUrl(cardId: string, versionId: string | null): string {
@@ -147,15 +149,6 @@ function normalizeSemver(input: string | undefined): string {
   } catch {
     throw new BadCardError("Enter a valid version number (for example 1.0.0).");
   }
-}
-
-function slugify(input: string, fallbackId: string): string {
-  const normalized = input
-    .trim()
-    .toLowerCase()
-    .replace(/[^a-z0-9]+/g, "-")
-    .replace(/^-+|-+$/g, "");
-  return normalized || `card-${fallbackId.slice(0, 8)}`;
 }
 
 function humanizeCardParseError(err: unknown): string {
@@ -251,18 +244,17 @@ export async function getCard(
       avatar: users.avatar,
     })
     .from(users)
-    .where(eq(users.id, card.authorId))
+    .where(eq(users.id, card.uploaderId))
     .get();
 
   return {
     id: card.id,
     gameId: card.gameId,
     type: "character",
-    authorId: card.authorId,
+    uploaderId: card.uploaderId,
     authorUsername: author?.username ?? null,
     authorAvatar: author?.avatar ?? null,
-    slug: card.slug,
-    title: card.title,
+    description: card.description,
     latestSemver: card.latestSemver,
     latestVersionId: card.latestVersionId,
     createdAt: card.createdAt,
@@ -276,20 +268,33 @@ export async function listCharacters(
   options?: ListCharactersOptions,
 ): Promise<PaginatedList<CharacterCardListItem>> {
   const db = getDb(options?.dbPath);
-  const { page, limit, offset, sort, q, unbounded } = resolveListWindow(options);
+  const { page, limit, offset, sort, unbounded } = resolveListWindow(options);
+
+  const tagNames = tagFilterNames(options?.tags);
+  const taggedIds = tagNames.length
+    ? contentIdsMatchingAllTagNames({
+        kind: "cards",
+        names: tagNames,
+        dbPath: options?.dbPath,
+      })
+    : undefined;
+
+  if (taggedIds && taggedIds.length === 0) {
+    return { items: [], total: 0, page, limit: unbounded ? 0 : limit };
+  }
 
   const whereClause = and(
     options?.gameId ? eq(characterCards.gameId, options.gameId) : undefined,
-    options?.authorId
-      ? eq(characterCards.authorId, options.authorId)
+    options?.uploaderId
+      ? eq(characterCards.uploaderId, options.uploaderId)
       : undefined,
-    titleSlugSearch(characterCards.title, characterCards.slug, q),
+    taggedIds ? inArray(characterCards.id, taggedIds) : undefined,
   );
   const score = voteNetScore("card_votes", "card_id", characterCards.id);
   const order = orderBySort(
-    sort,
+    sort === "title" ? "recent" : sort,
     characterCards.createdAt,
-    characterCards.title,
+    characterCards.createdAt,
     score,
   );
 
@@ -365,9 +370,8 @@ export async function listCharacters(
       id: card.id,
       gameId: card.gameId,
       type: "character",
-      authorId: card.authorId,
-      slug: card.slug,
-      title: card.title,
+      uploaderId: card.uploaderId,
+      description: card.description,
       latestSemver: card.latestSemver,
       latestVersionId: card.latestVersionId,
       versionCount: versions.length,
@@ -397,8 +401,7 @@ export async function createCard(
     previewPath: string;
   }
 > {
-  const { authorId, gameId, title, slug, fileBytes, notes, dbPath, dataDir } =
-    input;
+  const { uploaderId, gameId, fileBytes, notes, dbPath, dataDir } = input;
 
   const semver = normalizeSemver(input.semver);
   assertGameSupportsKind(gameId, "cards", { dbPath });
@@ -418,11 +421,6 @@ export async function createCard(
   const cardId = newId();
   const versionId = newId();
   const now = new Date().toISOString();
-
-  const resolvedTitle = title?.trim() || kc.name?.trim() || "Untitled";
-  const resolvedSlug = slug?.trim()
-    ? slugify(slug, cardId)
-    : slugify(resolvedTitle, cardId);
 
   const { previewPath } = getVersionPaths(
     cardId,
@@ -451,9 +449,8 @@ export async function createCard(
       .values({
         id: cardId,
         gameId,
-        authorId,
-        slug: resolvedSlug,
-        title: resolvedTitle,
+        uploaderId,
+        description: input.description ?? "",
         latestSemver: semver,
         latestVersionId: versionId,
         createdAt: now,
@@ -500,7 +497,7 @@ export async function addVersion(
     previewPath: string;
   }
 > {
-  const { cardId, authorId, fileBytes, notes, dbPath, dataDir } = input;
+  const { cardId, uploaderId, fileBytes, notes, dbPath, dataDir } = input;
   const semver = normalizeSemver(input.semver);
   const db = getDb(dbPath);
 
@@ -514,7 +511,7 @@ export async function addVersion(
     throw new CardNotFoundError();
   }
 
-  if (card.authorId !== authorId) {
+  if (card.uploaderId !== uploaderId) {
     throw new ForbiddenCardError();
   }
 
@@ -640,23 +637,18 @@ export async function patchCard(
     throw new CardNotFoundError();
   }
 
-  if (card.authorId !== input.authorId) {
+  if (card.uploaderId !== input.uploaderId) {
     throw new ForbiddenCardError();
   }
 
   const now = new Date().toISOString();
-  const nextTitle = input.title?.trim() ? input.title.trim() : card.title;
-  const nextSlug = input.slug?.trim()
-    ? slugify(input.slug, targetId)
-    : input.title?.trim() && input.slug === undefined
-      ? card.slug
-      : card.slug;
 
   db.transaction((tx) => {
     tx.update(characterCards)
       .set({
-        title: nextTitle,
-        slug: nextSlug,
+        ...(input.description !== undefined
+          ? { description: input.description }
+          : {}),
         updatedAt: now,
       })
       .where(eq(characterCards.id, targetId))
@@ -687,7 +679,7 @@ export async function patchCard(
 export async function deleteVersion(
   input: DeleteVersionInput,
 ): Promise<CharacterCardDetail> {
-  const { cardId, versionId, authorId, dbPath, dataDir } = input;
+  const { cardId, versionId, uploaderId, dbPath, dataDir } = input;
   const db = getDb(dbPath);
 
   const card = db
@@ -700,7 +692,7 @@ export async function deleteVersion(
     throw new CardNotFoundError();
   }
 
-  if (card.authorId !== authorId) {
+  if (card.uploaderId !== uploaderId) {
     throw new ForbiddenCardError();
   }
 
@@ -760,7 +752,7 @@ export async function deleteCard(
   const input: DeleteCardInput =
     typeof cardIdOrInput === "string"
       ? typeof maybeAuthorOrInput === "string"
-        ? { cardId: cardIdOrInput, authorId: maybeAuthorOrInput }
+        ? { cardId: cardIdOrInput, uploaderId: maybeAuthorOrInput }
         : { cardId: cardIdOrInput, ...maybeAuthorOrInput! }
       : cardIdOrInput;
 
@@ -780,7 +772,7 @@ export async function deleteCard(
     throw new CardNotFoundError();
   }
 
-  if (card.authorId !== input.authorId) {
+  if (card.uploaderId !== input.uploaderId) {
     throw new ForbiddenCardError();
   }
 
@@ -866,7 +858,7 @@ export function createCardService(options: CardServiceOptions = {}) {
           return deleteCard({
             ...options,
             cardId: cardIdOrInput,
-            authorId: maybeAuthorOrInput,
+            uploaderId: maybeAuthorOrInput,
           });
         }
         return deleteCard(cardIdOrInput, { ...options, ...maybeAuthorOrInput! });

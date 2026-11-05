@@ -21,6 +21,7 @@ import {
 import { getVersionPaths } from "../storage";
 import { seedTestGame } from "../../__tests__/test-game";
 import { findContentBlob } from "../../proxy/blob-store";
+import { setContentTags } from "../../tags/service";
 import {
   plantCardVersionWithBlob,
   plantLegacyCardVersionOnDisk,
@@ -81,14 +82,17 @@ describe("character card service", () => {
     const created = await createCard({
       gameId,
       semver: "1.0.0",
-      authorId,
-      title: "Heroine Card",
+      uploaderId: authorId,
+      description: "Heroine Card",
       fileBytes,
       notes: "Initial upload",
     });
 
     expect(created.id).toBeString();
-    expect(created.title).toBe("Heroine Card");
+    expect(created.uploaderId).toBe(authorId);
+    expect(created.description).toBe("Heroine Card");
+    expect(created).not.toHaveProperty("title");
+    expect(created).not.toHaveProperty("slug");
     expect(created.latestSemver).toBe("1.0.0");
     expect(created.latestVersionId).toBe(created.versions[0]!.id);
     expect(created.versions).toHaveLength(1);
@@ -122,7 +126,9 @@ describe("character card service", () => {
     const list = (await listCharacters()).items;
     expect(list).toHaveLength(1);
     expect(list[0]!.id).toBe(created.id);
-    expect(list[0]!.title).toBe("Heroine Card");
+    expect(list[0]!.uploaderId).toBe(authorId);
+    expect(list[0]!.description).toBe("Heroine Card");
+    expect(list[0]).not.toHaveProperty("title");
     expect(list[0]!.latestSemver).toBe("1.0.0");
     expect(list[0]!.latestVersionId).toBe(created.latestVersionId);
     expect(list[0]!.versionCount).toBe(1);
@@ -140,15 +146,13 @@ describe("character card service", () => {
     const first = await createCard({
       gameId,
       semver: "1.0.0",
-      authorId,
-      title: "First Character",
+      uploaderId: authorId,
       fileBytes: firstBytes,
     });
     const second = await createCard({
       gameId,
       semver: "1.0.0",
-      authorId: otherUserId,
-      title: "Second Character",
+      uploaderId: otherUserId,
       fileBytes: secondBytes,
     });
 
@@ -162,7 +166,7 @@ describe("character card service", () => {
     const first = await createCard({
       gameId,
       semver: "1.0.0",
-      authorId,
+      uploaderId: authorId,
       fileBytes,
     });
 
@@ -171,7 +175,7 @@ describe("character card service", () => {
       await createCard({
       gameId,
       semver: "1.0.0",
-        authorId: otherUserId,
+        uploaderId: otherUserId,
         fileBytes,
       });
     } catch (err) {
@@ -201,15 +205,14 @@ describe("character card service", () => {
     const card = await createCard({
       gameId,
       semver: "1.0.0",
-      authorId,
-      title: "Evolving Card",
+      uploaderId: authorId,
       fileBytes: v1Bytes,
     });
 
     const updated = await addVersion({
       cardId: card.id,
       semver: "2.0.0",
-      authorId,
+      uploaderId: authorId,
       fileBytes: v2Bytes,
       notes: "Added mod data",
     });
@@ -230,7 +233,7 @@ describe("character card service", () => {
       await addVersion({
         cardId: card.id,
         semver: "2.0.0",
-        authorId,
+        uploaderId: authorId,
         fileBytes: v1Bytes,
       });
     } catch (err) {
@@ -257,7 +260,7 @@ describe("character card service", () => {
     const card = await createCard({
       gameId,
       semver: "1.0.0",
-      authorId,
+      uploaderId: authorId,
       fileBytes: v1Bytes,
     });
 
@@ -266,7 +269,7 @@ describe("character card service", () => {
       await addVersion({
         cardId: card.id,
         semver: "2.0.0",
-        authorId: otherUserId,
+        uploaderId: otherUserId,
         fileBytes: v2Bytes,
       });
     } catch (err) {
@@ -284,7 +287,7 @@ describe("character card service", () => {
   test("addVersion rejects duplicate semver on same card with 409 DUPLICATE_SEMVER", async () => {
     const card = await createCard({
       gameId,
-      authorId,
+      uploaderId: authorId,
       semver: "1.0.0",
       fileBytes: await fixtureBytes("chara", "kk_chara.png"),
     });
@@ -293,7 +296,7 @@ describe("character card service", () => {
     try {
       await addVersion({
         cardId: card.id,
-        authorId,
+        uploaderId: authorId,
         semver: "v1.0.0",
         fileBytes: await fixtureBytes("chara", "kk_mod_chara.png"),
       });
@@ -311,7 +314,7 @@ describe("character card service", () => {
     for (const bad of ["", "   ", "not-a-version"]) {
       let caught: unknown;
       try {
-        await createCard({ gameId, authorId, semver: bad, fileBytes: bytes });
+        await createCard({ gameId, uploaderId: authorId, semver: bad, fileBytes: bytes });
       } catch (err) {
         caught = err;
       }
@@ -321,7 +324,7 @@ describe("character card service", () => {
 
     const card = await createCard({
       gameId,
-      authorId,
+      uploaderId: authorId,
       semver: "1.0.0",
       fileBytes: bytes,
     });
@@ -329,7 +332,7 @@ describe("character card service", () => {
     try {
       await addVersion({
         cardId: card.id,
-        authorId,
+        uploaderId: authorId,
         semver: "nope",
         fileBytes: await fixtureBytes("chara", "kk_mod_chara.png"),
       });
@@ -342,13 +345,13 @@ describe("character card service", () => {
   test("latest is chosen by semver, not insertion order", async () => {
     const card = await createCard({
       gameId,
-      authorId,
+      uploaderId: authorId,
       semver: "2.0.0",
       fileBytes: await fixtureBytes("chara", "kk_chara.png"),
     });
     const updated = await addVersion({
       cardId: card.id,
-      authorId,
+      uploaderId: authorId,
       semver: "1.5.0",
       fileBytes: await fixtureBytes("chara", "kk_mod_chara.png"),
     });
@@ -360,7 +363,7 @@ describe("character card service", () => {
   test("deleteVersion recomputes latest and deleting last leaves empty parent", async () => {
     const card = await createCard({
       gameId,
-      authorId,
+      uploaderId: authorId,
       semver: "1.0.0",
       fileBytes: await fixtureBytes("chara", "kk_chara.png"),
     });
@@ -369,7 +372,7 @@ describe("character card service", () => {
 
     const withV2 = await addVersion({
       cardId: card.id,
-      authorId,
+      uploaderId: authorId,
       semver: "2.0.0",
       fileBytes: await fixtureBytes("chara", "kk_mod_chara.png"),
     });
@@ -380,7 +383,7 @@ describe("character card service", () => {
     const afterDeleteHigher = await deleteVersion({
       cardId: card.id,
       versionId: v2Id,
-      authorId,
+      uploaderId: authorId,
     });
     expect(afterDeleteHigher.latestSemver).toBe("1.0.0");
     expect(afterDeleteHigher.latestVersionId).toBe(v1Id);
@@ -393,7 +396,7 @@ describe("character card service", () => {
       await deleteVersion({
         cardId: card.id,
         versionId: v1Id,
-        authorId: otherUserId,
+        uploaderId: otherUserId,
       });
     } catch (err) {
       forbidden = err;
@@ -405,7 +408,7 @@ describe("character card service", () => {
       await deleteVersion({
         cardId: card.id,
         versionId: crypto.randomUUID(),
-        authorId,
+        uploaderId: authorId,
       });
     } catch (err) {
       missing = err;
@@ -415,7 +418,7 @@ describe("character card service", () => {
     const empty = await deleteVersion({
       cardId: card.id,
       versionId: v1Id,
-      authorId,
+      uploaderId: authorId,
     });
     expect(empty.latestSemver).toBeNull();
     expect(empty.latestVersionId).toBeNull();
@@ -443,7 +446,7 @@ describe("character card service", () => {
     const card = await createCard({
       gameId,
       semver: "1.0.0",
-      authorId,
+      uploaderId: authorId,
       fileBytes: v1Bytes,
     });
 
@@ -462,7 +465,7 @@ describe("character card service", () => {
       await createCard({
       gameId,
       semver: "1.0.0",
-        authorId,
+        uploaderId: authorId,
         fileBytes: badBytes,
       });
     } catch (err) {
@@ -480,7 +483,7 @@ describe("character card service", () => {
       await createCard({
       gameId,
       semver: "1.0.0",
-        authorId,
+        uploaderId: authorId,
         fileBytes: coordBytes,
       });
     } catch (err) {
@@ -495,7 +498,7 @@ describe("character card service", () => {
     const card = await createCard({
       gameId,
       semver: "1.0.0",
-      authorId,
+      uploaderId: authorId,
       fileBytes: await fixtureBytes("chara", "kk_chara.png"),
     });
 
@@ -508,7 +511,7 @@ describe("character card service", () => {
     try {
       await addVersion({
         cardId: card.id,
-        authorId,
+        uploaderId: authorId,
         semver: "1.2.0",
         fileBytes: pngOnly,
       });
@@ -529,8 +532,8 @@ describe("character card service", () => {
     const card = await createCard({
       gameId,
       semver: "1.0.0",
-      authorId,
-      title: "Before Title",
+      uploaderId: authorId,
+      description: "Before",
       fileBytes: v1Bytes,
     });
 
@@ -538,25 +541,78 @@ describe("character card service", () => {
     try {
       await patchCard({
         cardId: card.id,
-        authorId: otherUserId,
-        title: "Hacked Title",
+        uploaderId: otherUserId,
+        description: "Hacked",
       });
     } catch (err) {
       forbidden = err;
     }
     expect((forbidden as { status: number }).status).toBe(403);
+    expect((await getCard(card.id))!.description).toBe("Before");
 
     const patched = await patchCard({
       cardId: card.id,
-      authorId,
-      title: "After Title",
-      slug: "after-title",
+      uploaderId: authorId,
+      description: "After Title",
       notes: "Updated note",
     });
 
-    expect(patched.title).toBe("After Title");
-    expect(patched.slug).toBe("after-title");
+    expect(patched.description).toBe("After Title");
+    expect(patched).not.toHaveProperty("title");
+    expect(patched).not.toHaveProperty("slug");
     expect(patched.versions[0]!.notes).toBe("Updated note");
+  });
+
+  test("listCharacters with tags returns only cards that have every tag", async () => {
+    const bothBytes = await fixtureBytes("chara", "kk_chara.png");
+    const onlyABytes = await fixtureBytes("chara", "kk_mod_chara.png");
+    const both = await createCard({
+      gameId,
+      semver: "1.0.0",
+      uploaderId: authorId,
+      description: "both",
+      fileBytes: bothBytes,
+      dbPath,
+      dataDir,
+    });
+    const onlyA = await createCard({
+      gameId,
+      semver: "1.0.0",
+      uploaderId: authorId,
+      description: "only a",
+      fileBytes: onlyABytes,
+      dbPath,
+      dataDir,
+    });
+
+    const actor = { userId: authorId, isAdmin: false };
+    setContentTags({
+      kind: "cards",
+      contentId: both.id,
+      names: ["a", "b"],
+      actor,
+      uploaderId: authorId,
+      dbPath,
+    });
+    setContentTags({
+      kind: "cards",
+      contentId: onlyA.id,
+      names: ["a"],
+      actor,
+      uploaderId: authorId,
+      dbPath,
+    });
+
+    const filtered = await listCharacters({
+      tags: ["a", "b"],
+      dbPath,
+      dataDir,
+    });
+    expect(filtered.total).toBe(1);
+    expect(filtered.items.map((card) => card.id)).toEqual([both.id]);
+
+    const unfiltered = await listCharacters({ dbPath, dataDir });
+    expect(unfiltered.total).toBe(2);
   });
 
   test("deleteCard throws 403 for other user and removes DB + files for author", async () => {
@@ -565,7 +621,7 @@ describe("character card service", () => {
     const card = await createCard({
       gameId,
       semver: "1.0.0",
-      authorId,
+      uploaderId: authorId,
       fileBytes: v1Bytes,
     });
 
@@ -576,7 +632,7 @@ describe("character card service", () => {
     try {
       await deleteCard({
         cardId: card.id,
-        authorId: otherUserId,
+        uploaderId: otherUserId,
       });
     } catch (err) {
       forbidden = err;
@@ -586,7 +642,7 @@ describe("character card service", () => {
 
     await deleteCard({
       cardId: card.id,
-      authorId,
+      uploaderId: authorId,
     });
 
     expect(await getCard(card.id)).toBeNull();
@@ -600,7 +656,7 @@ describe("character card service", () => {
     const db = getDb(dbPath);
     const planted = await plantLegacyCardVersionOnDisk(db, {
       gameId,
-      authorId,
+      uploaderId: authorId,
       dataDir,
     });
 
@@ -621,14 +677,14 @@ describe("character card service", () => {
     const db = getDb(dbPath);
     const planted = await plantCardVersionWithBlob(db, {
       gameId,
-      authorId,
+      uploaderId: authorId,
       dbPath,
       dataDir,
     });
 
     await deleteCard({
       cardId: planted.cardId,
-      authorId,
+      uploaderId: authorId,
     });
 
     expect(await getCard(planted.cardId)).toBeNull();

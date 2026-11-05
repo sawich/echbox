@@ -13,6 +13,7 @@ import {
   addSoftmodVersion,
   createSoftmod,
   deleteSoftmod,
+  patchSoftmod,
   deleteSoftmodVersion,
   findSoftmodByHash,
   getSoftmod,
@@ -23,6 +24,7 @@ import { softmodVersionPaths } from "../storage";
 import { setSoftmodVote } from "../votes";
 import { seedTestGame } from "../../__tests__/test-game";
 import { findContentBlob } from "../../proxy/blob-store";
+import { setContentTags } from "../../tags/service";
 
 const UUID_V7_RE =
   /^[0-9a-f]{8}-[0-9a-f]{4}-7[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
@@ -107,7 +109,7 @@ describe("softmod service", () => {
   test("createSoftmod stores zipmod from fixture and uses manifest GUID as id", async () => {
     const fileBytes = await fixtureBytes("softmods", "testmod.zipmod");
     const created = await createSoftmod({ gameId,
-      authorId,
+      uploaderId: authorId,
       semver: "1.2.3",
       fileBytes,
       notes: "First release",
@@ -116,8 +118,10 @@ describe("softmod service", () => {
     });
 
     expect(created.id).toBe("com.echbox.testmod");
-    expect(created.title).toBe("Test Mod");
-    expect(created.modAuthor).toBe("Tester");
+    expect(created.uploaderId).toBe(authorId);
+    expect(created.description).toBe("A test softmod");
+    expect(created).not.toHaveProperty("title");
+    expect(created).not.toHaveProperty("modAuthor");
     expect(created.latestSemver).toBe("1.2.3");
     expect(created.versions).toHaveLength(1);
     const v1 = created.versions[0]!;
@@ -173,12 +177,12 @@ describe("softmod service", () => {
     const firstBytes = zipmodWithGuid(guid, "1.0.0", "first");
     const secondBytes = zipmodWithGuid(guid, "2.0.0", "second");
 
-    await createSoftmod({ gameId, authorId, semver: "1.0.0", fileBytes: firstBytes, dbPath, dataDir });
+    await createSoftmod({ gameId, uploaderId: authorId, semver: "1.0.0", fileBytes: firstBytes, dbPath, dataDir });
 
     let caught: unknown;
     try {
       await createSoftmod({ gameId,
-        authorId: otherUserId,
+        uploaderId: otherUserId,
         semver: "2.0.0",
         fileBytes: secondBytes,
         dbPath,
@@ -200,12 +204,12 @@ describe("softmod service", () => {
 
   test("second createSoftmod with same file bytes throws DuplicateSoftmodHashError", async () => {
     const fileBytes = await fixtureBytes("softmods", "testmod.zipmod");
-    await createSoftmod({ gameId, authorId, semver: "1.2.3", fileBytes, dbPath, dataDir });
+    await createSoftmod({ gameId, uploaderId: authorId, semver: "1.2.3", fileBytes, dbPath, dataDir });
 
     let caught: unknown;
     try {
       await createSoftmod({ gameId,
-        authorId: otherUserId,
+        uploaderId: otherUserId,
         semver: "1.2.3",
         fileBytes,
         dbPath,
@@ -234,15 +238,16 @@ describe("softmod service", () => {
     const guid = "com.echbox.version-bump";
     const v1Bytes = zipmodWithGuid(guid, "1.0.0", "v1-data");
     const created = await createSoftmod({ gameId,
-      authorId,
+      uploaderId: authorId,
       semver: "1.0.0",
       fileBytes: v1Bytes,
       dbPath,
       dataDir,
     });
 
-    expect(created.title).toBe("Test Mod");
-    expect(created.modAuthor).toBe("Tester");
+    expect(created.description).toBe("A test mod");
+    expect(created).not.toHaveProperty("title");
+    expect(created).not.toHaveProperty("modAuthor");
 
     const v2Bytes = zipmodWithGuid(guid, "2.0.0", "v2-data-padded-extra", {
       name: "Renamed Mod",
@@ -252,7 +257,7 @@ describe("softmod service", () => {
 
     const updated = await addSoftmodVersion({
       softmodId: guid,
-      authorId,
+      uploaderId: authorId,
       semver: "2.0.0",
       fileBytes: v2Bytes,
       notes: "Second release",
@@ -261,9 +266,9 @@ describe("softmod service", () => {
     });
 
     expect(updated.latestSemver).toBe("2.0.0");
-    expect(updated.title).toBe("Renamed Mod");
-    expect(updated.modAuthor).toBe("New Author");
-    expect(updated.description).toBe("Updated description");
+    expect(updated.description).toBe("A test mod");
+    expect(updated).not.toHaveProperty("title");
+    expect(updated).not.toHaveProperty("modAuthor");
     expect(updated.versions).toHaveLength(2);
     const v2 = updated.versions[1]!;
     expect(v2.semver).toBe("2.0.0");
@@ -289,7 +294,7 @@ describe("softmod service", () => {
     const fileBytes = await fixtureBytes("softmods", "testmod.zipmod");
     const created = await createSoftmod({
       gameId,
-      authorId,
+      uploaderId: authorId,
       semver: "1.0.0",
       fileBytes,
       dbPath,
@@ -299,7 +304,7 @@ describe("softmod service", () => {
     const v2Bytes = zipmodWithGuid(created.id, "2.0.0", "v2-payload");
     const withV2 = await addSoftmodVersion({
       softmodId: created.id,
-      authorId,
+      uploaderId: authorId,
       semver: "2.0.0",
       fileBytes: v2Bytes,
       dbPath,
@@ -311,7 +316,7 @@ describe("softmod service", () => {
     const afterDel = await deleteSoftmodVersion({
       softmodId: created.id,
       versionId: v2Id,
-      authorId,
+      uploaderId: authorId,
       dbPath,
       dataDir,
     });
@@ -322,7 +327,7 @@ describe("softmod service", () => {
     const empty = await deleteSoftmodVersion({
       softmodId: created.id,
       versionId: v1Id,
-      authorId,
+      uploaderId: authorId,
       dbPath,
       dataDir,
     });
@@ -340,7 +345,7 @@ describe("softmod service", () => {
   test("addSoftmodVersion as non-author throws 403", async () => {
     const fileBytes = await fixtureBytes("softmods", "testmod.zipmod");
     const created = await createSoftmod({ gameId,
-      authorId,
+      uploaderId: authorId,
       semver: "1.2.3",
       fileBytes,
       dbPath,
@@ -353,7 +358,7 @@ describe("softmod service", () => {
     try {
       await addSoftmodVersion({
         softmodId: created.id,
-        authorId: otherUserId,
+        uploaderId: otherUserId,
         semver: "2.0.0",
         fileBytes: v2Bytes,
         dbPath,
@@ -376,7 +381,7 @@ describe("softmod service", () => {
 
     const created = await createSoftmod({
       gameId,
-      authorId,
+      uploaderId: authorId,
       semver: "1.2.3",
       fileBytes,
       dbPath,
@@ -394,7 +399,7 @@ describe("softmod service", () => {
     const guid = "com.echbox.semver-latest";
     const created = await createSoftmod({
       gameId,
-      authorId,
+      uploaderId: authorId,
       semver: "2.0.0",
       fileBytes: zipmodWithGuid(guid, "9.9.9", "p-two"),
       dbPath,
@@ -404,7 +409,7 @@ describe("softmod service", () => {
 
     const lower = await addSoftmodVersion({
       softmodId: guid,
-      authorId,
+      uploaderId: authorId,
       semver: "1.5.0",
       fileBytes: zipmodWithGuid(guid, "9.9.9", "p-one-five"),
       dbPath,
@@ -416,7 +421,7 @@ describe("softmod service", () => {
 
     const higher = await addSoftmodVersion({
       softmodId: guid,
-      authorId,
+      uploaderId: authorId,
       semver: "2.1.0",
       fileBytes: zipmodWithGuid(guid, "9.9.9", "p-two-one"),
       dbPath,
@@ -430,7 +435,7 @@ describe("softmod service", () => {
     try {
       await addSoftmodVersion({
         softmodId: guid,
-        authorId,
+        uploaderId: authorId,
         semver: "2.1.0",
         fileBytes: zipmodWithGuid(guid, "9.9.9", "p-dup"),
         dbPath,
@@ -457,7 +462,7 @@ describe("softmod service", () => {
       await expect(
         createSoftmod({
           gameId,
-          authorId,
+          uploaderId: authorId,
           semver,
           fileBytes: zipmodWithGuid("com.echbox.bad-semver"),
           dbPath,
@@ -471,7 +476,7 @@ describe("softmod service", () => {
     const fileBytes = await fixtureBytes("softmods", "testmod.zipmod");
     const contentHash = sha256Hex(fileBytes);
     const created = await createSoftmod({ gameId,
-      authorId,
+      uploaderId: authorId,
       semver: "1.2.3", fileBytes,
       dbPath,
       dataDir,
@@ -481,7 +486,7 @@ describe("softmod service", () => {
     try {
       await deleteSoftmod({
         softmodId: created.id,
-        authorId: otherUserId,
+        uploaderId: otherUserId,
         dbPath,
         dataDir,
       });
@@ -492,7 +497,7 @@ describe("softmod service", () => {
 
     await deleteSoftmod({
       softmodId: created.id,
-      authorId,
+      uploaderId: authorId,
       dbPath,
       dataDir,
     });
@@ -504,7 +509,7 @@ describe("softmod service", () => {
   test("deleteSoftmod removes seeded votes", async () => {
     const fileBytes = await fixtureBytes("softmods", "testmod.zipmod");
     const created = await createSoftmod({ gameId,
-      authorId,
+      uploaderId: authorId,
       semver: "1.2.3", fileBytes,
       dbPath,
       dataDir,
@@ -528,7 +533,7 @@ describe("softmod service", () => {
 
     await deleteSoftmod({
       softmodId: created.id,
-      authorId,
+      uploaderId: authorId,
       dbPath,
       dataDir,
     });
@@ -541,6 +546,82 @@ describe("softmod service", () => {
         .where(eq(softmodVotes.softmodId, created.id))
         .all(),
     ).toHaveLength(0);
+  });
+
+  test("patchSoftmod updates description for the uploader", async () => {
+    const fileBytes = await fixtureBytes("softmods", "testmod.zipmod");
+    const created = await createSoftmod({
+      gameId,
+      uploaderId: authorId,
+      semver: "1.2.3",
+      fileBytes,
+      dbPath,
+      dataDir,
+    });
+
+    let forbidden: unknown;
+    try {
+      await patchSoftmod({
+        softmodId: created.id,
+        uploaderId: otherUserId,
+        description: "Hacked",
+        dbPath,
+        dataDir,
+      });
+    } catch (err) {
+      forbidden = err;
+    }
+    expect((forbidden as { status: number }).status).toBe(403);
+
+    const patched = await patchSoftmod({
+      softmodId: created.id,
+      uploaderId: authorId,
+      description: "Edited description",
+      dbPath,
+      dataDir,
+    });
+    expect(patched.description).toBe("Edited description");
+    expect(patched).not.toHaveProperty("title");
+  });
+
+  test("listSoftmods with tags returns only softmods that have every tag", async () => {
+    const both = await createSoftmod({
+      gameId,
+      uploaderId: authorId,
+      semver: "1.0.0",
+      fileBytes: zipmodWithGuid("com.echbox.both", "1.0.0", "both"),
+      dbPath,
+      dataDir,
+    });
+    const onlyA = await createSoftmod({
+      gameId,
+      uploaderId: authorId,
+      semver: "1.0.0",
+      fileBytes: zipmodWithGuid("com.echbox.only", "1.0.0", "only"),
+      dbPath,
+      dataDir,
+    });
+    const actor = { userId: authorId, isAdmin: false };
+    setContentTags({
+      kind: "softmods",
+      contentId: both.id,
+      names: ["a", "b"],
+      actor,
+      uploaderId: authorId,
+      dbPath,
+    });
+    setContentTags({
+      kind: "softmods",
+      contentId: onlyA.id,
+      names: ["a"],
+      actor,
+      uploaderId: authorId,
+      dbPath,
+    });
+
+    const filtered = await listSoftmods({ tags: ["a", "b"], dbPath, dataDir });
+    expect(filtered.total).toBe(1);
+    expect(filtered.items.map((item) => item.id)).toEqual([both.id]);
   });
 
   test("legacy disk original_path is served when blob is absent", async () => {
@@ -557,8 +638,7 @@ describe("softmod service", () => {
       .values({
         id: softmodId,
         gameId,
-        authorId,
-        title: "Legacy softmod",
+        uploaderId: authorId,
         description: "Legacy disk only",
         latestSemver: "1.0.0",
         latestVersionId: versionId,

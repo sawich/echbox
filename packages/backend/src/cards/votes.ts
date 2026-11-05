@@ -157,7 +157,7 @@ export function getLikesReceivedForAuthor(
     })
     .from(cardVotes)
     .innerJoin(characterCards, eq(cardVotes.cardId, characterCards.id))
-    .where(eq(characterCards.authorId, authorId))
+    .where(eq(characterCards.uploaderId, authorId))
     .groupBy(cardVotes.vote)
     .all();
 
