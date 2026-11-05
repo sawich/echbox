@@ -33,6 +33,7 @@ onMounted(() => {
 const links = [
   { label: 'Library', to: '/library', icon: 'i-lucide-library', match: (p: string) => p === '/' || p.startsWith('/library') },
   { label: 'Store', to: '/store', icon: 'i-lucide-store', match: (p: string) => p.startsWith('/store') },
+  { label: 'Tags', to: '/tags', icon: 'i-lucide-tags', match: (p: string) => p.startsWith('/tags') },
   { label: 'Tasks', to: '/tasks', icon: 'i-lucide-list-todo', match: (p: string) => p.startsWith('/tasks') },
 ]
 

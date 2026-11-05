@@ -7,7 +7,7 @@ const router = useRouter()
 const api = useApi()
 const config = useRuntimeConfig()
 const apiUrl = computed(() => String(config.public.apiUrl).replace(/\/$/, ''))
-const { user, login } = useAuth()
+const { user, isAdmin, login } = useAuth()
 
 const id = computed(() => String(route.params.id))
 
@@ -25,21 +25,23 @@ const { data, error, status, refresh } = await useAsyncData(
 )
 
 const selectedVersion = ref<string | null>(null)
-const editTitle = ref('')
+const editDescription = ref('')
 
 watch(
   data,
   (scene) => {
     if (!scene) return
     selectedVersion.value = scene.latestVersionId
-    editTitle.value = scene.title
+    editDescription.value = scene.description
   },
   { immediate: true },
 )
 
-const isAuthor = computed(() =>
-  Boolean(user.value && data.value && data.value.authorId === user.value.id),
+const isUploader = computed(() =>
+  Boolean(user.value && data.value && data.value.uploaderId === user.value.id),
 )
+
+const canEditMeta = computed(() => isUploader.value || isAdmin.value)
 
 const canVote = computed(() => Boolean(user.value && data.value))
 
@@ -117,33 +119,33 @@ const originalDownloadHref = computed(() => {
 
 const previewAspect = computed(() => galleryAspect('scene'))
 
-const savingTitle = ref(false)
-const titleError = ref<string | null>(null)
-const titleSaved = ref(false)
+const savingDescription = ref(false)
+const descriptionError = ref<string | null>(null)
+const descriptionSaved = ref(false)
 
-async function saveTitle() {
-  if (!data.value || !editTitle.value.trim() || savingTitle.value) return
-  savingTitle.value = true
-  titleError.value = null
-  titleSaved.value = false
+async function saveDescription() {
+  if (!data.value || savingDescription.value) return
+  savingDescription.value = true
+  descriptionError.value = null
+  descriptionSaved.value = false
   try {
     const { error: err } = await api.api.scenes({ id: id.value }).patch(
-      { title: editTitle.value.trim() },
+      { description: editDescription.value.trim() },
       { fetch: { credentials: 'include' } },
     )
     if (err) {
       const val = err.value as { error?: string } | undefined
-      titleError.value = val?.error || `Failed to update title (${err.status})`
+      descriptionError.value = val?.error || `Failed to update description (${err.status})`
       return
     }
-    titleSaved.value = true
+    descriptionSaved.value = true
     await refresh()
   }
   catch (e) {
-    titleError.value = e instanceof Error ? e.message : 'Failed to update title'
+    descriptionError.value = e instanceof Error ? e.message : 'Failed to update description'
   }
   finally {
-    savingTitle.value = false
+    savingDescription.value = false
   }
 }
 
@@ -317,7 +319,7 @@ async function handleDeleteScene() {
               v-if="imageSrc"
               :key="imageSrc"
               :src="imageSrc"
-              :alt="data.title"
+              alt=""
               class="ed-page-enter w-full object-cover"
               :class="previewAspect"
             >
@@ -358,32 +360,35 @@ async function handleDeleteScene() {
               {{ data.versions.length }} versions
             </UBadge>
             <UBadge
-              v-if="isAuthor"
+              v-if="isUploader"
               color="secondary"
               variant="subtle"
               icon="i-lucide-badge-check"
             >
-              You're the author
+              You're the uploader
             </UBadge>
           </div>
 
-          <h1 class="ed-headline-md text-highlighted">
-            {{ data.title }}
+          <h1 class="sr-only">
+            Scene
           </h1>
+
+          <p
+            v-if="data.description && !canEditMeta"
+            class="text-pretty whitespace-pre-line text-toned"
+          >
+            {{ data.description }}
+          </p>
 
           <div class="flex flex-wrap items-center gap-x-4 gap-y-2">
             <UUser
-              :to="`/u/${data.authorId}`"
+              :to="`/u/${data.uploaderId}`"
               :name="data.authorUsername || 'View profile'"
-              description="Author"
-              :avatar="{ src: data.authorAvatar ?? undefined, alt: data.authorUsername || 'author', icon: 'i-lucide-user' }"
+              description="Uploader"
+              :avatar="{ src: data.authorAvatar ?? undefined, alt: data.authorUsername || 'uploader', icon: 'i-lucide-user' }"
               size="md"
             />
-            <div class="flex min-w-0 flex-wrap items-center gap-1 text-xs text-dimmed">
-              <span class="font-mono">{{ data.slug }}</span>
-              <span aria-hidden="true">·</span>
-              <CopyId :value="data.id" />
-            </div>
+            <CopyId :value="data.id" />
           </div>
 
           <div class="flex flex-wrap items-center gap-3">
@@ -438,12 +443,12 @@ async function handleDeleteScene() {
             v-model="selectedVersion"
             :versions="data.versions"
             :latest-version-id="data.latestVersionId"
-            :deletable="isAuthor"
+            :deletable="isUploader"
             :deleting-id="deletingVersionId"
             @delete="handleDeleteVersion"
           />
           <UAlert
-            v-if="isAuthor && versionError"
+            v-if="isUploader && versionError"
             class="mt-3"
             color="error"
             variant="subtle"
@@ -453,39 +458,52 @@ async function handleDeleteScene() {
         </SectionCard>
 
         <SectionCard
-          v-if="isAuthor"
-          eyebrow="Author controls"
+          title="Tags"
+          icon="i-lucide-tags"
+        >
+          <ContentTagEditor
+            kind="scenes"
+            :content-id="data.id"
+            :readonly="!canEditMeta"
+          />
+        </SectionCard>
+
+        <SectionCard
+          v-if="canEditMeta"
+          eyebrow="Uploader controls"
           title="Manage scene"
           icon="i-lucide-settings-2"
         >
           <div class="space-y-6">
             <form
               class="space-y-2"
-              @submit.prevent="saveTitle"
+              @submit.prevent="saveDescription"
             >
               <UFormField
-                label="Title"
-                :error="titleError ?? undefined"
-                :help="titleSaved && !titleError ? 'Title updated.' : undefined"
+                label="Description"
+                :error="descriptionError ?? undefined"
+                :help="descriptionSaved && !descriptionError ? 'Description updated.' : undefined"
               >
-                <div class="flex flex-wrap items-center gap-2">
-                  <UInput
-                    v-model="editTitle"
-                    class="min-w-60 flex-1"
-                    placeholder="Scene title"
-                  />
-                  <UButton
-                    type="submit"
-                    color="primary"
-                    :loading="savingTitle"
-                    :disabled="!editTitle.trim() || editTitle.trim() === data.title"
-                  >
-                    Save
-                  </UButton>
-                </div>
+                <UTextarea
+                  v-model="editDescription"
+                  placeholder="What is this scene?"
+                  :rows="3"
+                  autoresize
+                  class="w-full"
+                />
+                <UButton
+                  type="submit"
+                  color="primary"
+                  class="mt-2"
+                  :loading="savingDescription"
+                  :disabled="editDescription.trim() === data.description"
+                >
+                  Save description
+                </UButton>
               </UFormField>
             </form>
 
+            <template v-if="isUploader">
             <USeparator />
 
             <UModal
@@ -588,6 +606,7 @@ async function handleDeleteScene() {
               :error="deleteError"
               @confirm="handleDeleteScene"
             />
+            </template>
           </div>
         </SectionCard>
 

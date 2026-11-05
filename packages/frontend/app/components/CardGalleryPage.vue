@@ -1,5 +1,7 @@
 <script setup lang="ts">
 import { DEFAULT_PAGE_LIMIT, type CardListItem, type CardType, type CatalogSort } from '@echbox/shared'
+import { contentLabel } from '~/utils/content-label'
+import { replaceContentTags } from '~/utils/content-tags'
 import { galleryAspect } from '~/utils/gallery'
 import { tagFilterQuery } from '~/utils/tag-filter'
 
@@ -109,7 +111,7 @@ async function toggleInstall(card: CardListItem) {
         instanceId: props.instanceId,
         kind: 'cards',
         contentId: card.id,
-        title: card.title,
+        title: contentLabel(card.description, card.id),
       })
     }
     else {
@@ -120,7 +122,7 @@ async function toggleInstall(card: CardListItem) {
           id: card.id,
           versionId: card.latestVersionId!,
           semver: card.latestSemver!,
-          title: card.title,
+          title: contentLabel(card.description, card.id),
           contentHash: null,
           installedAt: new Date().toISOString(),
         },
@@ -141,7 +143,8 @@ const isPortrait = computed(() => galleryAspect(props.type) === 'aspect-[252/352
 
 const showUpload = ref(false)
 const uploadFile = ref<File | null>(null)
-const uploadTitle = ref('')
+const uploadDescription = ref('')
+const uploadTags = ref<string[]>([])
 const uploadNotes = ref('')
 const uploadBusy = ref(false)
 const uploadError = ref<string | null>(null)
@@ -151,7 +154,8 @@ const duplicateHit = ref<{ cardId: string, semver: string } | null>(null)
 
 function resetUploadForm() {
   uploadFile.value = null
-  uploadTitle.value = ''
+  uploadDescription.value = ''
+  uploadTags.value = []
   uploadNotes.value = ''
   semver.reset(DEFAULT_CARD_SEMVER)
   uploadError.value = null
@@ -188,28 +192,6 @@ async function onFileSelected(file: File | null | undefined) {
     // Non-blocking pre-check
   }
 
-  if (uploadTitle.value.trim()) return
-
-  try {
-    const form = new FormData()
-    form.append('file', file)
-    const res = await fetch(`${apiUrl.value}/api/kk/chara`, {
-      method: 'POST',
-      credentials: 'include',
-      body: form,
-    })
-    if (!res.ok) return
-    const payload = await res.json().catch(() => null) as {
-      summary?: { name?: string }
-    } | null
-    const name = payload?.summary?.name?.trim()
-    if (name && !uploadTitle.value.trim()) {
-      uploadTitle.value = name
-    }
-  }
-  catch {
-    // Non-blocking title autofill
-  }
 }
 
 async function submitUpload() {
@@ -232,8 +214,8 @@ async function submitUpload() {
     form.append('file', uploadFile.value)
     form.append('gameId', props.gameId)
     form.append('semver', semver.canonical.value)
-    if (uploadTitle.value.trim()) {
-      form.append('title', uploadTitle.value.trim())
+    if (uploadDescription.value.trim()) {
+      form.append('description', uploadDescription.value.trim())
     }
     if (uploadNotes.value.trim()) {
       form.append('notes', uploadNotes.value.trim())
@@ -257,10 +239,15 @@ async function submitUpload() {
       return
     }
 
+    const createdId = payload?.id as string | undefined
+    if (createdId) {
+      const tagError = await replaceContentTags(apiUrl.value, 'cards', createdId, uploadTags.value)
+      if (tagError) uploadError.value = tagError
+    }
     showUpload.value = false
     await refresh()
-    if (payload?.id) {
-      await router.push(`/cards/${payload.id}`)
+    if (createdId) {
+      await router.push(`/cards/${createdId}`)
     }
   }
   catch (err) {
@@ -314,14 +301,22 @@ async function submitUpload() {
               />
 
               <UFormField
-                label="Title"
+                label="Description"
                 hint="Optional"
-                help="Defaults to the card name."
               >
-                <UInput
-                  v-model="uploadTitle"
-                  placeholder="Character title"
+                <UTextarea
+                  v-model="uploadDescription"
+                  placeholder="What is this card?"
+                  :rows="3"
+                  autoresize
                   class="w-full"
+                />
+              </UFormField>
+
+              <UFormField label="Tags">
+                <ContentTagEditor
+                  v-model="uploadTags"
+                  kind="cards"
                 />
               </UFormField>
 

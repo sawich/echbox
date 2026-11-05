@@ -2,7 +2,7 @@
 const props = defineProps<{
   to: string
   imageSrc: string
-  title: string
+  title?: string
   subtitle?: string
   aspectClass: string
   kind: string
@@ -13,6 +13,7 @@ const props = defineProps<{
 }>()
 
 const showVotes = computed(() => typeof props.likes === 'number')
+const showCaption = computed(() => Boolean(props.title) || Boolean(props.subtitle) || showVotes.value)
 </script>
 
 <template>
@@ -28,7 +29,7 @@ const showVotes = computed(() => typeof props.likes === 'number')
         <img
           v-if="imageSrc"
           :src="imageSrc"
-          :alt="title"
+          :alt="title || ''"
           class="size-full object-cover transition-transform duration-500 ease-[var(--ed-ease-emphasized)] group-hover:scale-[1.03]"
           loading="lazy"
           decoding="async"
@@ -44,7 +45,10 @@ const showVotes = computed(() => typeof props.likes === 'number')
           />
         </div>
 
-        <div class="pointer-events-none absolute inset-x-0 bottom-0 h-3/5 bg-gradient-to-t from-black/85 via-black/40 to-transparent" />
+        <div
+          v-if="showCaption"
+          class="pointer-events-none absolute inset-x-0 bottom-0 h-3/5 bg-gradient-to-t from-black/85 via-black/40 to-transparent"
+        />
 
         <div class="absolute inset-x-0 top-0 flex items-start justify-between gap-2 p-2.5">
           <span class="rounded-full bg-black/50 px-2 py-0.5 font-mono text-[10px] font-medium tracking-wider text-white/85 uppercase backdrop-blur-md">
@@ -58,8 +62,14 @@ const showVotes = computed(() => typeof props.likes === 'number')
           </span>
         </div>
 
-        <div class="absolute inset-x-0 bottom-0 space-y-1 p-3 text-white">
-          <h3 class="truncate text-[15px] leading-tight font-semibold tracking-tight">
+        <div
+          v-if="showCaption"
+          class="absolute inset-x-0 bottom-0 space-y-1 p-3 text-white"
+        >
+          <h3
+            v-if="title"
+            class="truncate text-[15px] leading-tight font-semibold tracking-tight"
+          >
             {{ title }}
           </h3>
           <div class="flex items-center justify-between gap-2 text-xs text-white/70">

@@ -1,5 +1,7 @@
 <script setup lang="ts">
 import { DEFAULT_PAGE_LIMIT, type CatalogSort, type PluginListItem, type SoftmodListItem } from '@echbox/shared'
+import { contentLabel } from '~/utils/content-label'
+import { replaceContentTags, uploadSoftmodPreviews } from '~/utils/content-tags'
 import { tagFilterQuery } from '~/utils/tag-filter'
 
 const props = defineProps<{
@@ -132,7 +134,9 @@ async function toggleInstall(item: PluginListItem | SoftmodListItem) {
         instanceId: props.instanceId,
         kind: contentKind.value,
         contentId: item.id,
-        title: item.title,
+        title: props.modKind === 'plugin'
+          ? (item as PluginListItem).title
+          : contentLabel(item.description, item.id),
       })
     }
     else {
@@ -143,7 +147,9 @@ async function toggleInstall(item: PluginListItem | SoftmodListItem) {
           id: item.id,
           versionId: item.latestVersionId!,
           semver: item.latestSemver!,
-          title: item.title,
+          title: props.modKind === 'plugin'
+          ? (item as PluginListItem).title
+          : contentLabel(item.description, item.id),
           contentHash: null,
           installedAt: new Date().toISOString(),
         },
@@ -165,6 +171,8 @@ const showUpload = ref(false)
 const uploadFile = ref<File | null>(null)
 const uploadTitle = ref('')
 const uploadDescription = ref('')
+const uploadTags = ref<string[]>([])
+const uploadPreviews = ref<File[]>([])
 const uploadNotes = ref('')
 const uploadBusy = ref(false)
 const uploadError = ref<string | null>(null)
@@ -182,7 +190,7 @@ const uploadModalTitle = computed(() =>
 const uploadModalDescription = computed(() =>
   props.modKind === 'plugin'
     ? 'Select a BepInEx plugin ZIP and provide a title.'
-    : 'Select a Koikatsu softmod (.zipmod) file. Title and metadata come from the manifest.',
+    : 'Select a Koikatsu softmod (.zipmod). Add a description and up to 3 preview images.',
 )
 
 const duplicateLinkTo = computed(() => {
@@ -196,6 +204,8 @@ function resetUploadForm() {
   uploadFile.value = null
   uploadTitle.value = ''
   uploadDescription.value = ''
+  uploadTags.value = []
+  uploadPreviews.value = []
   uploadNotes.value = ''
   semver.reset()
   uploadError.value = null
@@ -212,6 +222,15 @@ async function computeSha256Hex(file: File): Promise<string> {
   return Array.from(new Uint8Array(hashBuf))
     .map(b => b.toString(16).padStart(2, '0'))
     .join('')
+}
+
+function onPreviewFiles(event: Event) {
+  const input = event.target as HTMLInputElement
+  const files = [...(input.files ?? [])]
+  if (files.length > 3) {
+    uploadError.value = 'A softmod can have at most 3 preview images.'
+  }
+  uploadPreviews.value = files.slice(0, 3)
 }
 
 async function onFileSelected(file: File | null | undefined) {
@@ -265,9 +284,9 @@ async function submitUpload() {
     form.append('semver', semver.canonical.value)
     if (props.modKind === 'plugin') {
       form.append('title', uploadTitle.value.trim())
-      if (uploadDescription.value.trim()) {
-        form.append('description', uploadDescription.value.trim())
-      }
+    }
+    if (uploadDescription.value.trim()) {
+      form.append('description', uploadDescription.value.trim())
     }
     if (uploadNotes.value.trim()) {
       form.append('notes', uploadNotes.value.trim())
@@ -292,9 +311,15 @@ async function submitUpload() {
       return
     }
 
+    const createdId = (payload?.id as string | undefined)
+    if (createdId && props.modKind === 'softmod') {
+      const previewError = await uploadSoftmodPreviews(apiUrl.value, createdId, uploadPreviews.value)
+      const tagError = await replaceContentTags(apiUrl.value, 'softmods', createdId, uploadTags.value)
+      const followUp = previewError || tagError
+      if (followUp) uploadError.value = followUp
+    }
     showUpload.value = false
     await refresh()
-    const createdId = (payload?.id as string | undefined)
     if (createdId) {
       await router.push(
         props.modKind === 'plugin' ? `/plugins/${createdId}` : `/softmods/${createdId}`,
@@ -382,6 +407,49 @@ const canSubmitUpload = computed(() => {
                   />
                 </UFormField>
               </template>
+              <template v-else>
+                <UFormField
+                  label="Description"
+                  hint="Optional"
+                >
+                  <UTextarea
+                    v-model="uploadDescription"
+                    placeholder="What does this softmod do?"
+                    :rows="3"
+                    autoresize
+                    class="w-full"
+                  />
+                </UFormField>
+                <UFormField label="Tags">
+                  <ContentTagEditor
+                    v-model="uploadTags"
+                    kind="softmods"
+                  />
+                </UFormField>
+                <UFormField
+                  label="Previews"
+                  hint="Up to 3"
+                >
+                  <input
+                    type="file"
+                    accept="image/*"
+                    multiple
+                    class="block w-full text-sm text-muted file:me-3 file:rounded-[var(--radius-sm)] file:border-0 file:bg-elevated file:px-3 file:py-1.5 file:text-sm file:font-medium file:text-highlighted"
+                    @change="onPreviewFiles"
+                  >
+                  <ul
+                    v-if="uploadPreviews.length"
+                    class="mt-2 space-y-1 text-xs text-muted"
+                  >
+                    <li
+                      v-for="file in uploadPreviews"
+                      :key="file.name"
+                    >
+                      {{ file.name }}
+                    </li>
+                  </ul>
+                </UFormField>
+              </template>
 
               <UFormField
                 label="Version"
@@ -464,7 +532,7 @@ const canSubmitUpload = computed(() => {
 
     <GallerySkeleton
       v-if="status === 'pending'"
-      variant="row"
+      :variant="modKind === 'softmod' ? 'landscape' : 'row'"
       :count="5"
     />
 
@@ -503,14 +571,41 @@ const canSubmitUpload = computed(() => {
     />
 
     <div
+      v-else-if="status === 'success' && items.length > 0 && modKind === 'softmod'"
+      class="ed-stagger grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3 2xl:grid-cols-4"
+    >
+      <div
+        v-for="item in items"
+        :key="item.id"
+        class="space-y-2"
+      >
+        <SoftmodTile
+          :item="(item as SoftmodListItem)"
+          :api-url="apiUrl"
+        />
+        <UButton
+          v-if="instanceId"
+          block
+          size="sm"
+          :color="installedIds.has(item.id) ? 'neutral' : 'primary'"
+          :variant="installedIds.has(item.id) ? 'outline' : 'solid'"
+          :loading="isTargetBusy(item.id)"
+          :disabled="!isDesktop && !installedIds.has(item.id)"
+          @click="toggleInstall(item)"
+        >
+          {{ installedIds.has(item.id) ? 'Uninstall' : (isDesktop ? 'Install' : 'Desktop only') }}
+        </UButton>
+      </div>
+    </div>
+
+    <div
       v-else-if="status === 'success' && items.length > 0"
       class="ed-stagger space-y-3"
     >
       <ModRow
         v-for="item in items"
         :key="item.id"
-        :mod-kind="modKind"
-        :item="item"
+        :item="(item as PluginListItem)"
         :api-url="apiUrl"
         :show-install="Boolean(instanceId)"
         :installed="installedIds.has(item.id)"

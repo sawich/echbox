@@ -1,5 +1,7 @@
 <script setup lang="ts">
 import { DEFAULT_PAGE_LIMIT, type CatalogSort, type SceneListItem } from '@echbox/shared'
+import { contentLabel } from '~/utils/content-label'
+import { replaceContentTags } from '~/utils/content-tags'
 import { tagFilterQuery } from '~/utils/tag-filter'
 
 const props = defineProps<{
@@ -60,7 +62,7 @@ async function toggleInstall(scene: SceneListItem) {
         instanceId: props.instanceId,
         kind: 'scenes',
         contentId: scene.id,
-        title: scene.title,
+        title: contentLabel(scene.description, scene.id),
       })
     } else {
       await runContentInstall({
@@ -70,7 +72,7 @@ async function toggleInstall(scene: SceneListItem) {
           id: scene.id,
           versionId: scene.latestVersionId!,
           semver: scene.latestSemver!,
-          title: scene.title,
+          title: contentLabel(scene.description, scene.id),
           contentHash: null,
           installedAt: new Date().toISOString(),
         },
@@ -130,7 +132,8 @@ const total = computed(() => data.value?.total ?? 0)
 
 const showUpload = ref(false)
 const uploadFile = ref<File | null>(null)
-const uploadTitle = ref('')
+const uploadDescription = ref('')
+const uploadTags = ref<string[]>([])
 const uploadNotes = ref('')
 const uploadBusy = ref(false)
 const uploadError = ref<string | null>(null)
@@ -139,7 +142,8 @@ const duplicateHit = ref<{ sceneId: string, semver: string } | null>(null)
 
 function resetUploadForm() {
   uploadFile.value = null
-  uploadTitle.value = ''
+  uploadDescription.value = ''
+  uploadTags.value = []
   uploadNotes.value = ''
   semver.reset()
   uploadError.value = null
@@ -196,8 +200,8 @@ async function submitUpload() {
     form.append('file', uploadFile.value)
     form.append('gameId', props.gameId)
     form.append('semver', semver.canonical.value)
-    if (uploadTitle.value.trim()) {
-      form.append('title', uploadTitle.value.trim())
+    if (uploadDescription.value.trim()) {
+      form.append('description', uploadDescription.value.trim())
     }
     if (uploadNotes.value.trim()) {
       form.append('notes', uploadNotes.value.trim())
@@ -219,9 +223,13 @@ async function submitUpload() {
       return
     }
 
+    const id = (payload?.id as string | undefined)
+    if (id) {
+      const tagError = await replaceContentTags(apiUrl.value, 'scenes', id, uploadTags.value)
+      if (tagError) uploadError.value = tagError
+    }
     showUpload.value = false
     await refresh()
-    const id = (payload?.id as string | undefined)
     if (id) {
       await router.push(`/scenes/${id}`)
     }
@@ -277,14 +285,22 @@ async function submitUpload() {
               />
 
               <UFormField
-                label="Title"
+                label="Description"
                 hint="Optional"
-                help="Defaults to the scene name."
               >
-                <UInput
-                  v-model="uploadTitle"
-                  placeholder="Scene title"
+                <UTextarea
+                  v-model="uploadDescription"
+                  placeholder="What is this scene?"
+                  :rows="3"
+                  autoresize
                   class="w-full"
+                />
+              </UFormField>
+
+              <UFormField label="Tags">
+                <ContentTagEditor
+                  v-model="uploadTags"
+                  kind="scenes"
                 />
               </UFormField>
 

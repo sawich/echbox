@@ -12,8 +12,6 @@ defineProps<{
   <MediaTile
     :to="`/clothes/${clothes.id}`"
     :image-src="clothes.imageUrl ? `${apiUrl}${clothes.imageUrl}` : ''"
-    :title="clothes.title"
-    :subtitle="clothes.slug"
     :aspect-class="galleryAspect('clothes')"
     kind="clothes"
     :semver="clothes.versionCount > 1 ? clothes.latestSemver : null"

@@ -233,7 +233,6 @@ const stats = computed(() => {
             <ModRow
               v-for="plugin in data.plugins"
               :key="plugin.id"
-              mod-kind="plugin"
               :item="plugin"
               :api-url="apiUrl"
             />
@@ -250,12 +249,11 @@ const stats = computed(() => {
           />
           <div
             v-else
-            class="ed-stagger space-y-3"
+            class="ed-stagger grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3 2xl:grid-cols-4"
           >
-            <ModRow
+            <SoftmodTile
               v-for="softmod in data.softmods"
               :key="softmod.id"
-              mod-kind="softmod"
               :item="softmod"
               :api-url="apiUrl"
             />

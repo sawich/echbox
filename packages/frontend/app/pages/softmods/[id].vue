@@ -14,10 +14,9 @@ type SoftmodVersion = {
 type SoftmodDetail = {
   id: string
   gameId: string
-  authorId: string
-  title: string
-  modAuthor: string | null
+  uploaderId: string
   description: string
+  previewUrls: string[]
   website: string | null
   latestSemver: string
   latestVersionId: string
@@ -37,7 +36,7 @@ const router = useRouter()
 const api = useApi()
 const config = useRuntimeConfig()
 const apiUrl = computed(() => String(config.public.apiUrl).replace(/\/$/, ''))
-const { user, login } = useAuth()
+const { user, isAdmin, login } = useAuth()
 const { isDesktop, listInstalledInstances } = useLocalInstalls()
 
 const id = computed(() => String(route.params.id))
@@ -80,19 +79,53 @@ const backTo = computed(() => {
 })
 
 const selectedVersion = ref<string | null>(null)
+const editDescription = ref('')
 
 watch(
   data,
   (softmod) => {
     if (!softmod) return
     selectedVersion.value = softmod.latestVersionId
+    editDescription.value = softmod.description
   },
   { immediate: true },
 )
 
-const isAuthor = computed(() =>
-  Boolean(user.value && data.value && data.value.authorId === user.value.id),
+const isUploader = computed(() =>
+  Boolean(user.value && data.value && (data.value.uploaderId === user.value.id || data.value.uploader.id === user.value.id)),
 )
+
+const canEditMeta = computed(() => isUploader.value || isAdmin.value)
+
+const savingDescription = ref(false)
+const descriptionError = ref<string | null>(null)
+const descriptionSaved = ref(false)
+
+async function saveDescription() {
+  if (!data.value || savingDescription.value) return
+  savingDescription.value = true
+  descriptionError.value = null
+  descriptionSaved.value = false
+  try {
+    const { error: err } = await api.api.softmods({ id: id.value }).patch(
+      { description: editDescription.value.trim() },
+      { fetch: { credentials: 'include' } },
+    )
+    if (err) {
+      const val = err.value as { error?: string } | undefined
+      descriptionError.value = val?.error || `Failed to update description (${err.status})`
+      return
+    }
+    descriptionSaved.value = true
+    await refresh()
+  }
+  catch (e) {
+    descriptionError.value = e instanceof Error ? e.message : 'Failed to update description'
+  }
+  finally {
+    savingDescription.value = false
+  }
+}
 
 const canVote = computed(() => Boolean(user.value && data.value))
 
@@ -342,7 +375,7 @@ async function handleDelete() {
               {{ data.versionCount }} versions
             </UBadge>
             <UBadge
-              v-if="isAuthor"
+              v-if="isUploader"
               color="secondary"
               variant="subtle"
               icon="i-lucide-badge-check"
@@ -350,9 +383,15 @@ async function handleDelete() {
               You're the uploader
             </UBadge>
           </div>
-          <h1 class="ed-headline-md text-highlighted">
-            {{ data.title }}
+          <h1 class="sr-only">
+            Softmod
           </h1>
+          <p
+            v-if="data.description && !canEditMeta"
+            class="text-pretty whitespace-pre-line text-toned"
+          >
+            {{ data.description }}
+          </p>
           <CopyId :value="data.id" />
         </div>
       </header>
@@ -360,13 +399,28 @@ async function handleDelete() {
       <div class="grid gap-6 lg:grid-cols-[1fr_320px] lg:gap-8">
         <div class="min-w-0 space-y-6">
           <SectionCard
-            v-if="data.description"
-            title="About"
-            icon="i-lucide-align-left"
+            title="Previews"
+            icon="i-lucide-images"
+            description="Up to 3 images."
           >
-            <p class="text-pretty whitespace-pre-line text-toned">
-              {{ data.description }}
-            </p>
+            <SoftmodPreviewManager
+              :softmod-id="data.id"
+              :preview-urls="data.previewUrls"
+              :api-url="apiUrl"
+              :can-edit="canEditMeta"
+              @changed="refresh()"
+            />
+          </SectionCard>
+
+          <SectionCard
+            title="Tags"
+            icon="i-lucide-tags"
+          >
+            <ContentTagEditor
+              kind="softmods"
+              :content-id="data.id"
+              :readonly="!canEditMeta"
+            />
           </SectionCard>
 
           <SectionCard
@@ -378,12 +432,12 @@ async function handleDelete() {
               v-model="selectedVersion"
               :versions="data.versions"
               :latest-version-id="data.latestVersionId"
-              :deletable="isAuthor"
+              :deletable="isUploader"
               :deleting-id="deletingVersionId"
               @delete="handleDeleteVersion"
             />
             <UAlert
-              v-if="isAuthor && versionError"
+              v-if="isUploader && versionError"
               class="mt-3"
               color="error"
               variant="subtle"
@@ -393,13 +447,41 @@ async function handleDelete() {
           </SectionCard>
 
           <SectionCard
-            v-if="isAuthor"
-            eyebrow="Author controls"
+            v-if="canEditMeta"
+            eyebrow="Uploader controls"
             title="Manage softmod"
-            description="Title and manifest metadata come from the package."
             icon="i-lucide-settings-2"
           >
             <div class="space-y-6">
+              <form
+                class="space-y-2"
+                @submit.prevent="saveDescription"
+              >
+                <UFormField
+                  label="Description"
+                  :error="descriptionError ?? undefined"
+                  :help="descriptionSaved && !descriptionError ? 'Description updated.' : undefined"
+                >
+                  <UTextarea
+                    v-model="editDescription"
+                    placeholder="What does this softmod do?"
+                    :rows="3"
+                    autoresize
+                    class="w-full"
+                  />
+                  <UButton
+                    type="submit"
+                    color="primary"
+                    class="mt-2"
+                    :loading="savingDescription"
+                    :disabled="editDescription.trim() === data.description"
+                  >
+                    Save description
+                  </UButton>
+                </UFormField>
+              </form>
+
+              <template v-if="isUploader">
               <UModal
                 v-model:open="showVersionUpload"
                 title="Publish new version"
@@ -500,6 +582,7 @@ async function handleDelete() {
                 :error="deleteError"
                 @confirm="handleDelete"
               />
+              </template>
             </div>
           </SectionCard>
         </div>
@@ -568,16 +651,9 @@ async function handleDelete() {
           </div>
 
           <div
-            v-if="data.modAuthor || data.website"
+            v-if="data.website"
             class="ed-card space-y-3 p-5 text-sm"
           >
-            <div
-              v-if="data.modAuthor"
-              class="flex items-center justify-between gap-3"
-            >
-              <span class="text-muted">Mod author</span>
-              <span class="truncate font-medium text-highlighted">{{ data.modAuthor }}</span>
-            </div>
             <UButton
               v-if="data.website"
               :href="data.website"

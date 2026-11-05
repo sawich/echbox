@@ -12,8 +12,6 @@ defineProps<{
   <MediaTile
     :to="`/scenes/${scene.id}`"
     :image-src="scene.imageUrl ? `${apiUrl}${scene.imageUrl}` : ''"
-    :title="scene.title"
-    :subtitle="scene.slug"
     :aspect-class="galleryAspect('scene')"
     kind="scene"
     :semver="scene.versionCount > 1 ? scene.latestSemver : null"

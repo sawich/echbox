@@ -1,9 +1,8 @@
 <script setup lang="ts">
-import type { PluginListItem, SoftmodListItem } from '@echbox/shared'
+import type { PluginListItem } from '@echbox/shared'
 
 const props = defineProps<{
-  modKind: 'plugin' | 'softmod'
-  item: PluginListItem | SoftmodListItem
+  item: PluginListItem
   apiUrl: string
   showInstall?: boolean
   installed?: boolean
@@ -16,19 +15,7 @@ const emit = defineEmits<{
   install: []
 }>()
 
-const detailTo = computed(() =>
-  props.modKind === 'plugin'
-    ? `/plugins/${props.item.id}`
-    : `/softmods/${props.item.id}`,
-)
-
 const downloadHref = computed(() => `${props.apiUrl}${props.item.downloadUrl}`)
-
-const modAuthor = computed(() =>
-  props.modKind === 'softmod'
-    ? (props.item as SoftmodListItem).modAuthor
-    : null,
-)
 
 const description = computed(() => {
   const d = props.item.description
@@ -38,14 +25,9 @@ const description = computed(() => {
 
 <template>
   <article class="ed-card ed-card-interactive group relative flex flex-col gap-4 p-4 sm:flex-row sm:items-center">
-    <span
-      class="grid size-11 shrink-0 place-items-center rounded-[var(--radius-md)] bg-gradient-to-br ring-1 ring-[var(--ed-outline-variant)]"
-      :class="modKind === 'plugin'
-        ? 'from-[color-mix(in_oklab,var(--ed-secondary)_22%,transparent)] to-[color-mix(in_oklab,var(--ed-secondary)_6%,transparent)] text-secondary'
-        : 'from-[color-mix(in_oklab,var(--ed-primary)_22%,transparent)] to-[color-mix(in_oklab,var(--ed-primary)_6%,transparent)] text-primary'"
-    >
+    <span class="grid size-11 shrink-0 place-items-center rounded-[var(--radius-md)] bg-gradient-to-br from-[color-mix(in_oklab,var(--ed-secondary)_22%,transparent)] to-[color-mix(in_oklab,var(--ed-secondary)_6%,transparent)] text-secondary ring-1 ring-[var(--ed-outline-variant)]">
       <UIcon
-        :name="modKind === 'plugin' ? 'i-lucide-puzzle' : 'i-lucide-package'"
+        name="i-lucide-puzzle"
         class="size-5"
       />
     </span>
@@ -53,7 +35,7 @@ const description = computed(() => {
     <div class="min-w-0 flex-1 space-y-1.5">
       <div class="flex flex-wrap items-center gap-2">
         <NuxtLink
-          :to="detailTo"
+          :to="`/plugins/${item.id}`"
           class="truncate text-[15px] font-semibold text-highlighted after:absolute after:inset-0 after:rounded-[var(--radius-lg)] after:content-[''] focus-visible:outline-none group-hover:text-primary"
         >
           {{ item.title }}
@@ -87,16 +69,6 @@ const description = computed(() => {
           />
           {{ item.uploader.username }}
         </NuxtLink>
-        <span
-          v-if="modAuthor"
-          class="inline-flex items-center gap-1"
-        >
-          <UIcon
-            name="i-lucide-pen-tool"
-            class="size-3.5"
-          />
-          {{ modAuthor }}
-        </span>
         <span class="inline-flex items-center gap-2.5 tabular-nums">
           <span class="inline-flex items-center gap-1">
             <UIcon

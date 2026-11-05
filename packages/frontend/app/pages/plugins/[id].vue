@@ -14,7 +14,7 @@ type PluginVersion = {
 type PluginDetail = {
   id: string
   gameId: string
-  authorId: string
+  uploaderId: string
   title: string
   description: string | null
   latestSemver: string
@@ -93,7 +93,7 @@ watch(
 )
 
 const isAuthor = computed(() =>
-  Boolean(user.value && data.value && data.value.authorId === user.value.id),
+  Boolean(user.value && data.value && data.value.uploaderId === user.value.id),
 )
 
 const canVote = computed(() => Boolean(user.value && data.value))
@@ -434,7 +434,7 @@ async function handleDelete() {
 
           <SectionCard
             v-if="isAuthor"
-            eyebrow="Author controls"
+            eyebrow="Uploader controls"
             title="Manage plugin"
             icon="i-lucide-settings-2"
           >

@@ -1,5 +1,7 @@
 <script setup lang="ts">
 import { DEFAULT_PAGE_LIMIT, type CatalogSort, type ClothesListItem } from '@echbox/shared'
+import { contentLabel } from '~/utils/content-label'
+import { replaceContentTags } from '~/utils/content-tags'
 import { tagFilterQuery } from '~/utils/tag-filter'
 
 const props = defineProps<{
@@ -60,7 +62,7 @@ async function toggleInstall(clothes: ClothesListItem) {
         instanceId: props.instanceId,
         kind: 'clothes',
         contentId: clothes.id,
-        title: clothes.title,
+        title: contentLabel(clothes.description, clothes.id),
       })
     } else {
       await runContentInstall({
@@ -70,7 +72,7 @@ async function toggleInstall(clothes: ClothesListItem) {
           id: clothes.id,
           versionId: clothes.latestVersionId!,
           semver: clothes.latestSemver!,
-          title: clothes.title,
+          title: contentLabel(clothes.description, clothes.id),
           contentHash: null,
           installedAt: new Date().toISOString(),
         },
@@ -130,7 +132,8 @@ const total = computed(() => data.value?.total ?? 0)
 
 const showUpload = ref(false)
 const uploadFile = ref<File | null>(null)
-const uploadTitle = ref('')
+const uploadDescription = ref('')
+const uploadTags = ref<string[]>([])
 const uploadNotes = ref('')
 const uploadBusy = ref(false)
 const uploadError = ref<string | null>(null)
@@ -139,7 +142,8 @@ const duplicateHit = ref<{ clothesId: string, semver: string } | null>(null)
 
 function resetUploadForm() {
   uploadFile.value = null
-  uploadTitle.value = ''
+  uploadDescription.value = ''
+  uploadTags.value = []
   uploadNotes.value = ''
   semver.reset()
   uploadError.value = null
@@ -196,8 +200,8 @@ async function submitUpload() {
     form.append('file', uploadFile.value)
     form.append('gameId', props.gameId)
     form.append('semver', semver.canonical.value)
-    if (uploadTitle.value.trim()) {
-      form.append('title', uploadTitle.value.trim())
+    if (uploadDescription.value.trim()) {
+      form.append('description', uploadDescription.value.trim())
     }
     if (uploadNotes.value.trim()) {
       form.append('notes', uploadNotes.value.trim())
@@ -219,9 +223,13 @@ async function submitUpload() {
       return
     }
 
+    const id = (payload?.id as string | undefined)
+    if (id) {
+      const tagError = await replaceContentTags(apiUrl.value, 'clothes', id, uploadTags.value)
+      if (tagError) uploadError.value = tagError
+    }
     showUpload.value = false
     await refresh()
-    const id = (payload?.id as string | undefined)
     if (id) {
       await router.push(`/clothes/${id}`)
     }
@@ -277,14 +285,22 @@ async function submitUpload() {
               />
 
               <UFormField
-                label="Title"
+                label="Description"
                 hint="Optional"
-                help="Defaults to the coordinate name."
               >
-                <UInput
-                  v-model="uploadTitle"
-                  placeholder="Outfit title"
+                <UTextarea
+                  v-model="uploadDescription"
+                  placeholder="What is this outfit?"
+                  :rows="3"
+                  autoresize
                   class="w-full"
+                />
+              </UFormField>
+
+              <UFormField label="Tags">
+                <ContentTagEditor
+                  v-model="uploadTags"
+                  kind="clothes"
                 />
               </UFormField>
 
