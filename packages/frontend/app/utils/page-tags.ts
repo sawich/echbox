@@ -43,3 +43,28 @@ export function aggregatePageTags(
     return a.name.localeCompare(b.name)
   })
 }
+
+export type PageTagCategoryGroup = {
+  category: TagCategory
+  tags: PageTagCount[]
+}
+
+export function groupPageTagsByCategory(
+  tags: PageTagCount[],
+): PageTagCategoryGroup[] {
+  const byCategory = new Map<TagCategory, PageTagCount[]>()
+  for (const tag of tags) {
+    const list = byCategory.get(tag.category)
+    if (list) {
+      list.push(tag)
+      continue
+    }
+    byCategory.set(tag.category, [tag])
+  }
+
+  return CATEGORY_ORDER.flatMap((category) => {
+    const groupTags = byCategory.get(category)
+    if (!groupTags?.length) return []
+    return [{ category, tags: groupTags }]
+  })
+}
