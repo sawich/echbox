@@ -20,7 +20,13 @@ import {
 } from "../common/staging";
 import { getDb } from "../db/client";
 import { newId } from "../id";
-import { softmodVersions, softmodVotes, softmods, users } from "../db/schema";
+import {
+  softmodPreviews,
+  softmodVersions,
+  softmodVotes,
+  softmods,
+  users,
+} from "../db/schema";
 import {
   BadSoftmodError,
   DuplicateSoftmodHashError,
@@ -42,6 +48,10 @@ import {
   removeSoftmodVersionFiles,
 } from "./storage";
 import { assertGameSupportsKind } from "../games/service";
+import {
+  listSoftmodPreviews,
+  previewUrlsBySoftmodId,
+} from "./previews";
 import {
   getSoftmodVoteCounts,
   getSoftmodVoteCountsForSoftmods,
@@ -281,7 +291,9 @@ export async function getSoftmod(
     gameId: softmod.gameId,
     uploaderId: softmod.uploaderId,
     description: softmod.description,
-    previewUrls: [],
+    previewUrls: listSoftmodPreviews(id, { dbPath: options?.dbPath }).map(
+      (preview) => preview.url,
+    ),
     website: softmod.website,
     latestSemver: softmod.latestSemver,
     latestVersionId: softmod.latestVersionId,
@@ -373,6 +385,7 @@ export async function listSoftmods(
     options?.viewerUserId,
     options?.dbPath,
   );
+  const previewMap = previewUrlsBySoftmodId(ids, { dbPath: options?.dbPath });
 
   const items: SoftmodListItem[] = [];
   for (const softmod of rows) {
@@ -388,7 +401,7 @@ export async function listSoftmods(
       gameId: softmod.gameId,
       uploaderId: softmod.uploaderId,
       description: softmod.description,
-      previewUrls: [],
+      previewUrls: previewMap.get(softmod.id) ?? [],
       latestSemver: softmod.latestSemver,
       latestVersionId: softmod.latestVersionId,
       versionCount: versions.length,
@@ -771,6 +784,9 @@ export async function deleteSoftmod(
   }
 
   db.transaction((tx) => {
+    tx.delete(softmodPreviews)
+      .where(eq(softmodPreviews.softmodId, softmodId))
+      .run();
     tx.delete(softmodVotes).where(eq(softmodVotes.softmodId, softmodId)).run();
     tx.delete(softmodVersions)
       .where(eq(softmodVersions.softmodId, softmodId))
