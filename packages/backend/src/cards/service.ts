@@ -46,7 +46,7 @@ import {
   removeVersionFiles,
 } from "./storage";
 import { assertGameSupportsKind } from "../games/service";
-import { deleteContentTagsFor } from "../tags/service";
+import { deleteContentTagsFor, tagsByContentIds } from "../tags/service";
 import {
   getVoteCounts,
   getVoteCountsForCards,
@@ -348,6 +348,11 @@ export async function listCharacters(
     options?.viewerUserId,
     options?.dbPath,
   );
+  const tagMap = tagsByContentIds({
+    kind: "cards",
+    contentIds: ids,
+    dbPath: options?.dbPath,
+  });
 
   const items: CharacterCardListItem[] = [];
   for (const card of cards) {
@@ -378,6 +383,7 @@ export async function listCharacters(
       versionCount: versions.length,
       imageUrl: imageUrl(card.id, card.latestVersionId),
       summary,
+      tags: tagMap.get(card.id) ?? [],
       ...votes,
     });
   }

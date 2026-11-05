@@ -41,7 +41,7 @@ import {
   removeVersionFiles,
 } from "./storage";
 import { assertGameSupportsKind } from "../games/service";
-import { deleteContentTagsFor } from "../tags/service";
+import { deleteContentTagsFor, tagsByContentIds } from "../tags/service";
 import {
   getVoteCounts,
   getVoteCountsForClothes,
@@ -340,6 +340,12 @@ export async function listClothes(
     options?.dbPath,
   );
 
+  const tagMap = tagsByContentIds({
+    kind: "clothes",
+    contentIds: ids,
+    dbPath: options?.dbPath,
+  });
+
   const items: ClothesListItem[] = [];
   for (const scene of rows) {
     const versions = versionsByScene.get(scene.id) ?? [];
@@ -369,6 +375,7 @@ export async function listClothes(
       versionCount: versions.length,
       imageUrl: imageUrl(scene.id, scene.latestVersionId),
       summary,
+      tags: tagMap.get(scene.id) ?? [],
       ...votes,
     });
   }

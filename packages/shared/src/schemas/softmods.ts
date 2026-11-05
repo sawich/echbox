@@ -1,5 +1,6 @@
 import { z } from "zod";
 import { PaginationMetaSchema } from "./pagination";
+import { ContentTagRefSchema } from "./tags";
 import { CardVoteCountsSchema } from "./votes";
 
 export const SoftmodUploaderSchema = z.object({
@@ -20,6 +21,7 @@ export const SoftmodListItemSchema = CardVoteCountsSchema.extend({
   versionCount: z.number().int().nonnegative(),
   downloadUrl: z.string(),
   uploader: SoftmodUploaderSchema,
+  tags: z.array(ContentTagRefSchema).default([]),
 });
 export type SoftmodListItem = z.infer<typeof SoftmodListItemSchema>;
 

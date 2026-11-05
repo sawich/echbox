@@ -48,7 +48,7 @@ import {
   removeSoftmodVersionFiles,
 } from "./storage";
 import { assertGameSupportsKind } from "../games/service";
-import { deleteContentTagsFor } from "../tags/service";
+import { deleteContentTagsFor, tagsByContentIds } from "../tags/service";
 import {
   listSoftmodPreviews,
   previewUrlsBySoftmodId,
@@ -387,6 +387,11 @@ export async function listSoftmods(
     options?.dbPath,
   );
   const previewMap = previewUrlsBySoftmodId(ids, { dbPath: options?.dbPath });
+  const tagMap = tagsByContentIds({
+    kind: "softmods",
+    contentIds: ids,
+    dbPath: options?.dbPath,
+  });
 
   const items: SoftmodListItem[] = [];
   for (const softmod of rows) {
@@ -408,6 +413,7 @@ export async function listSoftmods(
       versionCount: versions.length,
       downloadUrl: downloadUrl(softmod.id, softmod.latestVersionId),
       uploader: loadUploader(db, softmod.uploaderId),
+      tags: tagMap.get(softmod.id) ?? [],
       ...votes,
     });
   }

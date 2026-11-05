@@ -1,5 +1,6 @@
 import { z } from "zod";
 import { PaginationMetaSchema } from "./pagination";
+import { ContentTagRefSchema } from "./tags";
 import { CardVoteCountsSchema } from "./votes";
 
 export const CardTypeSchema = z.enum(["character", "scene", "clothes"]);
@@ -24,6 +25,7 @@ export const CardListItemSchema = z.object({
   versionCount: z.number().int().nonnegative(),
   imageUrl: z.string(),
   summary: z.record(z.string(), z.unknown()),
+  tags: z.array(ContentTagRefSchema).default([]),
 });
 export type CardListItem = z.infer<typeof CardListItemSchema>;
 

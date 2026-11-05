@@ -41,7 +41,7 @@ import {
   removeVersionFiles,
 } from "./storage";
 import { assertGameSupportsKind } from "../games/service";
-import { deleteContentTagsFor } from "../tags/service";
+import { deleteContentTagsFor, tagsByContentIds } from "../tags/service";
 import {
   getVoteCounts,
   getVoteCountsForScenes,
@@ -350,6 +350,11 @@ export async function listScenes(
     options?.viewerUserId,
     options?.dbPath,
   );
+  const tagMap = tagsByContentIds({
+    kind: "scenes",
+    contentIds: ids,
+    dbPath: options?.dbPath,
+  });
 
   const items: SceneListItem[] = [];
   for (const scene of rows) {
@@ -380,6 +385,7 @@ export async function listScenes(
       versionCount: versions.length,
       imageUrl: imageUrl(scene.id, scene.latestVersionId),
       summary,
+      tags: tagMap.get(scene.id) ?? [],
       ...votes,
     });
   }

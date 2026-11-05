@@ -253,8 +253,14 @@ describe("tag and preview HTTP routes", () => {
       new Request("http://localhost/api/kk/cards?tags=red&tags=hair"),
     );
     expect(andRes.status).toBe(200);
-    const andBody = (await andRes.json()) as { cards: { id: string }[] };
+    const andBody = (await andRes.json()) as {
+      cards: { id: string; tags: { name: string; category: string }[] }[];
+    };
     expect(andBody.cards.map((card) => card.id)).toEqual([both.id]);
+    expect(andBody.cards[0]!.tags.map((tag) => tag.name).sort()).toEqual([
+      "hair",
+      "red",
+    ]);
 
     const commaRes = await app.handle(
       new Request("http://localhost/api/kk/cards?tags=red,hair"),
