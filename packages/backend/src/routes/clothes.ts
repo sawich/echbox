@@ -16,12 +16,14 @@ import {
 } from "../clothes/service";
 import { setClothesVote } from "../clothes/votes";
 import {
-  catalogListQueryFields,
   listOptsFromQuery,
+  taggableListQueryFields,
+  tagsFromQuery,
 } from "../common/list-query-schema";
 import { GameServiceError } from "../games/service";
 import { bearerAuthSecurity } from "../openapi";
 import { authDerive } from "./auth";
+import { editUploaderId, readContentTags, writeContentTags } from "./content-tags";
 
 async function readUpload(file: File): Promise<Uint8Array> {
   return new Uint8Array(await file.arrayBuffer());
@@ -126,6 +128,7 @@ export const clothesRoutes = new Elysia({
       const result = await listClothes({
         viewerUserId: user?.id ?? null,
         ...listOptsFromQuery(query),
+        tags: tagsFromQuery(query.tags),
       });
       return {
         clothes: result.items,
@@ -139,7 +142,7 @@ export const clothesRoutes = new Elysia({
         gameId: t.Optional(
           t.String({ description: "Limit to this game id" }),
         ),
-        ...catalogListQueryFields,
+        ...taggableListQueryFields,
       }),
       detail: { summary: "List clothes" },
     },
@@ -154,10 +157,9 @@ export const clothesRoutes = new Elysia({
       try {
         const fileBytes = await readUpload(body.file);
         const created = await createClothes({
-          authorId: user.id,
+          uploaderId: user.id,
           gameId: body.gameId,
-          title: body.title,
-          slug: body.slug,
+          description: body.description,
           semver: body.semver,
           notes: body.notes,
           fileBytes,
@@ -173,13 +175,7 @@ export const clothesRoutes = new Elysia({
         {
           file: t.File({ description: "Coordinate / clothes PNG" }),
           gameId: t.String({ description: "Target game id" }),
-          title: t.Optional(
-            t.String({
-              description:
-                "If empty, uses embedded coordinateName from the file",
-            }),
-          ),
-          slug: t.Optional(t.String()),
+          description: t.Optional(t.String()),
           semver: t.String({ description: "Initial semver, e.g. `1.0.0`" }),
           notes: t.Optional(t.String()),
         },
@@ -251,7 +247,7 @@ export const clothesRoutes = new Elysia({
         const fileBytes = await readUpload(body.file);
         const added = await addClothesVersion({
           clothesId: params.id,
-          authorId: user.id,
+          uploaderId: user.id,
           semver: body.semver,
           notes: body.notes,
           fileBytes,
@@ -289,9 +285,11 @@ export const clothesRoutes = new Elysia({
       try {
         const patched = await patchClothes({
           clothesId: params.id,
-          authorId: user.id,
-          title: body.title,
-          slug: body.slug,
+          uploaderId: await editUploaderId(
+            user,
+            async () => (await getClothes(params.id))?.uploaderId,
+          ),
+          description: body.description,
           notes: body.notes,
         });
         return stripClothesPaths(patched);
@@ -304,8 +302,7 @@ export const clothesRoutes = new Elysia({
         id: t.String(),
       }),
       body: t.Object({
-        title: t.Optional(t.String()),
-        slug: t.Optional(t.String()),
+        description: t.Optional(t.String()),
         notes: t.Optional(t.String()),
       }),
       detail: {
@@ -324,7 +321,7 @@ export const clothesRoutes = new Elysia({
       try {
         return await deleteClothes({
           clothesId: params.id,
-          authorId: user.id,
+          uploaderId: user.id,
         });
       } catch (err) {
         return handleServiceError(err, set);
@@ -351,7 +348,7 @@ export const clothesRoutes = new Elysia({
         const detail = await deleteClothesVersion({
           clothesId: params.id,
           versionId: params.versionId,
-          authorId: user.id,
+          uploaderId: user.id,
         });
         return stripClothesPaths(detail);
       } catch (err) {
@@ -365,6 +362,33 @@ export const clothesRoutes = new Elysia({
       }),
       detail: {
         summary: "Delete clothes version",
+        security: [...bearerAuthSecurity],
+      },
+    },
+  )
+  .get(
+    "/:id/tags",
+    async ({ params, set }) => readContentTags("clothes", params.id, set),
+    {
+      params: t.Object({ id: t.String() }),
+      detail: { summary: "List tags on a clothes item" },
+    },
+  )
+  .put(
+    "/:id/tags",
+    async ({ params, body, user, set }) =>
+      writeContentTags({
+        kind: "clothes",
+        contentId: params.id,
+        names: body.tags,
+        user,
+        set,
+      }),
+    {
+      params: t.Object({ id: t.String() }),
+      body: t.Object({ tags: t.Array(t.String()) }),
+      detail: {
+        summary: "Replace tags on a clothes item",
         security: [...bearerAuthSecurity],
       },
     },

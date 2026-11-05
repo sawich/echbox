@@ -101,7 +101,7 @@ describe("Character CRUD + hash lookup + gallery split HTTP routes", () => {
     form.append("semver", "1.0.0");
     form.append("gameId", gameId);
     form.append("file", new File([fileBytes], "kk_chara.png", { type: "image/png" }));
-    form.append("title", "HTTP Heroine");
+    form.append("description", "HTTP Heroine");
     form.append("notes", "v1 upload");
 
     const createRes = await app.handle(
@@ -114,27 +114,28 @@ describe("Character CRUD + hash lookup + gallery split HTTP routes", () => {
     expect(createRes.status).toBe(201);
     const created = (await createRes.json()) as {
       id: string;
-      title: string;
+      description: string;
       latestSemver: string;
       latestVersionId: string;
-      authorId: string;
+      uploaderId: string;
     };
     expect(created.id).toBeString();
-    expect(created.title).toBe("HTTP Heroine");
+    expect(created.description).toBe("HTTP Heroine");
+    expect(created).not.toHaveProperty("title");
     expect(created.latestSemver).toBe("1.0.0");
     expect(created.latestVersionId).toBeString();
-    expect(created.authorId).toBe(authorId);
+    expect(created.uploaderId).toBe(authorId);
 
     const listRes = await app.handle(
       new Request("http://localhost/api/kk/cards?type=character"),
     );
     expect(listRes.status).toBe(200);
     const listBody = (await listRes.json()) as {
-      cards: { id: string; title: string; imageUrl: string; type: string }[];
+      cards: { id: string; description: string; imageUrl: string; type: string }[];
     };
     expect(listBody.cards).toHaveLength(1);
     expect(listBody.cards[0]!.id).toBe(created.id);
-    expect(listBody.cards[0]!.title).toBe("HTTP Heroine");
+    expect(listBody.cards[0]!.description).toBe("HTTP Heroine");
     expect(listBody.cards[0]!.type).toBe("character");
     expect(listBody.cards[0]!.imageUrl).toBe(
       `/api/kk/cards/${created.id}/versions/${created.latestVersionId}/image`,
@@ -299,7 +300,7 @@ describe("Character CRUD + hash lookup + gallery split HTTP routes", () => {
 
     createForm.append("semver", "1.0.0");
     createForm.append("file", new File([v1Bytes], "kk_chara.png", { type: "image/png" }));
-    createForm.append("title", "Original Title");
+    createForm.append("description", "Original Title");
 
     const createRes = await app.handle(
       new Request("http://localhost/api/kk/cards", {
@@ -419,7 +420,7 @@ describe("Character CRUD + hash lookup + gallery split HTTP routes", () => {
           cookie: otherCookie,
           "content-type": "application/json",
         },
-        body: JSON.stringify({ title: "Nope" }),
+        body: JSON.stringify({ description: "Nope" }),
       }),
     );
     expect(forbidPatchRes.status).toBe(403);
@@ -432,15 +433,15 @@ describe("Character CRUD + hash lookup + gallery split HTTP routes", () => {
           cookie: authorCookie,
           "content-type": "application/json",
         },
-        body: JSON.stringify({ title: "Renamed Title", notes: "Edited v2 note" }),
+        body: JSON.stringify({ description: "Renamed Title", notes: "Edited v2 note" }),
       }),
     );
     expect(patchRes.status).toBe(200);
     const patched = (await patchRes.json()) as {
-      title: string;
+      description: string;
       versions: { id: string; semver: string; notes?: string }[];
     };
-    expect(patched.title).toBe("Renamed Title");
+    expect(patched.description).toBe("Renamed Title");
     expect(patched.versions.find((v) => v.id === restoredV2Id)?.notes).toBe(
       "Edited v2 note",
     );
@@ -505,7 +506,7 @@ describe("Character CRUD + hash lookup + gallery split HTTP routes", () => {
 
     createForm.append("semver", "1.0.0");
     createForm.append("file", new File([v1Bytes], "kk_chara.png", { type: "image/png" }));
-    createForm.append("title", "No Paths Card");
+    createForm.append("description", "No Paths Card");
 
     const createRes = await app.handle(
       new Request("http://localhost/api/kk/cards", {
@@ -565,7 +566,7 @@ describe("Character CRUD + hash lookup + gallery split HTTP routes", () => {
           cookie: authorCookie,
           "content-type": "application/json",
         },
-        body: JSON.stringify({ title: "Patched No Paths" }),
+        body: JSON.stringify({ description: "Patched No Paths" }),
       }),
     );
     expect(patchRes.status).toBe(200);

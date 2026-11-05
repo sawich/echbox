@@ -16,9 +16,11 @@ import {
 } from "../cards/service";
 import { setCardVote } from "../cards/votes";
 import {
-  catalogListQueryFields,
   listOptsFromQuery,
+  taggableListQueryFields,
+  tagsFromQuery,
 } from "../common/list-query-schema";
+import { editUploaderId, readContentTags, writeContentTags } from "./content-tags";
 import { GameServiceError } from "../games/service";
 import { bearerAuthSecurity } from "../openapi";
 import { authDerive } from "./auth";
@@ -120,7 +122,10 @@ export const galleryRoutes = new Elysia({
       if (query.type === "scene") {
         return { cards: [], total: 0, page: listOpts.page, limit: listOpts.limit };
       }
-      const result = await listCharacters(listOpts);
+      const result = await listCharacters({
+        ...listOpts,
+        tags: tagsFromQuery(query.tags),
+      });
       return {
         cards: result.items,
         total: result.total,
@@ -138,7 +143,7 @@ export const galleryRoutes = new Elysia({
         gameId: t.Optional(
           t.String({ description: "Limit to cards for this game id" }),
         ),
-        ...catalogListQueryFields,
+        ...taggableListQueryFields,
       }),
       detail: {
         summary: "List character cards",
@@ -155,10 +160,9 @@ export const galleryRoutes = new Elysia({
       try {
         const fileBytes = await readUpload(body.file);
         const created = await createCard({
-          authorId: user.id,
+          uploaderId: user.id,
           gameId: body.gameId,
-          title: body.title,
-          slug: body.slug,
+          description: body.description,
           semver: body.semver,
           notes: body.notes,
           fileBytes,
@@ -174,13 +178,7 @@ export const galleryRoutes = new Elysia({
         {
           file: t.File({ description: "Character card PNG (multipart)" }),
           gameId: t.String({ description: "Target game id from GET /api/games" }),
-          title: t.Optional(
-            t.String({
-              description:
-                "Display title. If omitted/empty, taken from the card PNG name",
-            }),
-          ),
-          slug: t.Optional(t.String({ description: "URL slug (auto from title if omitted)" })),
+          description: t.Optional(t.String({ description: "Card description" })),
           semver: t.String({
             description: "Initial version semver, e.g. `1.0.0`",
           }),
@@ -260,7 +258,7 @@ export const galleryRoutes = new Elysia({
         const fileBytes = await readUpload(body.file);
         const added = await addVersion({
           cardId: params.id,
-          authorId: user.id,
+          uploaderId: user.id,
           semver: body.semver,
           notes: body.notes,
           fileBytes,
@@ -298,9 +296,11 @@ export const galleryRoutes = new Elysia({
       try {
         const patched = await patchCard({
           cardId: params.id,
-          authorId: user.id,
-          title: body.title,
-          slug: body.slug,
+          uploaderId: await editUploaderId(
+            user,
+            async () => (await getCharacterCard(params.id))?.uploaderId,
+          ),
+          description: body.description,
           notes: body.notes,
         });
         return stripCardPaths(patched);
@@ -313,8 +313,7 @@ export const galleryRoutes = new Elysia({
         id: t.String({ description: "Card id" }),
       }),
       body: t.Object({
-        title: t.Optional(t.String()),
-        slug: t.Optional(t.String()),
+        description: t.Optional(t.String()),
         notes: t.Optional(t.String()),
       }),
       detail: {
@@ -333,7 +332,7 @@ export const galleryRoutes = new Elysia({
       try {
         return await deleteCard({
           cardId: params.id,
-          authorId: user.id,
+          uploaderId: user.id,
         });
       } catch (err) {
         return handleServiceError(err, set);
@@ -360,7 +359,7 @@ export const galleryRoutes = new Elysia({
         const detail = await deleteVersion({
           cardId: params.id,
           versionId: params.versionId,
-          authorId: user.id,
+          uploaderId: user.id,
         });
         return stripCardPaths(detail);
       } catch (err) {
@@ -374,6 +373,33 @@ export const galleryRoutes = new Elysia({
       }),
       detail: {
         summary: "Delete card version",
+        security: [...bearerAuthSecurity],
+      },
+    },
+  )
+  .get(
+    "/cards/:id/tags",
+    async ({ params, set }) => readContentTags("cards", params.id, set),
+    {
+      params: t.Object({ id: t.String({ description: "Card id" }) }),
+      detail: { summary: "List tags on a character card" },
+    },
+  )
+  .put(
+    "/cards/:id/tags",
+    async ({ params, body, user, set }) =>
+      writeContentTags({
+        kind: "cards",
+        contentId: params.id,
+        names: body.tags,
+        user,
+        set,
+      }),
+    {
+      params: t.Object({ id: t.String({ description: "Card id" }) }),
+      body: t.Object({ tags: t.Array(t.String()) }),
+      detail: {
+        summary: "Replace tags on a character card",
         security: [...bearerAuthSecurity],
       },
     },

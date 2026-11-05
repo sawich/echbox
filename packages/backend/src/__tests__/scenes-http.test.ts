@@ -104,7 +104,7 @@ describe("Scene HTTP routes", () => {
       "file",
       new File([fileBytes], "kk_scene_simple.png", { type: "image/png" }),
     );
-    form.append("title", "HTTP Studio");
+    form.append("description", "HTTP Studio");
     form.append("notes", "v1 upload");
 
     const createRes = await app.handle(
@@ -117,17 +117,18 @@ describe("Scene HTTP routes", () => {
     expect(createRes.status).toBe(201);
     const created = (await createRes.json()) as {
       id: string;
-      title: string;
+      description: string;
       latestSemver: string;
       latestVersionId: string;
-      authorId: string;
+      uploaderId: string;
       type: string;
     };
     expect(created.id).toBeString();
-    expect(created.title).toBe("HTTP Studio");
+    expect(created.description).toBe("HTTP Studio");
+    expect(created).not.toHaveProperty("title");
     expect(created.latestSemver).toBe("1.0.0");
     expect(created.latestVersionId).toBeString();
-    expect(created.authorId).toBe(authorId);
+    expect(created.uploaderId).toBe(authorId);
     expect(created.type).toBe("scene");
 
     const listRes = await app.handle(
@@ -135,7 +136,7 @@ describe("Scene HTTP routes", () => {
     );
     expect(listRes.status).toBe(200);
     const listBody = (await listRes.json()) as {
-      scenes: { id: string; title: string; imageUrl: string; type: string }[];
+      scenes: { id: string; description: string; imageUrl: string; type: string }[];
     };
     expect(listBody.scenes).toHaveLength(1);
     expect(listBody.scenes[0]!.id).toBe(created.id);

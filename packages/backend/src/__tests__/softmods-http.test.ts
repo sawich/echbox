@@ -136,15 +136,18 @@ describe("Softmod HTTP routes", () => {
     expect(createRes.status).toBe(201);
     const created = (await createRes.json()) as {
       id: string;
-      title: string;
+      description: string;
+      previewUrls: string[];
       latestSemver: string;
       latestVersionId: string;
-      authorId: string;
+      uploaderId: string;
     };
     expect(created.id).toBe("com.echbox.testmod");
-    expect(created.title).toBe("Test Mod");
+    expect(created).not.toHaveProperty("title");
+    expect(created.description.length).toBeGreaterThan(0);
+    expect(created.previewUrls).toEqual([]);
     expect(created.latestSemver).toBe("1.2.3");
-    expect(created.authorId).toBe(authorId);
+    expect(created.uploaderId).toBe(authorId);
 
     const listRes = await app.handle(
       new Request("http://localhost/api/softmods"),
@@ -153,7 +156,7 @@ describe("Softmod HTTP routes", () => {
     const listBody = (await listRes.json()) as {
       softmods: {
         id: string;
-        title: string;
+        previewUrls: string[];
         downloadUrl: string;
         latestSemver: string;
         latestVersionId: string;

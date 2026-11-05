@@ -130,7 +130,7 @@ export const pluginRoutes = new Elysia({
       try {
         const fileBytes = await readUpload(body.file);
         const created = await createPlugin({
-          authorId: user.id,
+          uploaderId: user.id,
           gameId: body.gameId,
           title: body.title,
           description: body.description,
@@ -191,7 +191,7 @@ export const pluginRoutes = new Elysia({
       try {
         const updated = await patchPlugin({
           id: params.id,
-          authorId: user.id,
+          uploaderId: user.id,
           title: body.title,
           description: body.description,
         });
@@ -255,7 +255,7 @@ export const pluginRoutes = new Elysia({
         const fileBytes = await readUpload(body.file);
         const added = await addPluginVersion({
           pluginId: params.id,
-          authorId: user.id,
+          uploaderId: user.id,
           fileBytes,
           semver: body.semver,
           notes: body.notes,
@@ -293,7 +293,7 @@ export const pluginRoutes = new Elysia({
       try {
         return await deletePlugin({
           pluginId: params.id,
-          authorId: user.id,
+          uploaderId: user.id,
         });
       } catch (err) {
         return handleServiceError(err, set);
@@ -320,7 +320,7 @@ export const pluginRoutes = new Elysia({
         const detail = await deletePluginVersion({
           pluginId: params.id,
           versionId: params.versionId,
-          authorId: user.id,
+          uploaderId: user.id,
         });
         return stripPluginPaths(detail);
       } catch (err) {

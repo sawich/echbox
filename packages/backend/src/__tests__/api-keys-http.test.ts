@@ -135,9 +135,9 @@ describe("API keys HTTP + Bearer upload", () => {
       }),
     );
     expect(okRes.status).toBe(201);
-    const body = (await okRes.json()) as { authorId: string; title: string };
-    expect(body.authorId).toBe(userId);
-    expect(body.title.length).toBeGreaterThan(0);
+    const body = (await okRes.json()) as { uploaderId: string };
+    expect(body.uploaderId).toBe(userId);
+    expect(body).not.toHaveProperty("title");
 
     revokeApiKey({ userId, keyId, dbPath });
 

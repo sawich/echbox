@@ -54,9 +54,8 @@ describe("list endpoints pagination HTTP", () => {
         .values({
           id: cardId,
           gameId,
-          authorId,
-          slug: `http-card-${i}`,
-          title: i === 2 ? "Special Needle" : `HTTP Card ${i}`,
+          uploaderId: authorId,
+          description: i === 2 ? "Special Needle" : `HTTP Card ${i}`,
           latestSemver: "1.0.0",
           latestVersionId: versionId,
           createdAt,
@@ -105,7 +104,7 @@ describe("list endpoints pagination HTTP", () => {
     );
     expect(res.status).toBe(200);
     const body = (await res.json()) as {
-      cards: { title: string }[];
+      cards: { description: string }[];
       total: number;
       page: number;
       limit: number;
@@ -114,35 +113,22 @@ describe("list endpoints pagination HTTP", () => {
     expect(body.page).toBe(1);
     expect(body.limit).toBe(2);
     expect(body.cards).toHaveLength(2);
-    expect(body.cards[0]!.title).toBe("HTTP Card 4");
+    expect(body.cards[0]!.description).toBe("HTTP Card 4");
   });
 
-  test("GET /api/kk/cards?q= filters and sorts by title", async () => {
-    const qRes = await app.handle(
-      new Request("http://localhost/api/kk/cards?q=Needle&limit=10"),
+  test("GET /api/kk/cards page 2 continues recent order", async () => {
+    const res = await app.handle(
+      new Request("http://localhost/api/kk/cards?page=2&limit=2&sort=recent"),
     );
-    expect(qRes.status).toBe(200);
-    const qBody = (await qRes.json()) as {
-      cards: { title: string }[];
+    expect(res.status).toBe(200);
+    const body = (await res.json()) as {
+      cards: { description: string }[];
       total: number;
     };
-    expect(qBody.total).toBe(1);
-    expect(qBody.cards[0]!.title).toBe("Special Needle");
-
-    const titleRes = await app.handle(
-      new Request(
-        "http://localhost/api/kk/cards?sort=title&limit=10&page=1",
-      ),
-    );
-    const titleBody = (await titleRes.json()) as {
-      cards: { title: string }[];
-    };
-    expect(titleBody.cards.map((c) => c.title)).toEqual([
-      "HTTP Card 0",
-      "HTTP Card 1",
-      "HTTP Card 3",
-      "HTTP Card 4",
+    expect(body.total).toBe(5);
+    expect(body.cards.map((card) => card.description)).toEqual([
       "Special Needle",
+      "HTTP Card 1",
     ]);
   });
 

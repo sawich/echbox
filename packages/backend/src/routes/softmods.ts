@@ -13,15 +13,25 @@ import {
   getSoftmod,
   getSoftmodVersionBytes,
   listSoftmods,
+  patchSoftmod,
 } from "../softmods/service";
 import { setSoftmodVote } from "../softmods/votes";
+import { isAdmin } from "../auth/admin";
 import {
-  catalogListQueryFields,
   listOptsFromQuery,
+  taggableListQueryFields,
+  tagsFromQuery,
 } from "../common/list-query-schema";
 import { GameServiceError } from "../games/service";
 import { bearerAuthSecurity } from "../openapi";
+import {
+  addSoftmodPreview,
+  deleteSoftmodPreview,
+  reorderSoftmodPreviews,
+  softmodPreviewPath,
+} from "../softmods/previews";
 import { authDerive } from "./auth";
+import { editUploaderId, readContentTags, writeContentTags } from "./content-tags";
 
 async function readUpload(file: File): Promise<Uint8Array> {
   return new Uint8Array(await file.arrayBuffer());
@@ -31,6 +41,22 @@ function stripSoftmodPaths(detail: SoftmodDetail) {
   return {
     ...detail,
     versions: detail.versions.map(({ originalPath: _op, ...vRest }) => vRest),
+  };
+}
+
+async function previewActor(
+  softmodId: string,
+  user: { id: string; discordId: string },
+  set: { status?: number | string },
+) {
+  const detail = await getSoftmod(softmodId);
+  if (!detail) {
+    set.status = 404;
+    return null;
+  }
+  return {
+    uploaderId: detail.uploaderId,
+    actor: { userId: user.id, isAdmin: isAdmin(user) },
   };
 }
 
@@ -113,6 +139,7 @@ export const softmodRoutes = new Elysia({
       const result = await listSoftmods({
         viewerUserId: user?.id ?? null,
         ...listOptsFromQuery(query),
+        tags: tagsFromQuery(query.tags),
       });
       return {
         softmods: result.items,
@@ -124,7 +151,7 @@ export const softmodRoutes = new Elysia({
     {
       query: t.Object({
         gameId: t.Optional(t.String({ description: "Limit to this game id" })),
-        ...catalogListQueryFields,
+        ...taggableListQueryFields,
       }),
       detail: { summary: "List softmods" },
     },
@@ -139,8 +166,9 @@ export const softmodRoutes = new Elysia({
       try {
         const fileBytes = await readUpload(body.file);
         const created = await createSoftmod({
-          authorId: user.id,
+          uploaderId: user.id,
           gameId: body.gameId,
+          description: body.description,
           semver: body.semver,
           fileBytes,
           notes: body.notes,
@@ -156,9 +184,10 @@ export const softmodRoutes = new Elysia({
         {
           file: t.File({ description: "Softmod .zipmod file" }),
           gameId: t.String({ description: "Target game id" }),
+          description: t.Optional(t.String()),
           semver: t.String({
             minLength: 1,
-            description: "Initial semver (title comes from manifest)",
+            description: "Initial semver",
           }),
           notes: t.Optional(t.String()),
         },
@@ -187,6 +216,38 @@ export const softmodRoutes = new Elysia({
         id: t.String({ description: "Softmod id" }),
       }),
       detail: { summary: "Get softmod" },
+    },
+  )
+  .patch(
+    "/:id",
+    async ({ params, body, user, set }) => {
+      if (!user) {
+        set.status = 401;
+        return { error: "Unauthorized" };
+      }
+      try {
+        const patched = await patchSoftmod({
+          softmodId: params.id,
+          uploaderId: await editUploaderId(
+            user,
+            async () => (await getSoftmod(params.id))?.uploaderId,
+          ),
+          description: body.description,
+        });
+        return stripSoftmodPaths(patched);
+      } catch (err) {
+        return handleServiceError(err, set);
+      }
+    },
+    {
+      params: t.Object({ id: t.String() }),
+      body: t.Object({
+        description: t.Optional(t.String()),
+      }),
+      detail: {
+        summary: "Update softmod description",
+        security: [...bearerAuthSecurity],
+      },
     },
   )
   .put(
@@ -230,7 +291,7 @@ export const softmodRoutes = new Elysia({
         const fileBytes = await readUpload(body.file);
         const added = await addSoftmodVersion({
           softmodId: params.id,
-          authorId: user.id,
+          uploaderId: user.id,
           semver: body.semver,
           fileBytes,
           notes: body.notes,
@@ -268,7 +329,7 @@ export const softmodRoutes = new Elysia({
       try {
         return await deleteSoftmod({
           softmodId: params.id,
-          authorId: user.id,
+          uploaderId: user.id,
         });
       } catch (err) {
         return handleServiceError(err, set);
@@ -295,7 +356,7 @@ export const softmodRoutes = new Elysia({
         const detail = await deleteSoftmodVersion({
           softmodId: params.id,
           versionId: params.versionId,
-          authorId: user.id,
+          uploaderId: user.id,
         });
         return stripSoftmodPaths(detail);
       } catch (err) {
@@ -309,6 +370,158 @@ export const softmodRoutes = new Elysia({
       }),
       detail: {
         summary: "Delete softmod version",
+        security: [...bearerAuthSecurity],
+      },
+    },
+  )
+  .post(
+    "/:id/previews",
+    async ({ params, body, user, set }) => {
+      if (!user) {
+        set.status = 401;
+        return { error: "Unauthorized" };
+      }
+      const target = await previewActor(params.id, user, set);
+      if (!target) return { error: "Softmod not found" };
+      try {
+        const created = await addSoftmodPreview({
+          softmodId: params.id,
+          bytes: await readUpload(body.file),
+          actor: target.actor,
+          uploaderId: target.uploaderId,
+        });
+        set.status = 201;
+        return created;
+      } catch (err) {
+        return handleServiceError(err, set);
+      }
+    },
+    {
+      params: t.Object({ id: t.String() }),
+      body: t.Object(
+        { file: t.File({ description: "Preview image" }) },
+        { description: "multipart/form-data" },
+      ),
+      detail: {
+        summary: "Add a softmod preview image",
+        security: [...bearerAuthSecurity],
+      },
+    },
+  )
+  .put(
+    "/:id/previews",
+    async ({ params, body, user, set }) => {
+      if (!user) {
+        set.status = 401;
+        return { error: "Unauthorized" };
+      }
+      const target = await previewActor(params.id, user, set);
+      if (!target) return { error: "Softmod not found" };
+      try {
+        const previews = await reorderSoftmodPreviews({
+          softmodId: params.id,
+          orderedIds: body.orderedIds,
+          actor: target.actor,
+          uploaderId: target.uploaderId,
+        });
+        return { previews };
+      } catch (err) {
+        return handleServiceError(err, set);
+      }
+    },
+    {
+      params: t.Object({ id: t.String() }),
+      body: t.Object({ orderedIds: t.Array(t.String()) }),
+      detail: {
+        summary: "Reorder softmod previews",
+        security: [...bearerAuthSecurity],
+      },
+    },
+  )
+  .delete(
+    "/:id/previews/:previewId",
+    async ({ params, user, set }) => {
+      if (!user) {
+        set.status = 401;
+        return { error: "Unauthorized" };
+      }
+      const target = await previewActor(params.id, user, set);
+      if (!target) return { error: "Softmod not found" };
+      try {
+        await deleteSoftmodPreview({
+          softmodId: params.id,
+          previewId: params.previewId,
+          actor: target.actor,
+          uploaderId: target.uploaderId,
+        });
+        return { ok: true as const };
+      } catch (err) {
+        return handleServiceError(err, set);
+      }
+    },
+    {
+      params: t.Object({
+        id: t.String(),
+        previewId: t.String(),
+      }),
+      detail: {
+        summary: "Delete a softmod preview",
+        security: [...bearerAuthSecurity],
+      },
+    },
+  )
+  .get(
+    "/:id/previews/:previewId",
+    async ({ params, set }) => {
+      let path: string;
+      try {
+        path = softmodPreviewPath(params.id, params.previewId);
+      } catch (err) {
+        return handleServiceError(err, set);
+      }
+      const file = Bun.file(path);
+      if (!(await file.exists())) {
+        set.status = 404;
+        return new Response("Not found", { status: 404 });
+      }
+      return new Response(await file.bytes(), {
+        headers: {
+          "content-type": "image/webp",
+          "cache-control": "public, max-age=3600",
+        },
+      });
+    },
+    {
+      params: t.Object({
+        id: t.String(),
+        previewId: t.String(),
+      }),
+      detail: { summary: "Download a softmod preview image" },
+    },
+  )
+  .get(
+    "/:id/tags",
+    async ({ params, set }) => readContentTags("softmods", params.id, set),
+    {
+      params: t.Object({ id: t.String() }),
+      detail: { summary: "List tags on a softmod" },
+    },
+  )
+  .put(
+    "/:id/tags",
+    async ({ params, body, user, set }) =>
+      writeContentTags({
+        kind: "softmods",
+        contentId: params.id,
+        names: body.tags,
+        user,
+        set,
+      }),
+    {
+      params: t.Object({ id: t.String() }),
+      body: t.Object({ tags: t.Array(t.String()) }),
+      detail: {
+        summary: "Replace tags on a softmod",
         security: [...bearerAuthSecurity],
       },
     },

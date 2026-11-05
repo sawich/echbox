@@ -132,7 +132,7 @@ describe("user profile", () => {
       "file",
       new File([fileBytes], "kk_chara.png", { type: "image/png" }),
     );
-    form.append("title", "Profile Card");
+    form.append("description", "Profile Card");
     const createRes = await app.handle(
       new Request("http://localhost/api/kk/cards", {
         method: "POST",
@@ -165,7 +165,7 @@ describe("user profile", () => {
         likesReceived: number;
         dislikesReceived: number;
       };
-      cards: { id: string; title: string; likes: number }[];
+      cards: { id: string; description: string; likes: number }[];
     };
     expect(UserProfileSchema.safeParse(profileBody).success).toBe(true);
     expect(profile.stats).toEqual({
@@ -175,7 +175,7 @@ describe("user profile", () => {
     });
     expect(profile.cards).toHaveLength(1);
     expect(profile.cards[0]!.id).toBe(created.id);
-    expect(profile.cards[0]!.title).toBe("Profile Card");
+    expect(profile.cards[0]!.description).toBe("Profile Card");
     expect(profile.cards[0]!.likes).toBe(1);
   });
 
@@ -188,7 +188,7 @@ describe("user profile", () => {
       "file",
       new File([cardBytes], "kk_chara.png", { type: "image/png" }),
     );
-    cardForm.append("title", "Combined Card");
+    cardForm.append("description", "Combined Card");
     const cardRes = await app.handle(
       new Request("http://localhost/api/kk/cards", {
         method: "POST",
@@ -289,7 +289,7 @@ describe("user profile", () => {
       "file",
       new File([fileBytes], "kk_scene_simple.png", { type: "image/png" }),
     );
-    form.append("title", "Profile Scene");
+    form.append("description", "Profile Scene");
     const createRes = await app.handle(
       new Request("http://localhost/api/scenes", {
         method: "POST",
@@ -323,7 +323,7 @@ describe("user profile", () => {
     expect(parsed.stats.dislikesReceived).toBe(0);
     expect(parsed.scenes).toHaveLength(1);
     expect(parsed.scenes[0]!.id).toBe(created.id);
-    expect(parsed.scenes[0]!.title).toBe("Profile Scene");
+    expect(parsed.scenes[0]!.description).toBe("Profile Scene");
     expect(parsed.scenes[0]!.type).toBe("scene");
     expect(parsed.scenes[0]!.likes).toBe(1);
   });
@@ -337,7 +337,7 @@ describe("user profile", () => {
       "file",
       new File([fileBytes], "kk_clothes.png", { type: "image/png" }),
     );
-    form.append("title", "Profile Outfit");
+    form.append("description", "Profile Outfit");
     const createRes = await app.handle(
       new Request("http://localhost/api/clothes", {
         method: "POST",
@@ -371,7 +371,7 @@ describe("user profile", () => {
     expect(parsed.stats.dislikesReceived).toBe(0);
     expect(parsed.clothes).toHaveLength(1);
     expect(parsed.clothes[0]!.id).toBe(created.id);
-    expect(parsed.clothes[0]!.title).toBe("Profile Outfit");
+    expect(parsed.clothes[0]!.description).toBe("Profile Outfit");
     expect(parsed.clothes[0]!.type).toBe("clothes");
     expect(parsed.clothes[0]!.likes).toBe(1);
   });

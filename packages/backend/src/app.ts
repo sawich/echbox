@@ -15,6 +15,7 @@ import { pluginRoutes } from "./routes/plugins";
 import { clothesRoutes } from "./routes/clothes";
 import { sceneRoutes } from "./routes/scenes";
 import { softmodRoutes } from "./routes/softmods";
+import { tagRoutes } from "./routes/tags";
 import { userRoutes } from "./routes/users";
 
 export const app = new Elysia()
@@ -35,6 +36,7 @@ export const app = new Elysia()
   .use(clothesRoutes)
   .use(softmodRoutes)
   .use(pluginRoutes)
+  .use(tagRoutes)
   .get("/", () => "Hello Elysia", {
     detail: { hide: true },
   })

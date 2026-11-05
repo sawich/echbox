@@ -16,12 +16,14 @@ import {
 } from "../scenes/service";
 import { setSceneVote } from "../scenes/votes";
 import {
-  catalogListQueryFields,
   listOptsFromQuery,
+  taggableListQueryFields,
+  tagsFromQuery,
 } from "../common/list-query-schema";
 import { GameServiceError } from "../games/service";
 import { bearerAuthSecurity } from "../openapi";
 import { authDerive } from "./auth";
+import { editUploaderId, readContentTags, writeContentTags } from "./content-tags";
 
 async function readUpload(file: File): Promise<Uint8Array> {
   return new Uint8Array(await file.arrayBuffer());
@@ -126,6 +128,7 @@ export const sceneRoutes = new Elysia({
       const result = await listScenes({
         viewerUserId: user?.id ?? null,
         ...listOptsFromQuery(query),
+        tags: tagsFromQuery(query.tags),
       });
       return {
         scenes: result.items,
@@ -137,7 +140,7 @@ export const sceneRoutes = new Elysia({
     {
       query: t.Object({
         gameId: t.Optional(t.String({ description: "Limit to this game id" })),
-        ...catalogListQueryFields,
+        ...taggableListQueryFields,
       }),
       detail: { summary: "List scenes" },
     },
@@ -152,10 +155,9 @@ export const sceneRoutes = new Elysia({
       try {
         const fileBytes = await readUpload(body.file);
         const created = await createScene({
-          authorId: user.id,
+          uploaderId: user.id,
           gameId: body.gameId,
-          title: body.title,
-          slug: body.slug,
+          description: body.description,
           semver: body.semver,
           notes: body.notes,
           fileBytes,
@@ -172,13 +174,7 @@ export const sceneRoutes = new Elysia({
         {
           file: t.File({ description: "Studio scene PNG" }),
           gameId: t.String({ description: "Target game id" }),
-          title: t.Optional(
-            t.String({
-              description:
-                "If empty, uses upload filename stem (scenes have no embedded title)",
-            }),
-          ),
-          slug: t.Optional(t.String()),
+          description: t.Optional(t.String()),
           semver: t.String({ description: "Initial semver, e.g. `1.0.0`" }),
           notes: t.Optional(t.String()),
         },
@@ -250,7 +246,7 @@ export const sceneRoutes = new Elysia({
         const fileBytes = await readUpload(body.file);
         const added = await addSceneVersion({
           sceneId: params.id,
-          authorId: user.id,
+          uploaderId: user.id,
           semver: body.semver,
           notes: body.notes,
           fileBytes,
@@ -288,9 +284,11 @@ export const sceneRoutes = new Elysia({
       try {
         const patched = await patchScene({
           sceneId: params.id,
-          authorId: user.id,
-          title: body.title,
-          slug: body.slug,
+          uploaderId: await editUploaderId(
+            user,
+            async () => (await getScene(params.id))?.uploaderId,
+          ),
+          description: body.description,
           notes: body.notes,
         });
         return stripScenePaths(patched);
@@ -303,8 +301,7 @@ export const sceneRoutes = new Elysia({
         id: t.String(),
       }),
       body: t.Object({
-        title: t.Optional(t.String()),
-        slug: t.Optional(t.String()),
+        description: t.Optional(t.String()),
         notes: t.Optional(t.String()),
       }),
       detail: {
@@ -323,7 +320,7 @@ export const sceneRoutes = new Elysia({
       try {
         return await deleteScene({
           sceneId: params.id,
-          authorId: user.id,
+          uploaderId: user.id,
         });
       } catch (err) {
         return handleServiceError(err, set);
@@ -350,7 +347,7 @@ export const sceneRoutes = new Elysia({
         const detail = await deleteSceneVersion({
           sceneId: params.id,
           versionId: params.versionId,
-          authorId: user.id,
+          uploaderId: user.id,
         });
         return stripScenePaths(detail);
       } catch (err) {
@@ -364,6 +361,33 @@ export const sceneRoutes = new Elysia({
       }),
       detail: {
         summary: "Delete scene version",
+        security: [...bearerAuthSecurity],
+      },
+    },
+  )
+  .get(
+    "/:id/tags",
+    async ({ params, set }) => readContentTags("scenes", params.id, set),
+    {
+      params: t.Object({ id: t.String() }),
+      detail: { summary: "List tags on a scene" },
+    },
+  )
+  .put(
+    "/:id/tags",
+    async ({ params, body, user, set }) =>
+      writeContentTags({
+        kind: "scenes",
+        contentId: params.id,
+        names: body.tags,
+        user,
+        set,
+      }),
+    {
+      params: t.Object({ id: t.String() }),
+      body: t.Object({ tags: t.Array(t.String()) }),
+      detail: {
+        summary: "Replace tags on a scene",
         security: [...bearerAuthSecurity],
       },
     },

@@ -141,10 +141,10 @@ describe("Plugin HTTP routes", () => {
     const created = (await createRes.json()) as {
       id: string;
       title: string;
-      authorId: string;
+      uploaderId: string;
     };
     expect(created.title).toBe("Listed Plugin");
-    expect(created.authorId).toBe(authorId);
+    expect(created.uploaderId).toBe(authorId);
 
     const listRes = await app.handle(
       new Request("http://localhost/api/plugins"),
