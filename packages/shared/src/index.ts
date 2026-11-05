@@ -83,10 +83,14 @@ export {
   TaggableContentKindSchema,
   TagListItemSchema,
   TagSchema,
+  ContentTagRefSchema,
+  TagUpdateBodySchema,
   type TagCategory,
   type TaggableContentKind,
   type TagListItem,
   type Tag,
+  type ContentTagRef,
+  type TagUpdateBody,
 } from "./schemas/tags";
 
 export {

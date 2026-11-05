@@ -178,6 +178,20 @@ describe("tag and preview HTTP routes", () => {
     const onlyRed = await uploadCard("kk_mod_chara.png", authorCookie);
     const onlyHair = await uploadCard("kk_tatsumaki_fubuki.png", authorCookie);
 
+    for (const name of ["red", "hair"]) {
+      const createTagRes = await app.handle(
+        new Request("http://localhost/api/tags", {
+          method: "POST",
+          headers: {
+            cookie: authorCookie,
+            "content-type": "application/json",
+          },
+          body: JSON.stringify({ name, category: "general" }),
+        }),
+      );
+      expect(createTagRes.status).toBe(201);
+    }
+
     const forbidRes = await app.handle(
       new Request(`http://localhost/api/kk/cards/${both.id}/tags`, {
         method: "PUT",
@@ -249,7 +263,7 @@ describe("tag and preview HTTP routes", () => {
     expect(commaBody.cards.map((card) => card.id)).toEqual([both.id]);
   });
 
-  test("non-admin cannot create a restricted tag; admin can moderate it", async () => {
+  test("logged-in users can create restricted tags and aliases; only admin deletes", async () => {
     const anon = await app.handle(
       new Request("http://localhost/api/tags", {
         method: "POST",
@@ -259,23 +273,11 @@ describe("tag and preview HTTP routes", () => {
     );
     expect(anon.status).toBe(401);
 
-    const forbidden = await app.handle(
-      new Request("http://localhost/api/tags", {
-        method: "POST",
-        headers: {
-          cookie: authorCookie,
-          "content-type": "application/json",
-        },
-        body: JSON.stringify({ name: "mystery author", category: "author" }),
-      }),
-    );
-    expect(forbidden.status).toBe(403);
-
     const createdRes = await app.handle(
       new Request("http://localhost/api/tags", {
         method: "POST",
         headers: {
-          cookie: adminCookie,
+          cookie: authorCookie,
           "content-type": "application/json",
         },
         body: JSON.stringify({ name: "mystery author", category: "author" }),
@@ -290,23 +292,11 @@ describe("tag and preview HTTP routes", () => {
     expect(created.name).toBe("mystery_author");
     expect(created.category).toBe("author");
 
-    const aliasForbidden = await app.handle(
-      new Request(`http://localhost/api/tags/${created.id}/aliases`, {
-        method: "POST",
-        headers: {
-          cookie: authorCookie,
-          "content-type": "application/json",
-        },
-        body: JSON.stringify({ alias: "mystery" }),
-      }),
-    );
-    expect(aliasForbidden.status).toBe(403);
-
     const aliasRes = await app.handle(
       new Request(`http://localhost/api/tags/${created.id}/aliases`, {
         method: "POST",
         headers: {
-          cookie: adminCookie,
+          cookie: otherCookie,
           "content-type": "application/json",
         },
         body: JSON.stringify({ alias: "mystery" }),
@@ -314,26 +304,17 @@ describe("tag and preview HTTP routes", () => {
     );
     expect(aliasRes.status).toBe(201);
 
-    const patchForbidden = await app.handle(
+    const patchRes = await app.handle(
       new Request(`http://localhost/api/tags/${created.id}`, {
         method: "PATCH",
         headers: {
           cookie: authorCookie,
           "content-type": "application/json",
         },
-        body: JSON.stringify({ category: "general" }),
-      }),
-    );
-    expect(patchForbidden.status).toBe(403);
-
-    const patchRes = await app.handle(
-      new Request(`http://localhost/api/tags/${created.id}`, {
-        method: "PATCH",
-        headers: {
-          cookie: adminCookie,
-          "content-type": "application/json",
-        },
-        body: JSON.stringify({ category: "license" }),
+        body: JSON.stringify({
+          category: "license",
+          aliases: ["mystery", "enigma"],
+        }),
       }),
     );
     expect(patchRes.status).toBe(200);
@@ -543,6 +524,20 @@ describe("tag and preview HTTP routes", () => {
     const outfit = (await clothesRes.json()) as { id: string };
 
     const softmod = await uploadSoftmod(authorCookie);
+
+    for (const name of ["studio", "outfit", "mod"]) {
+      const createTagRes = await app.handle(
+        new Request("http://localhost/api/tags", {
+          method: "POST",
+          headers: {
+            cookie: authorCookie,
+            "content-type": "application/json",
+          },
+          body: JSON.stringify({ name, category: "general" }),
+        }),
+      );
+      expect(createTagRes.status).toBe(201);
+    }
 
     for (const [path, name] of [
       [`/api/scenes/${scene.id}/tags`, "studio"],

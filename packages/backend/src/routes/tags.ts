@@ -10,9 +10,9 @@ import {
   deleteTag,
   getTag,
   listTags,
-  setTagCategory,
   setTagVote,
   suggestTags,
+  updateTag,
 } from "../tags/service";
 import { authDerive } from "./auth";
 import { handleTagError } from "./content-tags";
@@ -120,7 +120,7 @@ export const tagRoutes = new Elysia({
       detail: {
         summary: "Create a tag",
         description:
-          "Any logged-in user can create a general tag. Restricted categories are admin-only.",
+          "Any logged-in user can create a tag in any category. Names must be unique.",
         security: [...bearerAuthSecurity],
       },
     },
@@ -175,9 +175,11 @@ export const tagRoutes = new Elysia({
         return { error: "Unauthorized" };
       }
       try {
-        return setTagCategory({
+        return updateTag({
           tagId: params.id,
-          category: body.category as TagCategory,
+          name: body.name,
+          category: body.category as TagCategory | undefined,
+          aliases: body.aliases,
           actor: actorOf(user),
         });
       } catch (err) {
@@ -186,9 +188,13 @@ export const tagRoutes = new Elysia({
     },
     {
       params: t.Object({ id: t.String() }),
-      body: t.Object({ category: tagCategory }),
+      body: t.Object({
+        name: t.Optional(t.String({ minLength: 1 })),
+        category: t.Optional(tagCategory),
+        aliases: t.Optional(t.Array(t.String({ minLength: 1 }))),
+      }),
       detail: {
-        summary: "Change a tag category",
+        summary: "Update tag name, category, and/or aliases",
         security: [...bearerAuthSecurity],
       },
     },

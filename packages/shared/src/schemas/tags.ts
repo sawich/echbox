@@ -33,3 +33,17 @@ export type TagListItem = z.infer<typeof TagListItemSchema>;
 
 export const TagSchema = TagListItemSchema;
 export type Tag = z.infer<typeof TagSchema>;
+
+/** Compact tag refs embedded on catalog list items. */
+export const ContentTagRefSchema = z.object({
+  name: z.string().min(1),
+  category: TagCategorySchema,
+});
+export type ContentTagRef = z.infer<typeof ContentTagRefSchema>;
+
+export const TagUpdateBodySchema = z.object({
+  name: z.string().min(1).optional(),
+  category: TagCategorySchema.optional(),
+  aliases: z.array(z.string().min(1)).optional(),
+});
+export type TagUpdateBody = z.infer<typeof TagUpdateBodySchema>;

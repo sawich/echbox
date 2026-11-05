@@ -14,7 +14,12 @@ import {
   tags,
   users,
 } from "../../db/schema";
-import { ForbiddenTagError, TagNotFoundError } from "../errors";
+import {
+  DuplicateTagError,
+  ForbiddenTagError,
+  InvalidTagError,
+  TagNotFoundError,
+} from "../errors";
 import {
   addAlias,
   contentIdsHavingAllTags,
@@ -28,6 +33,8 @@ import {
   setTagCategory,
   setTagVote,
   suggestTags,
+  tagsByContentIds,
+  updateTag,
   type TagActor,
 } from "../service";
 
@@ -136,27 +143,33 @@ describe("tag service", () => {
     expect(hits.map((hit) => hit.id)).toEqual([kept.id]);
   });
 
-  test("non-admin cannot create an author tag", () => {
-    expect(() =>
-      createTag({
-        name: "illustrator",
-        category: "author",
-        actor: uploader,
-        dbPath,
-      }),
-    ).toThrow(ForbiddenTagError);
-  });
-
-  test("admin can create an author tag", () => {
+  test("non-admin can create an author tag", () => {
     const tag = createTag({
       name: "Illustrator",
       category: "author",
-      actor: admin,
+      actor: uploader,
       dbPath,
     });
 
     expect(tag.name).toBe("illustrator");
     expect(tag.category).toBe("author");
+  });
+
+  test("non-admin can add an alias", () => {
+    const tag = createTag({
+      name: "hatsune_miku",
+      category: "character",
+      actor: uploader,
+      dbPath,
+    });
+    const alias = addAlias({
+      tagId: tag.id,
+      alias: "miku",
+      actor: other,
+      dbPath,
+    });
+    expect(alias.alias).toBe("miku");
+    expect(alias.tagId).toBe(tag.id);
   });
 
   test("ensureGeneralTag creates a missing general tag and returns the existing one", () => {
@@ -168,30 +181,105 @@ describe("tag service", () => {
     expect(again.id).toBe(created.id);
   });
 
-  test("setContentTags creates a missing general tag for the uploader", () => {
-    const author = createTag({
+  test("setContentTags rejects unknown names and leaves prior tags", () => {
+    createTag({
       name: "illustrator",
       category: "author",
-      actor: admin,
+      actor: uploader,
       dbPath,
     });
-
-    const attached = setContentTags({
+    setContentTags({
       kind: "cards",
       contentId: "card-1",
-      names: ["School Uniform", author.name],
+      names: ["illustrator"],
       actor: uploader,
       uploaderId: uploader.userId,
       dbPath,
     });
 
-    expect(attached.map((tag) => tag.name).sort()).toEqual([
+    expect(() =>
+      setContentTags({
+        kind: "cards",
+        contentId: "card-1",
+        names: ["illustrator", "does_not_exist"],
+        actor: uploader,
+        uploaderId: uploader.userId,
+        dbPath,
+      }),
+    ).toThrow(InvalidTagError);
+
+    expect(
+      getContentTags({ kind: "cards", contentId: "card-1", dbPath }).map(
+        (tag) => tag.name,
+      ),
+    ).toEqual(["illustrator"]);
+    expect(getDb(dbPath).select().from(tags).all().map((row) => row.name)).toEqual([
       "illustrator",
+    ]);
+  });
+
+  test("updateTag rename collision throws DuplicateTagError", () => {
+    createTag({ name: "alpha", category: "general", actor: uploader, dbPath });
+    const beta = createTag({
+      name: "beta",
+      category: "general",
+      actor: uploader,
+      dbPath,
+    });
+
+    expect(() =>
+      updateTag({
+        tagId: beta.id,
+        name: "alpha",
+        actor: uploader,
+        dbPath,
+      }),
+    ).toThrow(DuplicateTagError);
+  });
+
+  test("tagsByContentIds returns tags grouped by content id", () => {
+    const uniform = createTag({
+      name: "school_uniform",
+      category: "general",
+      actor: uploader,
+      dbPath,
+    });
+    const miku = createTag({
+      name: "hatsune_miku",
+      category: "character",
+      actor: uploader,
+      dbPath,
+    });
+    setContentTags({
+      kind: "cards",
+      contentId: "card-a",
+      names: [uniform.name, miku.name],
+      actor: uploader,
+      uploaderId: uploader.userId,
+      dbPath,
+    });
+    setContentTags({
+      kind: "cards",
+      contentId: "card-b",
+      names: [miku.name],
+      actor: uploader,
+      uploaderId: uploader.userId,
+      dbPath,
+    });
+
+    const map = tagsByContentIds({
+      kind: "cards",
+      contentIds: ["card-a", "card-b", "card-empty"],
+      dbPath,
+    });
+    expect(map.get("card-a")?.map((t) => t.name).sort()).toEqual([
+      "hatsune_miku",
       "school_uniform",
     ]);
-    expect(
-      attached.find((tag) => tag.name === "school_uniform")?.category,
-    ).toBe("general");
+    expect(map.get("card-b")).toEqual([
+      { name: "hatsune_miku", category: "character" },
+    ]);
+    expect(map.get("card-empty")).toEqual([]);
   });
 
   test("setContentTags resolves aliases and replaces the previous set", () => {
@@ -374,7 +462,7 @@ describe("tag service", () => {
     );
   });
 
-  test("non-admin cannot delete a tag or change its category", () => {
+  test("non-admin cannot delete a tag but can change its category", () => {
     const tag = createTag({
       name: "cute",
       category: "general",
@@ -385,27 +473,13 @@ describe("tag service", () => {
     expect(() =>
       deleteTag({ tagId: tag.id, actor: uploader, dbPath }),
     ).toThrow(ForbiddenTagError);
-    expect(() =>
-      setTagCategory({
-        tagId: tag.id,
-        category: "character",
-        actor: uploader,
-        dbPath,
-      }),
-    ).toThrow(ForbiddenTagError);
-    expect(getTag(tag.id, { dbPath }).category).toBe("general");
-  });
-
-  test("admin can change a tag category", () => {
-    const tag = ensureGeneralTag("miku", admin, dbPath);
 
     const updated = setTagCategory({
       tagId: tag.id,
       category: "character",
-      actor: admin,
+      actor: other,
       dbPath,
     });
-
     expect(updated.category).toBe("character");
     expect(getTag(tag.id, { dbPath }).category).toBe("character");
   });

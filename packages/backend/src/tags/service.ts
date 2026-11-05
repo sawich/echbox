@@ -282,20 +282,6 @@ function pageWindow(page: number, limit: number): {
   return { page: safePage, limit: safeLimit, offset: (safePage - 1) * safeLimit };
 }
 
-function resolveOrCreateGeneral(db: TagDb, name: string, userId: string): string {
-  const existing = findTagByNameOrAlias(db, name);
-  if (existing) return existing.id;
-
-  try {
-    return insertTag(db, { name, category: "general", userId });
-  } catch (error) {
-    if (!(error instanceof DuplicateTagError)) throw error;
-    const raced = findTagByNameOrAlias(db, name);
-    if (!raced) throw error;
-    return raced.id;
-  }
-}
-
 function allContentIds(db: TagDb, kind: TaggableContentKind): string[] {
   switch (kind) {
     case "cards":
@@ -449,11 +435,7 @@ export function createTag(input: {
 }): TagView {
   const category = parseCategory(input.category);
   const name = canonicalName(input.name);
-  if (!input.actor.isAdmin && category !== "general") {
-    throw new ForbiddenTagError(
-      "Only an admin can create a tag in this category.",
-    );
-  }
+  void input.actor;
 
   const db = getDb(input.dbPath);
   if (findTagByNameOrAlias(db, name)) {
@@ -492,7 +474,7 @@ export function addAlias(input: {
   actor: TagActor;
   dbPath?: string;
 }): { id: string; alias: string; tagId: string } {
-  requireAdmin(input.actor);
+  void input.actor;
   const alias = canonicalName(input.alias);
   const db = getDb(input.dbPath);
   const tag = db
@@ -530,20 +512,90 @@ export function setTagCategory(input: {
   actor: TagActor;
   dbPath?: string;
 }): TagView {
-  requireAdmin(input.actor);
-  const category = parseCategory(input.category);
+  return updateTag({
+    tagId: input.tagId,
+    category: input.category,
+    actor: input.actor,
+    dbPath: input.dbPath,
+  });
+}
+
+export function updateTag(input: {
+  tagId: string;
+  name?: string;
+  category?: TagCategory | string;
+  aliases?: string[];
+  actor: TagActor;
+  dbPath?: string;
+}): TagView {
+  void input.actor;
   const db = getDb(input.dbPath);
   const tag = db
-    .select({ id: tags.id })
+    .select({ id: tags.id, name: tags.name })
     .from(tags)
     .where(eq(tags.id, input.tagId))
     .get();
   if (!tag) throw new TagNotFoundError();
 
-  db.update(tags)
-    .set({ category, updatedAt: new Date().toISOString() })
-    .where(eq(tags.id, tag.id))
-    .run();
+  const nextName =
+    input.name !== undefined ? canonicalName(input.name) : tag.name;
+  const nextCategory =
+    input.category !== undefined
+      ? parseCategory(input.category)
+      : undefined;
+
+  if (nextName !== tag.name) {
+    const clash = findTagByNameOrAlias(db, nextName);
+    if (clash && clash.id !== tag.id) {
+      throw new DuplicateTagError();
+    }
+  }
+
+  let normalizedAliases: string[] | undefined;
+  if (input.aliases !== undefined) {
+    const seen = new Set<string>();
+    normalizedAliases = [];
+    for (const raw of input.aliases) {
+      const alias = canonicalName(raw);
+      if (alias === nextName) {
+        throw new InvalidTagError("Alias matches the tag name");
+      }
+      if (seen.has(alias)) continue;
+      seen.add(alias);
+      const clash = findTagByNameOrAlias(db, alias);
+      if (clash && clash.id !== tag.id) {
+        throw new DuplicateTagError("That alias is already in use");
+      }
+      // Alias may already point at this tag — allowed when replacing set
+      normalizedAliases.push(alias);
+    }
+  }
+
+  const now = new Date().toISOString();
+  db.transaction((tx) => {
+    const patch: { name?: string; category?: TagCategory; updatedAt: string } = {
+      updatedAt: now,
+    };
+    if (nextName !== tag.name) patch.name = nextName;
+    if (nextCategory !== undefined) patch.category = nextCategory;
+    if (patch.name !== undefined || patch.category !== undefined) {
+      tx.update(tags).set(patch).where(eq(tags.id, tag.id)).run();
+    }
+
+    if (normalizedAliases !== undefined) {
+      tx.delete(tagAliases).where(eq(tagAliases.tagId, tag.id)).run();
+      for (const alias of normalizedAliases) {
+        tx.insert(tagAliases)
+          .values({
+            id: newId(),
+            alias,
+            tagId: tag.id,
+            createdAt: now,
+          })
+          .run();
+      }
+    }
+  });
 
   return requireTagView(db, tag.id);
 }
@@ -661,16 +713,19 @@ export function setContentTags(input: {
   }
 
   const db = getDb(input.dbPath);
-  db.transaction((tx) => {
-    const tagIds: string[] = [];
-    const seenIds = new Set<string>();
-    for (const name of canonicalNames) {
-      const tagId = resolveOrCreateGeneral(tx, name, input.actor.userId);
-      if (seenIds.has(tagId)) continue;
-      seenIds.add(tagId);
-      tagIds.push(tagId);
+  const tagIds: string[] = [];
+  const seenIds = new Set<string>();
+  for (const name of canonicalNames) {
+    const existing = findTagByNameOrAlias(db, name);
+    if (!existing) {
+      throw new InvalidTagError(`Unknown tag: ${name}`);
     }
+    if (seenIds.has(existing.id)) continue;
+    seenIds.add(existing.id);
+    tagIds.push(existing.id);
+  }
 
+  db.transaction((tx) => {
     tx.delete(contentTags)
       .where(
         and(
@@ -700,6 +755,52 @@ export function setContentTags(input: {
     contentId: input.contentId,
     dbPath: input.dbPath,
   });
+}
+
+export type ContentTagRef = {
+  name: string;
+  category: TagCategory;
+};
+
+export function tagsByContentIds(input: {
+  kind: TaggableContentKind;
+  contentIds: string[];
+  dbPath?: string;
+}): Map<string, ContentTagRef[]> {
+  const kind = parseKind(input.kind);
+  const result = new Map<string, ContentTagRef[]>();
+  for (const id of input.contentIds) {
+    result.set(id, []);
+  }
+  if (input.contentIds.length === 0) return result;
+
+  const db = getDb(input.dbPath);
+  const rows = db
+    .select({
+      contentId: contentTags.contentId,
+      name: tags.name,
+      category: tags.category,
+    })
+    .from(contentTags)
+    .innerJoin(tags, eq(contentTags.tagId, tags.id))
+    .where(
+      and(
+        eq(contentTags.contentKind, kind),
+        inArray(contentTags.contentId, input.contentIds),
+      ),
+    )
+    .orderBy(asc(tags.name))
+    .all();
+
+  for (const row of rows) {
+    const list = result.get(row.contentId) ?? [];
+    list.push({
+      name: row.name,
+      category: row.category as TagCategory,
+    });
+    result.set(row.contentId, list);
+  }
+  return result;
 }
 
 export function getContentTags(input: {
