@@ -1,5 +1,6 @@
 <script setup lang="ts">
 import { DEFAULT_PAGE_LIMIT, type CatalogSort, type PluginListItem, type SoftmodListItem } from '@echbox/shared'
+import { tagFilterQuery } from '~/utils/tag-filter'
 
 const props = defineProps<{
   modKind: 'plugin' | 'softmod'
@@ -52,25 +53,40 @@ watch(() => [props.gameId, props.modKind, props.instanceId], () => {
 const page = ref(1)
 const query = ref('')
 const debouncedQuery = refDebounced(query, 250)
+const tags = ref<string[]>([])
+const appliedTags = ref<string[]>([])
 const sort = ref<CatalogSort>('recent')
 
-watch([debouncedQuery, sort, () => props.gameId, () => props.modKind], () => {
+function onApplyTags(next: string[]) {
+  if (next.join('\n') === appliedTags.value.join('\n')) return
+  appliedTags.value = [...next]
+}
+
+function clearTags() {
+  tags.value = []
+  onApplyTags([])
+}
+
+const listFilterKey = computed(() =>
+  props.modKind === 'plugin' ? debouncedQuery.value : appliedTags.value.join(','),
+)
+
+watch([listFilterKey, sort, () => props.gameId, () => props.modKind], () => {
   page.value = 1
 })
 
 const { data, error, status, refresh } = await useAsyncData(
-  () => `catalog-${props.modKind}-${props.gameId ?? 'all'}-${page.value}-${debouncedQuery.value}-${sort.value}`,
+  () => `catalog-${props.modKind}-${props.gameId ?? 'all'}-${page.value}-${listFilterKey.value}-${sort.value}`,
   async () => {
-    const listQuery = {
-      page: page.value,
-      limit: DEFAULT_PAGE_LIMIT,
-      sort: sort.value,
-      ...(debouncedQuery.value.trim() ? { q: debouncedQuery.value.trim() } : {}),
-      ...(props.gameId ? { gameId: props.gameId } : {}),
-    }
     if (props.modKind === 'plugin') {
       const { data: body, error: err } = await api.api.plugins.get({
-        query: listQuery,
+        query: {
+          page: page.value,
+          limit: DEFAULT_PAGE_LIMIT,
+          sort: sort.value,
+          ...(debouncedQuery.value.trim() ? { q: debouncedQuery.value.trim() } : {}),
+          ...(props.gameId ? { gameId: props.gameId } : {}),
+        },
         fetch: { credentials: 'include' },
       })
       if (err) throw err
@@ -80,7 +96,13 @@ const { data, error, status, refresh } = await useAsyncData(
       }
     }
     const { data: body, error: err } = await api.api.softmods.get({
-      query: listQuery,
+      query: {
+        page: page.value,
+        limit: DEFAULT_PAGE_LIMIT,
+        sort: sort.value === 'top' ? 'top' : 'recent',
+        ...tagFilterQuery(appliedTags.value),
+        ...(props.gameId ? { gameId: props.gameId } : {}),
+      },
       fetch: { credentials: 'include' },
     })
     if (err) throw err
@@ -89,7 +111,7 @@ const { data, error, status, refresh } = await useAsyncData(
       total: Number(body?.total ?? 0),
     }
   },
-  { watch: [() => props.modKind, () => props.gameId, page, debouncedQuery, sort] },
+  { watch: [() => props.modKind, () => props.gameId, page, debouncedQuery, appliedTags, sort] },
 )
 
 async function toggleInstall(item: PluginListItem | SoftmodListItem) {
@@ -431,10 +453,13 @@ const canSubmitUpload = computed(() => {
     </PageHeader>
 
     <CatalogToolbar
-      v-if="status === 'success' && (total > 0 || query.trim())"
+      v-if="status === 'success' && (total > 0 || (modKind === 'plugin' ? Boolean(query.trim()) : tags.length > 0))"
       v-model:query="query"
+      v-model:tags="tags"
       v-model:sort="sort"
-      :placeholder="`Search ${modKind === 'plugin' ? 'plugins' : 'softmods'} by name…`"
+      :search="modKind === 'softmod' ? 'tags' : 'text'"
+      :placeholder="modKind === 'plugin' ? 'Search plugins by name…' : 'Filter by tags…'"
+      @apply="onApplyTags"
     />
 
     <GallerySkeleton
@@ -451,7 +476,7 @@ const canSubmitUpload = computed(() => {
     />
 
     <UEmpty
-      v-else-if="total === 0 && !query.trim()"
+      v-else-if="total === 0 && (modKind === 'plugin' ? !query.trim() : appliedTags.length === 0)"
       :icon="modKind === 'plugin' ? 'i-lucide-puzzle' : 'i-lucide-package'"
       title="Nothing published yet"
       :description="user ? 'Be the first to share one.' : 'Sign in to share the first one.'"
@@ -463,9 +488,9 @@ const canSubmitUpload = computed(() => {
       v-else-if="items.length === 0"
       icon="i-lucide-search-x"
       title="Nothing matches"
-      :description="`Nothing matches “${query}”.`"
+      :description="modKind === 'plugin' ? `Nothing matches “${query}”.` : `Nothing matches ${appliedTags.join(' + ')}.`"
       variant="naked"
-      :actions="[{ label: 'Clear search', color: 'neutral', variant: 'outline', onClick: () => { query = '' } }]"
+      :actions="[{ label: modKind === 'plugin' ? 'Clear search' : 'Clear tags', color: 'neutral', variant: 'outline', onClick: () => { if (modKind === 'plugin') query = ''; else clearTags() } }]"
       class="py-16"
     />
 

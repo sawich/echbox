@@ -1,5 +1,6 @@
 <script setup lang="ts">
 import { DEFAULT_PAGE_LIMIT, type CatalogSort, type SceneListItem } from '@echbox/shared'
+import { tagFilterQuery } from '~/utils/tag-filter'
 
 const props = defineProps<{
   gameId?: string
@@ -84,23 +85,33 @@ async function toggleInstall(scene: SceneListItem) {
 }
 
 const page = ref(1)
-const query = ref('')
-const debouncedQuery = refDebounced(query, 250)
+const tags = ref<string[]>([])
+const appliedTags = ref<string[]>([])
 const sort = ref<CatalogSort>('recent')
 
-watch([debouncedQuery, sort, () => props.gameId], () => {
+function onApplyTags(next: string[]) {
+  if (next.join('\n') === appliedTags.value.join('\n')) return
+  appliedTags.value = [...next]
+}
+
+function clearTags() {
+  tags.value = []
+  onApplyTags([])
+}
+
+watch([() => appliedTags.value.join('\n'), sort, () => props.gameId], () => {
   page.value = 1
 })
 
 const { data, error, status, refresh } = await useAsyncData(
-  () => `scenes-gallery-${props.gameId ?? 'all'}-${page.value}-${debouncedQuery.value}-${sort.value}`,
+  () => `scenes-gallery-${props.gameId ?? 'all'}-${page.value}-${appliedTags.value.join(',')}-${sort.value}`,
   async () => {
     const { data: body, error: err } = await api.api.scenes.get({
       query: {
         page: page.value,
         limit: DEFAULT_PAGE_LIMIT,
-        sort: sort.value,
-        ...(debouncedQuery.value.trim() ? { q: debouncedQuery.value.trim() } : {}),
+        sort: sort.value === 'top' ? 'top' : 'recent',
+        ...tagFilterQuery(appliedTags.value),
         ...(props.gameId ? { gameId: props.gameId } : {}),
       },
       fetch: { credentials: 'include' },
@@ -111,7 +122,7 @@ const { data, error, status, refresh } = await useAsyncData(
       total: Number(body?.total ?? 0),
     }
   },
-  { watch: [() => props.gameId, page, debouncedQuery, sort] },
+  { watch: [() => props.gameId, page, appliedTags, sort] },
 )
 
 const scenes = computed(() => data.value?.scenes ?? [])
@@ -347,10 +358,12 @@ async function submitUpload() {
     </PageHeader>
 
     <CatalogToolbar
-      v-if="status === 'success' && (total > 0 || query.trim())"
-      v-model:query="query"
+      v-if="status === 'success' && (total > 0 || tags.length > 0)"
+      v-model:tags="tags"
       v-model:sort="sort"
-      placeholder="Search scenes…"
+      search="tags"
+      placeholder="Filter by tags…"
+      @apply="onApplyTags"
     />
 
     <GallerySkeleton
@@ -367,7 +380,7 @@ async function submitUpload() {
     />
 
     <UEmpty
-      v-else-if="total === 0 && !query.trim()"
+      v-else-if="total === 0 && appliedTags.length === 0"
       icon="i-lucide-clapperboard"
       title="No scenes yet"
       :description="user ? 'Be the first to share one.' : 'Sign in to share the first one.'"
@@ -379,9 +392,9 @@ async function submitUpload() {
       v-else-if="scenes.length === 0"
       icon="i-lucide-search-x"
       title="Nothing matches"
-      :description="`No scenes match “${query}”.`"
+      :description="`No scenes match ${appliedTags.join(' + ')}.`"
       variant="naked"
-      :actions="[{ label: 'Clear search', color: 'neutral', variant: 'outline', onClick: () => { query = '' } }]"
+      :actions="[{ label: 'Clear tags', color: 'neutral', variant: 'outline', onClick: clearTags }]"
       class="py-16"
     />
 

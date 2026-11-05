@@ -14,6 +14,9 @@ export const catalogSortOptions: { label: string, value: CatalogSort, icon: stri
   { label: 'A–Z', value: 'title', icon: 'i-lucide-arrow-down-a-z' },
 ]
 
+/** Taggable catalogs have no titles, so they do not offer A–Z. */
+export const taggableCatalogSortOptions = catalogSortOptions.filter(option => option.value !== 'title')
+
 function score(item: CatalogItem): number {
   return (item.likes ?? 0) - (item.dislikes ?? 0)
 }

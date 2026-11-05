@@ -1,5 +1,5 @@
 import { describe, expect, test } from 'bun:test'
-import { filterCatalog } from './catalog'
+import { catalogSortOptions, filterCatalog, taggableCatalogSortOptions } from './catalog'
 
 const items = [
   { title: 'Bravo', slug: 'b', likes: 1, dislikes: 0 },
@@ -33,5 +33,15 @@ describe('filterCatalog', () => {
   test('does not mutate input', () => {
     filterCatalog(items, '', 'title')
     expect(items[0]!.title).toBe('Bravo')
+  })
+})
+
+describe('catalog sort options', () => {
+  test('taggable toolbars offer recent and top only', () => {
+    expect(taggableCatalogSortOptions.map(option => option.value)).toEqual(['recent', 'top'])
+  })
+
+  test('text search toolbars still offer title sort', () => {
+    expect(catalogSortOptions.map(option => option.value)).toEqual(['recent', 'top', 'title'])
   })
 })

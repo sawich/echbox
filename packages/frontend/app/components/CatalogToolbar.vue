@@ -1,22 +1,46 @@
 <script setup lang="ts">
-import { type CatalogSort, catalogSortOptions } from '~/utils/catalog'
+import { type CatalogSort, catalogSortOptions, taggableCatalogSortOptions } from '~/utils/catalog'
 
-withDefaults(defineProps<{
+const props = withDefaults(defineProps<{
   placeholder?: string
   /** Hide sort options that depend on votes. */
   ratings?: boolean
+  /** `tags` is chip search. `text` keeps the plugin title query. */
+  search?: 'tags' | 'text'
 }>(), {
   placeholder: 'Search…',
   ratings: true,
+  search: 'text',
 })
 
-const query = defineModel<string>('query', { required: true })
+const query = defineModel<string>('query', { default: '' })
+const tags = defineModel<string[]>('tags', { default: () => [] })
 const sort = defineModel<CatalogSort>('sort', { required: true })
+
+const emit = defineEmits<{
+  apply: [tags: string[]]
+}>()
+
+const sortOptions = computed(() => {
+  const options = props.search === 'tags' ? taggableCatalogSortOptions : catalogSortOptions
+  return options.filter(option => props.ratings || option.value !== 'top')
+})
+
+watch(() => props.search, (mode) => {
+  if (mode === 'tags' && sort.value === 'title') sort.value = 'recent'
+}, { immediate: true })
 </script>
 
 <template>
   <div class="flex flex-col gap-3 sm:flex-row sm:items-center">
+    <TagInput
+      v-if="search === 'tags'"
+      v-model:tags="tags"
+      :placeholder="placeholder"
+      @apply="emit('apply', $event)"
+    />
     <UInput
+      v-else
       v-model="query"
       :placeholder="placeholder"
       icon="i-lucide-search"
@@ -44,7 +68,7 @@ const sort = defineModel<CatalogSort>('sort', { required: true })
       aria-label="Sort"
     >
       <button
-        v-for="option in catalogSortOptions.filter(o => ratings || o.value !== 'top')"
+        v-for="option in sortOptions"
         :key="option.value"
         type="button"
         class="ed-segment-item"

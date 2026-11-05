@@ -1,6 +1,7 @@
 <script setup lang="ts">
 import { DEFAULT_PAGE_LIMIT, type CardListItem, type CardType, type CatalogSort } from '@echbox/shared'
 import { galleryAspect } from '~/utils/gallery'
+import { tagFilterQuery } from '~/utils/tag-filter'
 
 const props = defineProps<{
   type: CardType
@@ -40,24 +41,34 @@ async function refreshInstalled() {
 }
 
 const page = ref(1)
-const query = ref('')
-const debouncedQuery = refDebounced(query, 250)
+const tags = ref<string[]>([])
+const appliedTags = ref<string[]>([])
 const sort = ref<CatalogSort>('recent')
 
-watch([debouncedQuery, sort, () => props.gameId, () => props.type], () => {
+function onApplyTags(next: string[]) {
+  if (next.join('\n') === appliedTags.value.join('\n')) return
+  appliedTags.value = [...next]
+}
+
+function clearTags() {
+  tags.value = []
+  onApplyTags([])
+}
+
+watch([() => appliedTags.value.join('\n'), sort, () => props.gameId, () => props.type], () => {
   page.value = 1
 })
 
 const { data, error, status, refresh } = await useAsyncData(
-  () => `gallery-${props.type}-${props.gameId ?? 'all'}-${page.value}-${debouncedQuery.value}-${sort.value}`,
+  () => `gallery-${props.type}-${props.gameId ?? 'all'}-${page.value}-${appliedTags.value.join(',')}-${sort.value}`,
   async () => {
     const { data: body, error: err } = await api.api.kk.cards.get({
       query: {
         type: props.type,
         page: page.value,
         limit: DEFAULT_PAGE_LIMIT,
-        sort: sort.value,
-        ...(debouncedQuery.value.trim() ? { q: debouncedQuery.value.trim() } : {}),
+        sort: sort.value === 'top' ? 'top' : 'recent',
+        ...tagFilterQuery(appliedTags.value),
         ...(props.gameId ? { gameId: props.gameId } : {}),
       },
       fetch: { credentials: 'include' },
@@ -68,7 +79,7 @@ const { data, error, status, refresh } = await useAsyncData(
       total: Number(body?.total ?? 0),
     }
   },
-  { watch: [() => props.type, () => props.gameId, page, debouncedQuery, sort] },
+  { watch: [() => props.type, () => props.gameId, page, appliedTags, sort] },
 )
 
 onMounted(() => {
@@ -384,11 +395,13 @@ async function submitUpload() {
     </PageHeader>
 
     <CatalogToolbar
-      v-if="status === 'success' && (total > 0 || query.trim())"
-      v-model:query="query"
+      v-if="status === 'success' && (total > 0 || tags.length > 0)"
+      v-model:tags="tags"
       v-model:sort="sort"
+      search="tags"
       :ratings="type === 'character'"
-      placeholder="Search by title or slug…"
+      placeholder="Filter by tags…"
+      @apply="onApplyTags"
     />
 
     <GallerySkeleton
@@ -404,7 +417,7 @@ async function submitUpload() {
     />
 
     <UEmpty
-      v-else-if="total === 0 && !query.trim()"
+      v-else-if="total === 0 && appliedTags.length === 0"
       icon="i-lucide-images"
       title="No cards yet"
       :description="user ? 'Be the first to share one.' : 'Sign in to share the first one.'"
@@ -416,9 +429,9 @@ async function submitUpload() {
       v-else-if="cards.length === 0"
       icon="i-lucide-search-x"
       title="Nothing matches"
-      :description="`No cards match “${query}”.`"
+      :description="`No cards match ${appliedTags.join(' + ')}.`"
       variant="naked"
-      :actions="[{ label: 'Clear search', color: 'neutral', variant: 'outline', onClick: () => { query = '' } }]"
+      :actions="[{ label: 'Clear tags', color: 'neutral', variant: 'outline', onClick: clearTags }]"
       class="py-16"
     />
 
