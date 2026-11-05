@@ -1,0 +1,102 @@
+{
+  "2": {
+    "inputs": {
+      "image": "HWFTwbwWIAA70JK.jpg"
+    },
+    "class_type": "LoadImage",
+    "_meta": {
+      "title": "Load Image"
+    }
+  },
+  "8": {
+    "inputs": {
+      "threshold": [
+        "12",
+        2
+      ],
+      "character_threshold": [
+        "12",
+        3
+      ],
+      "use_best_threshold": true,
+      "trailing_comma": false,
+      "sort_tags": true,
+      "exclude_tags": "",
+      "chunk_size": 0,
+      "replace_underscore": true,
+      "tagger_model": [
+        "12",
+        0
+      ],
+      "tagger_info": [
+        "12",
+        1
+      ],
+      "image": [
+        "2",
+        0
+      ]
+    },
+    "class_type": "Booru Tagger",
+    "_meta": {
+      "title": "Booru Tagger"
+    }
+  },
+  "12": {
+    "inputs": {
+      "model_name": "wd-eva02-large-tagger-v3"
+    },
+    "class_type": "Load Booru Tagger",
+    "_meta": {
+      "title": "Load Booru Tagger"
+    }
+  },
+  "13": {
+    "inputs": {
+      "source": [
+        "8",
+        0
+      ]
+    },
+    "class_type": "PreviewAny",
+    "_meta": {
+      "title": "Preview as Text"
+    }
+  },
+  "14": {
+    "inputs": {
+      "source": [
+        "8",
+        1
+      ]
+    },
+    "class_type": "PreviewAny",
+    "_meta": {
+      "title": "Preview as Text"
+    }
+  },
+  "15": {
+    "inputs": {
+      "source": [
+        "8",
+        2
+      ]
+    },
+    "class_type": "PreviewAny",
+    "_meta": {
+      "title": "Preview as Text"
+    }
+  },
+  "16": {
+    "inputs": {
+      "source": [
+        "8",
+        3
+      ]
+    },
+    "class_type": "PreviewAny",
+    "_meta": {
+      "title": "Preview as Text"
+    }
+  }
+}
