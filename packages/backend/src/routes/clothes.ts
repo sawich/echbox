@@ -23,7 +23,12 @@ import {
 import { GameServiceError } from "../games/service";
 import { bearerAuthSecurity } from "../openapi";
 import { authDerive } from "./auth";
-import { editUploaderId, readContentTags, writeContentTags } from "./content-tags";
+import {
+  NOTES_OWNER_ONLY,
+  metadataEdit,
+  readContentTags,
+  writeContentTags,
+} from "./content-tags";
 
 async function readUpload(file: File): Promise<Uint8Array> {
   return new Uint8Array(await file.arrayBuffer());
@@ -283,14 +288,18 @@ export const clothesRoutes = new Elysia({
         return { error: "Unauthorized" };
       }
       try {
+        const edit = await metadataEdit(
+          user,
+          async () => (await getClothes(params.id))?.uploaderId,
+          body.notes,
+          set,
+        );
+        if (!edit) return { error: NOTES_OWNER_ONLY };
         const patched = await patchClothes({
           clothesId: params.id,
-          uploaderId: await editUploaderId(
-            user,
-            async () => (await getClothes(params.id))?.uploaderId,
-          ),
+          uploaderId: edit.uploaderId,
           description: body.description,
-          notes: body.notes,
+          notes: edit.notes,
         });
         return stripClothesPaths(patched);
       } catch (err) {

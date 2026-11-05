@@ -595,4 +595,41 @@ describe("tag and preview HTTP routes", () => {
     const body = (await patched.json()) as { description: string };
     expect(body.description).toBe("admin edit");
   });
+
+  test("admin cannot change another uploader's version notes", async () => {
+    const card = await uploadCard("kk_mod_chara.png", authorCookie);
+    const ownerPatch = await app.handle(
+      new Request(`http://localhost/api/kk/cards/${card.id}`, {
+        method: "PATCH",
+        headers: {
+          cookie: authorCookie,
+          "content-type": "application/json",
+        },
+        body: JSON.stringify({ description: "kept", notes: "owner note" }),
+      }),
+    );
+    expect(ownerPatch.status).toBe(200);
+
+    const adminPatch = await app.handle(
+      new Request(`http://localhost/api/kk/cards/${card.id}`, {
+        method: "PATCH",
+        headers: {
+          cookie: adminCookie,
+          "content-type": "application/json",
+        },
+        body: JSON.stringify({ description: "sneak", notes: "stolen note" }),
+      }),
+    );
+    expect(adminPatch.status).toBe(400);
+
+    const detailRes = await app.handle(
+      new Request(`http://localhost/api/kk/cards/${card.id}`),
+    );
+    const detail = (await detailRes.json()) as {
+      description: string;
+      versions: { notes?: string }[];
+    };
+    expect(detail.description).toBe("kept");
+    expect(detail.versions[0]?.notes).toBe("owner note");
+  });
 });

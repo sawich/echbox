@@ -34,14 +34,32 @@ async function uploaderIdOf(
   }
 }
 
-/** Uploader id to pass into owner-checked patch calls. Admins act as the owner. */
-export async function editUploaderId(
+const NOTES_OWNER_ONLY = "Only the uploader can change version notes.";
+
+/**
+ * Uploader id for an owner-checked metadata patch.
+ * Admins may edit another item's description. They may not send `notes`
+ * on someone else's item; that request is rejected before the service runs.
+ */
+export async function metadataEdit(
   user: User,
   loadOwner: () => Promise<string | null | undefined>,
-): Promise<string> {
-  if (!isAdmin(user)) return user.id;
-  return (await loadOwner()) ?? user.id;
+  notes: string | undefined,
+  set: StatusSetter,
+): Promise<{ uploaderId: string; notes?: string } | null> {
+  const ownerId = isAdmin(user) ? await loadOwner() : undefined;
+  const editingAnother = ownerId != null && ownerId !== user.id;
+  if (editingAnother && notes !== undefined) {
+    set.status = 400;
+    return null;
+  }
+  return {
+    uploaderId: editingAnother ? ownerId : user.id,
+    notes,
+  };
 }
+
+export { NOTES_OWNER_ONLY };
 
 export async function readContentTags(
   kind: TaggableContentKind,

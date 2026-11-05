@@ -31,7 +31,11 @@ import {
   softmodPreviewPath,
 } from "../softmods/previews";
 import { authDerive } from "./auth";
-import { editUploaderId, readContentTags, writeContentTags } from "./content-tags";
+import {
+  metadataEdit,
+  readContentTags,
+  writeContentTags,
+} from "./content-tags";
 
 async function readUpload(file: File): Promise<Uint8Array> {
   return new Uint8Array(await file.arrayBuffer());
@@ -226,12 +230,16 @@ export const softmodRoutes = new Elysia({
         return { error: "Unauthorized" };
       }
       try {
+        const edit = await metadataEdit(
+          user,
+          async () => (await getSoftmod(params.id))?.uploaderId,
+          undefined,
+          set,
+        );
+        if (!edit) return { error: "Only the uploader can change version notes." };
         const patched = await patchSoftmod({
           softmodId: params.id,
-          uploaderId: await editUploaderId(
-            user,
-            async () => (await getSoftmod(params.id))?.uploaderId,
-          ),
+          uploaderId: edit.uploaderId,
           description: body.description,
         });
         return stripSoftmodPaths(patched);

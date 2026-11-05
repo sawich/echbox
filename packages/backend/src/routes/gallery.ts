@@ -20,7 +20,12 @@ import {
   taggableListQueryFields,
   tagsFromQuery,
 } from "../common/list-query-schema";
-import { editUploaderId, readContentTags, writeContentTags } from "./content-tags";
+import {
+  NOTES_OWNER_ONLY,
+  metadataEdit,
+  readContentTags,
+  writeContentTags,
+} from "./content-tags";
 import { GameServiceError } from "../games/service";
 import { bearerAuthSecurity } from "../openapi";
 import { authDerive } from "./auth";
@@ -294,14 +299,18 @@ export const galleryRoutes = new Elysia({
         return { error: "Unauthorized" };
       }
       try {
+        const edit = await metadataEdit(
+          user,
+          async () => (await getCharacterCard(params.id))?.uploaderId,
+          body.notes,
+          set,
+        );
+        if (!edit) return { error: NOTES_OWNER_ONLY };
         const patched = await patchCard({
           cardId: params.id,
-          uploaderId: await editUploaderId(
-            user,
-            async () => (await getCharacterCard(params.id))?.uploaderId,
-          ),
+          uploaderId: edit.uploaderId,
           description: body.description,
-          notes: body.notes,
+          notes: edit.notes,
         });
         return stripCardPaths(patched);
       } catch (err) {
